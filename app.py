@@ -5322,7 +5322,33 @@ import requests
 @app.route('/web_monitor')
 @login_required
 def web_monitor_page():
+    # If no domain is configured, frontend will handle the prompt
     return render_template('web_monitor.html')
+
+def get_web_shield_domain():
+    config_path = os.path.join(DATA_DIR, 'web_shield.json')
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f).get('domain', None)
+        except: pass
+    return None
+
+@app.route('/api/web_monitor/config', methods=['GET', 'POST'])
+@login_required
+def web_monitor_config():
+    config_path = os.path.join(DATA_DIR, 'web_shield.json')
+    if request.method == 'POST':
+        domain = request.json.get('domain')
+        if not domain:
+            return jsonify({'error': 'Domain required'}), 400
+        # Clean domain (remove http/https)
+        domain = domain.replace('https://', '').replace('http://', '').strip('/')
+        with open(config_path, 'w') as f:
+            json.dump({'domain': domain}, f)
+        return jsonify({'success': True, 'domain': domain})
+    
+    return jsonify({'domain': get_web_shield_domain()})
 
 import ssl
 import socket
@@ -5353,7 +5379,9 @@ def check_ssl_expiry(domain):
 @login_required
 def web_monitor_status():
     """Mengambil Hardware, SSL, dan Uptime Status"""
-    domain = "recode-project.com"
+    domain = get_web_shield_domain()
+    if not domain:
+        return jsonify({"error": "not_configured"}), 400
     
     # 1. Hardware Monitoring
     temp_c = 0
@@ -5401,7 +5429,8 @@ def web_monitor_status():
 @app.route('/api/web_monitor/ssl_details')
 @login_required
 def web_monitor_ssl_details():
-    domain = "recode-project.com"
+    domain = get_web_shield_domain()
+    if not domain: return jsonify({"error": "not_configured"}), 400
     return jsonify(check_ssl_expiry(domain))
 
 @app.route('/api/web_monitor/traffic')
@@ -5505,8 +5534,10 @@ def web_monitor_security():
 @app.route('/api/web_monitor/backup')
 @login_required
 def web_monitor_backup():
-    """Backup /var/www/recode-project.com menjadi ZIP"""
-    source_dir = '/host/root/var/www/recode-project.com'
+    """Backup /var/www/{domain} menjadi ZIP"""
+    domain = get_web_shield_domain()
+    if not domain: return jsonify({"error": "not_configured"}), 400
+    source_dir = f'/host/root/var/www/{domain}'
     zip_filename = f"recode_backup_{int(time.time())}.zip"
     zip_path = os.path.join('/tmp', zip_filename)
     

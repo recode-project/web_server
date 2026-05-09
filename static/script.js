@@ -710,15 +710,30 @@ function saveDashboardLayout() {
 async function updateWebMonitor() {
     try {
         const res = await fetch('/api/web_monitor/status');
-        const data = await res.json();
-        
         const reqsEl = document.getElementById('web-reqs');
         const ipsEl = document.getElementById('web-ips');
         const iconEl = document.getElementById('web-status-icon');
+        const domainEl = document.getElementById('web-domain');
+
+        if (res.status === 400) {
+            const data = await res.json();
+            if (data.error === "not_configured") {
+                if (domainEl) domainEl.textContent = 'Not Configured';
+                if (reqsEl) reqsEl.textContent = '-';
+                if (ipsEl) ipsEl.textContent = '-';
+                if (iconEl) {
+                    iconEl.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+                    iconEl.style.color = '#f59e0b';
+                }
+                return;
+            }
+        }
+
+        const data = await res.json();
         
         if (reqsEl && ipsEl) {
-            reqsEl.textContent = data.today_requests;
-            ipsEl.textContent = data.unique_ips;
+            reqsEl.textContent = data.today_requests || 0;
+            ipsEl.textContent = data.unique_ips || 0;
             
             if (data.is_online) {
                 iconEl.innerHTML = '<i class="fa-solid fa-circle-check"></i>';

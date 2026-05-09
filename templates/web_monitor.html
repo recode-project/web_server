@@ -247,6 +247,23 @@
         </div>
     </div>
 
+    <!-- MODAL SETUP DOMAIN -->
+    <div id="setupDomainModal" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-xl w-11/12 max-w-md border border-primary shadow-2xl relative">
+            <div class="text-center mb-6">
+                <i class="fa-solid fa-globe text-4xl text-primary mb-3"></i>
+                <h3 class="text-xl font-bold">Register Web Domain</h3>
+                <p class="text-gray-400 text-sm mt-2">Enter the domain you want to protect and monitor (e.g., example.com)</p>
+            </div>
+            <div class="space-y-4">
+                <input type="text" id="setup-domain-input" placeholder="recode-project.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors">
+                <button onclick="saveDomainConfig()" class="w-full bg-primary hover:bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg transition-all" id="save-domain-btn">
+                    Save & Activate Shield
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
         
@@ -311,6 +328,13 @@
         async function fetchStatus() {
             try {
                 const res = await fetch('/api/web_monitor/status');
+                if (res.status === 400) {
+                    const data = await res.json();
+                    if (data.error === "not_configured") {
+                        document.getElementById('setupDomainModal').classList.remove('hidden');
+                        return;
+                    }
+                }
                 const data = await res.json();
                 
                 document.getElementById('cpu-temp').innerText = `${data.temp}°C`;
@@ -421,13 +445,47 @@
             window.location.href = '/api/web_monitor/backup';
         }
 
+        async function saveDomainConfig() {
+            const domain = document.getElementById('setup-domain-input').value;
+            if (!domain) {
+                alert('Please enter a domain.');
+                return;
+            }
+            
+            const btn = document.getElementById('save-domain-btn');
+            btn.innerText = 'Saving...';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/web_monitor/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain })
+                });
+                if (res.ok) {
+                    document.getElementById('setupDomainModal').classList.add('hidden');
+                    fetchStatus();
+                    fetchTraffic();
+                    fetchSecurity();
+                } else {
+                    alert('Failed to save domain.');
+                }
+            } catch (e) {
+                console.error('Error saving domain:', e);
+                alert('Network error.');
+            } finally {
+                btn.innerText = 'Save & Activate Shield';
+                btn.disabled = false;
+            }
+        }
+
         // Init & Polling
         fetchStatus();
         fetchTraffic();
         fetchSecurity();
-        setInterval(fetchStatus, 3000);  // Fast update for hardware
-        setInterval(fetchTraffic, 10000); // 10s for traffic
-        setInterval(fetchSecurity, 30000); // 30s for security logs
+        setInterval(() => { if(document.getElementById('setupDomainModal').classList.contains('hidden')) fetchStatus(); }, 3000);  // Fast update for hardware
+        setInterval(() => { if(document.getElementById('setupDomainModal').classList.contains('hidden')) fetchTraffic(); }, 10000); // 10s for traffic
+        setInterval(() => { if(document.getElementById('setupDomainModal').classList.contains('hidden')) fetchSecurity(); }, 30000); // 30s for security logs
 
     </script>
 </body>
