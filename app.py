@@ -472,6 +472,27 @@ def requires_permission(feature, level='any'):
 
 
 
+@app.before_request
+def enforce_setup():
+    # Allow static resources to load
+    if request.path.startswith('/static'):
+        return None
+        
+    # Allow setup APIs and pages
+    whitelist = ['/setup-admin', '/api/setup-admin']
+    if request.path in whitelist:
+        return None
+        
+    # Check if we are running with insecure default credentials
+    config = load_security_config()
+    default_hash = hashlib.sha256('admin'.encode()).hexdigest()
+    
+    if config['password_hash'] == default_hash:
+        # Force setup
+        if request.path.startswith('/api'):
+             return jsonify({'error': 'Setup required', 'redirect': '/setup-admin'}), 403
+        return redirect('/setup-admin')
+
 def get_size(bytes, suffix="B"):
     """Scale bytes to its proper format"""
     factor = 1024
