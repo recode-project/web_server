@@ -138,26 +138,40 @@ if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
     fi
 fi
 
-# --- STEP 3: Jalankan Eka Dashboard via Docker ---
-echo -e "${BLUE}[INFO] Membangun dan Menjalankan Dashboard...${NC}"
+# --- STEP 3: Persiapan Docker & Deployment ---
+echo -e "${BLUE}[INFO] Memeriksa instalasi Docker...${NC}"
 
-# Cek Docker
+# Cek Docker, Install otomatis jika belum ada
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}[ERROR] Docker belum terinstall!${NC}"
-    echo "Silakan install docker: curl -fsSL https://get.docker.com | sh"
-    exit 1
+    echo -e "${YELLOW}[WARNING] Docker belum terinstall. Memulai instalasi otomatis Docker...${NC}"
+    curl -fsSL https://get.docker.com | sh
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[CRITICAL ERROR] Gagal menginstall Docker secara otomatis. Silakan cek koneksi internet atau install manual.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}[OK] Docker berhasil diinstall.${NC}"
+else
+    echo -e "${GREEN}[OK] Docker sudah terinstall.${NC}"
 fi
 
-# Determine Docker Compose command
+# Determine Docker Compose command, Install jika belum ada
 if command -v docker-compose &> /dev/null; then
     COMPOSE_CMD="docker-compose"
 elif docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
 else
-    echo -e "${RED}[ERROR] docker-compose tidak ditemukan!${NC}"
-    echo "Mohon install docker-compose-plugin atau docker-compose."
-    exit 1
+    echo -e "${YELLOW}[WARNING] Docker Compose tidak ditemukan. Menginstall Docker Compose Plugin...${NC}"
+    apt-get update && apt-get install -y docker-compose-plugin
+    if docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
+        echo -e "${GREEN}[OK] Docker Compose berhasil diinstall.${NC}"
+    else
+        echo -e "${RED}[ERROR] Gagal menginstall Docker Compose otomatis. Mohon install manual.${NC}"
+        exit 1
+    fi
 fi
+
+echo -e "${BLUE}[INFO] Membangun dan Menjalankan Dashboard...${NC}"
 
 $COMPOSE_CMD down 2>/dev/null
 $COMPOSE_CMD up --build -d
