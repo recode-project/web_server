@@ -177,6 +177,14 @@ echo -e "${BLUE}[INFO] Membangun dan Menjalankan Dashboard...${NC}"
 docker rm -f eka_dashboard 2>/dev/null || true
 
 $COMPOSE_CMD down 2>/dev/null
+
+# Hapus security_config.json lama (dimiliki root) agar setup wizard muncul pada fresh install
+# File lain di data/ (catalog, dll) dibiarkan agar tidak perlu download ulang
+if [ -f "./data/security_config.json" ]; then
+    echo -e "${YELLOW}[INFO] Menghapus konfigurasi lama agar Setup Wizard aktif...${NC}"
+    rm -f ./data/security_config.json 2>/dev/null || true
+fi
+
 $COMPOSE_CMD up --build -d
 
 if [ $? -eq 0 ]; then
