@@ -560,6 +560,7 @@ Restart App=systemctl restart myapp"></textarea>
         const urlParams = new URLSearchParams(window.location.search);
         const startPath = urlParams.get('path') || '/root';
         const startCmd = urlParams.get('cmd') || '';
+        const lxdTarget = urlParams.get('lxd') || null;
 
         // Load custom commands from localStorage
         let customCommands = JSON.parse(localStorage.getItem('customCommands') || '[]');
@@ -667,7 +668,8 @@ Restart App=systemctl restart myapp"></textarea>
             // Start terminal on server
             socket.emit('start_terminal', {
                 session_id: sessionId,
-                path: path
+                path: path,
+                lxd_target: lxdTarget
             });
 
             switchTab(sessionId);

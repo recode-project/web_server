@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LXD Manager — Eka Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --glass-bg: rgba(30, 30, 40, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-muted: #a0a0b0;
+            --success: #4ecdc4;
+            --danger: #ff6b6b;
+            --warning: #ffe66d;
+            --radius-lg: 24px;
+            --radius-md: 16px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; color: var(--text-main); min-height: 100vh; }
+        .wallpaper {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(-45deg, #e66465, #9198e5, #11998e, #38ef7d);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: -1; filter: brightness(0.45);
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .page-wrap { padding: 2rem 3rem; max-width: 1400px; margin: 0 auto; }
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            border-radius: var(--radius-lg);
+        }
+        .card { padding: 1.5rem; margin-bottom: 1.5rem; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+        .back-btn {
+            background: rgba(255,255,255,0.1); border: none; color: var(--text-muted);
+            padding: 0.4rem 1rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
+            display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s;
+            margin-bottom: 0.5rem; font-family: inherit;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+        .page-title { font-size: 2rem; font-weight: 700; display: flex; align-items: center; gap: 0.8rem; }
+        .page-subtitle { font-size: 0.9rem; color: var(--text-muted); margin-top: 0.2rem; }
+        .action-btn {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+            color: white; padding: 0.6rem 1.2rem; border-radius: 12px;
+            cursor: pointer; font-family: inherit; font-size: 0.85rem;
+            display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s;
+        }
+        .action-btn:hover { background: rgba(255,255,255,0.18); }
+        .action-btn.primary { background: #4ecdc4; color: #111; border: none; font-weight: 600; }
+        .action-btn.primary:hover { background: #3db8b0; }
+
+        /* Stats */
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-card {
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+            padding: 1.2rem; text-align: center;
+        }
+        .stat-val { font-size: 2rem; font-weight: 700; }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 0.3rem; }
+
+        /* Section title */
+        .section-title {
+            font-size: 1rem; font-weight: 600; margin-bottom: 1.2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.8rem;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+
+        /* Container cards */
+        .container-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.2rem; margin-bottom: 0.8rem;
+            display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+            transition: border-color 0.2s;
+        }
+        .container-card:hover { border-color: rgba(255,255,255,0.15); }
+        .container-icon {
+            width: 42px; height: 42px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; flex-shrink: 0;
+        }
+        .container-info { flex: 1; min-width: 0; }
+        .container-name { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .container-image { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .container-stats { display: flex; gap: 1rem; flex-shrink: 0; }
+        .cstat { text-align: center; min-width: 55px; }
+        .cstat-val { font-size: 0.9rem; font-weight: 700; }
+        .cstat-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .container-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+        .ctrl-btn {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+            color: white; width: 34px; height: 34px; border-radius: 8px;
+            cursor: pointer; font-size: 0.85rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s; font-family: inherit;
+        }
+        .ctrl-btn:hover { background: rgba(255,255,255,0.2); }
+        .ctrl-btn.start { border-color: rgba(78,205,196,0.4); color: #4ecdc4; }
+        .ctrl-btn.stop { border-color: rgba(255,107,107,0.4); color: #ff6b6b; }
+        .ctrl-btn.restart { border-color: rgba(255,230,109,0.4); color: #ffe66d; }
+        .ctrl-btn.delete { border-color: rgba(255,0,0,0.4); color: #ff0000; }
+        .ctrl-btn.terminal { border-color: rgba(36,150,237,0.4); color: #2496ed; }
+        .ctrl-btn.config { border-color: rgba(162,155,254,0.4); color: #a29bfe; }
+        .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Badges */
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.68rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; white-space: nowrap;
+        }
+        .badge-running { background: rgba(78,205,196,0.15); color: #4ecdc4; border: 1px solid rgba(78,205,196,0.3); }
+        .badge-stopped { background: rgba(255,107,107,0.15); color: #ff6b6b; border: 1px solid rgba(255,107,107,0.3); }
+        .badge-other { background: rgba(255,230,109,0.15); color: #ffe66d; border: 1px solid rgba(255,230,109,0.3); }
+        .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse-anim 1.5s ease infinite; }
+        @keyframes pulse-anim { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* IPs */
+        .ip-tag {
+            background: rgba(145,152,229,0.15); color: #9198e5;
+            border: 1px solid rgba(145,152,229,0.3);
+            font-size: 0.7rem; font-family: monospace; padding: 1px 6px; border-radius: 5px;
+            white-space: nowrap;
+        }
+
+        /* Loading / empty */
+        .loading { text-align: center; padding: 4rem; color: var(--text-muted); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+            display: none; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .modal {
+            background: #1e1e28; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-lg); padding: 2rem; width: 100%; max-width: 450px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .modal-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .form-control {
+            width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            color: white; padding: 0.8rem; border-radius: 12px; font-family: inherit;
+        }
+        .form-control:focus { outline: none; border-color: #9198e5; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1.5rem; }
+
+        /* Toast */
+        #toast {
+            position: fixed; bottom: 2rem; right: 2rem;
+            background: rgba(30,30,40,0.9); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1); color: white;
+            padding: 0.8rem 1.4rem; border-radius: 12px; font-size: 0.85rem;
+            display: none; align-items: center; gap: 0.6rem; z-index: 999;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        @media(max-width:768px){ .page-wrap{ padding: 1rem; } .container-stats{ display: none; } }
+    </style>
+</head>
+<body>
+<div class="wallpaper"></div>
+<div class="page-wrap">
+
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <button class="back-btn" onclick="window.location.href='/dashboard'">
+                <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+            </button>
+            <div class="page-title"><i class="fa-brands fa-linux" style="color:#e66465"></i> LXD Manager</div>
+            <div class="page-subtitle">Manage system containers efficiently</div>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="action-btn" onclick="fetchContainers()">
+                <i class="fa-solid fa-rotate"></i> Refresh
+            </button>
+            <button class="action-btn primary" onclick="openCreateModal()">
+                <i class="fa-solid fa-plus"></i> New Container
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-val" style="color:#9198e5" id="total-ct">—</div>
+            <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-val" style="color:#4ecdc4" id="running-ct">—</div>
+            <div class="stat-label">Running</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-val" style="color:#ff6b6b" id="stopped-ct">—</div>
+            <div class="stat-label">Stopped</div>
+        </div>
+    </div>
+
+    <!-- Containers -->
+    <div class="glass card">
+        <div class="section-title">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <i class="fa-solid fa-server" style="color:#e66465"></i> LXC Containers
+            </div>
+        </div>
+        <div id="containers-wrap">
+            <div class="loading"><i class="fa-solid fa-spinner fa-spin" style="margin-right:0.5rem;"></i>Loading containers...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Create Modal -->
+<div class="modal-overlay" id="create-modal">
+    <div class="modal">
+        <div class="modal-title">Launch New Container</div>
+        <div class="form-group">
+            <label>Container Name</label>
+            <input type="text" id="ctr-name" class="form-control" placeholder="e.g. webserver-01">
+        </div>
+        <div class="form-group">
+            <label>Image</label>
+            <input type="text" id="ctr-image" class="form-control" value="ubuntu:22.04" placeholder="e.g. ubuntu:22.04">
+        </div>
+        <div class="modal-actions">
+            <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
+            <button class="action-btn primary" onclick="createContainer()" id="btn-create">Launch</button>
+        </div>
+    </div>
+</div>
+
+<!-- Config Modal -->
+<div class="modal-overlay" id="config-modal">
+    <div class="modal">
+        <div class="modal-title">Resource Limits</div>
+        <input type="hidden" id="cfg-name">
+        <div class="form-group">
+            <label>CPU Cores</label>
+            <input type="number" id="cfg-cpu" class="form-control" placeholder="e.g. 2">
+        </div>
+        <div class="form-group">
+            <label>Memory (RAM)</label>
+            <input type="text" id="cfg-ram" class="form-control" placeholder="e.g. 2GB or 512MB">
+        </div>
+        <div class="form-group">
+            <label>Storage (Root Disk)</label>
+            <input type="text" id="cfg-storage" class="form-control" placeholder="e.g. 20GB">
+        </div>
+        <div class="modal-actions">
+            <button class="action-btn" onclick="closeConfigModal()">Cancel</button>
+            <button class="action-btn primary" onclick="saveConfig()" id="btn-config">Save Config</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let containersData = {};
+const COLORS = {
+    Running: { bg: 'rgba(35,213,171,0.12)', icon: '#23d5ab' },
+    Stopped: { bg: 'rgba(255,107,107,0.12)', icon: '#ff6b6b' },
+    default: { bg: 'rgba(255,255,255,0.06)', icon: '#a0a0b0' }
+};
+
+function showToast(msg, type='info') {
+    const colors = { success: '#4ecdc4', error: '#ff6b6b', info: '#9198e5' };
+    const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' };
+    const t = document.getElementById('toast');
+    t.innerHTML = `<i class="fa-solid ${icons[type]}" style="color:${colors[type]}"></i> ${msg}`;
+    t.style.display = 'flex';
+    setTimeout(() => t.style.display = 'none', 3500);
+}
+
+function openCreateModal() { document.getElementById('create-modal').style.display = 'flex'; }
+function closeCreateModal() { document.getElementById('create-modal').style.display = 'none'; }
+
+function openConfigModal(name) {
+    const c = containersData[name];
+    if (!c) return;
+    document.getElementById('cfg-name').value = name;
+    document.getElementById('cfg-cpu').value = (c.expanded_config && c.expanded_config['limits.cpu']) || '';
+    document.getElementById('cfg-ram').value = (c.expanded_config && c.expanded_config['limits.memory']) || '';
+    document.getElementById('cfg-storage').value = (c.expanded_devices && c.expanded_devices.root && c.expanded_devices.root.size) || '';
+    document.getElementById('config-modal').style.display = 'flex';
+}
+function closeConfigModal() { document.getElementById('config-modal').style.display = 'none'; }
+
+async function saveConfig() {
+    const name = document.getElementById('cfg-name').value;
+    const cpu = document.getElementById('cfg-cpu').value.trim();
+    const ram = document.getElementById('cfg-ram').value.trim();
+    const storage = document.getElementById('cfg-storage').value.trim();
+    
+    const btn = document.getElementById('btn-config');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    
+    try {
+        const res = await fetch('/api/lxd/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, cpu, ram, storage })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Config for ${name} saved successfully`, 'success');
+            closeConfigModal();
+            fetchContainers();
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch(e) {
+        showToast('Request failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Save Config';
+    }
+}
+
+async function createContainer() {
+    const name = document.getElementById('ctr-name').value.trim();
+    const image = document.getElementById('ctr-image').value.trim();
+    if (!name || !image) return showToast('Name and image required', 'error');
+
+    const btn = document.getElementById('btn-create');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching...';
+
+    try {
+        const res = await fetch('/api/lxd/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, image })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Container ${name} created successfully`, 'success');
+            closeCreateModal();
+            document.getElementById('ctr-name').value = '';
+            fetchContainers();
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch (e) {
+        showToast('Request failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Launch';
+    }
+}
+
+async function containerAction(name, action) {
+    if (action === 'delete') {
+        if (!confirm(`Are you sure you want to delete container ${name}? This action cannot be undone.`)) return;
+    }
+    showToast(`${action}ing ${name}...`, 'info');
+    try {
+        const res = await fetch('/api/lxd/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, action })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`${name}: ${action} successful`, 'success');
+            setTimeout(fetchContainers, 1200);
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch(e) { showToast('Request failed', 'error'); }
+}
+
+async function fetchContainers() {
+    try {
+        const res = await fetch('/api/lxd/containers');
+        const data = await res.json();
+        const ctrs = data.containers;
+
+        const total = ctrs.length;
+        const running = ctrs.filter(c => c.status === 'Running').length;
+        const stopped = ctrs.filter(c => c.status === 'Stopped').length;
+
+        document.getElementById('total-ct').textContent = total;
+        document.getElementById('running-ct').textContent = running;
+        document.getElementById('stopped-ct').textContent = stopped;
+
+        if (ctrs.length === 0) {
+            document.getElementById('containers-wrap').innerHTML = '<div class="loading">No LXD containers found</div>';
+            return;
+        }
+
+        let html = '';
+        containersData = {};
+        ctrs.forEach(c => {
+            containersData[c.name] = c;
+            const color = COLORS[c.status] || COLORS.default;
+            const isRunning = c.status === 'Running';
+            let statusBadge = '';
+            if (c.status === 'Running') statusBadge = `<span class="badge badge-running"><span class="pulse"></span> Running</span>`;
+            else if (c.status === 'Stopped') statusBadge = `<span class="badge badge-stopped">Stopped</span>`;
+            else statusBadge = `<span class="badge badge-other">${c.status}</span>`;
+
+            let ips = [];
+            if (c.state && c.state.network) {
+                for (let iface in c.state.network) {
+                    if (c.state.network[iface].addresses) {
+                        c.state.network[iface].addresses.forEach(addr => {
+                            if (addr.family === 'inet' && addr.address !== '127.0.0.1') {
+                                ips.push(addr.address);
+                            }
+                        });
+                    }
+                }
+            }
+            const ipTags = ips.length > 0 ? ips.map(ip => `<span class="ip-tag">${ip}</span>`).join(' ') : (isRunning ? '<span class="ip-tag" style="opacity:0.5">-</span>' : '');
+
+            html += `
+            <div class="container-card">
+                <div class="container-icon" style="background:${color.bg}; color:${color.icon};">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+                <div class="container-info">
+                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:4px;">
+                        <div class="container-name">${c.name}</div>
+                        ${statusBadge}
+                        ${ipTags}
+                    </div>
+                    <div class="container-image">Architecture: ${c.architecture} &nbsp;•&nbsp; Type: ${c.type}</div>
+                </div>
+                <div class="container-actions">
+                    <button class="ctrl-btn start" onclick="containerAction('${c.name}','start')" title="Start" ${isRunning ? 'disabled' : ''}>
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                    <button class="ctrl-btn stop" onclick="containerAction('${c.name}','stop')" title="Stop" ${!isRunning ? 'disabled' : ''}>
+                        <i class="fa-solid fa-stop"></i>
+                    </button>
+                    <button class="ctrl-btn restart" onclick="containerAction('${c.name}','restart')" title="Restart">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    <button class="ctrl-btn terminal" onclick="window.location.href='/terminal?lxd=${c.name}&cmd=clear%20%26%26%20neofetch'" title="Terminal" ${!isRunning ? 'disabled' : ''}>
+                        <i class="fa-solid fa-terminal"></i>
+                    </button>
+                    <button class="ctrl-btn config" onclick="openConfigModal('${c.name}')" title="Configure Resource Limits">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button class="ctrl-btn delete" onclick="containerAction('${c.name}','delete')" title="Delete">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+        });
+
+        document.getElementById('containers-wrap').innerHTML = html;
+    } catch(e) {
+        document.getElementById('containers-wrap').innerHTML = '<div class="loading" style="color:#ff6b6b;"><i class="fa-solid fa-circle-exclamation" style="margin-right:0.5rem;"></i>Failed to load containers</div>';
+    }
+}
+
+fetchContainers();
+setInterval(fetchContainers, 8000);
+</script>
+</body>
+</html>

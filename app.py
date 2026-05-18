@@ -1207,14 +1207,20 @@ def handle_start_terminal(data):
         os.dup2(slave_fd, 2)
         os.close(slave_fd)
         
+        lxd_target = data.get('lxd_target')
+        
         # Use nsenter to enter host PID 1 namespace (root shell on host)
         # Assuming container is privileged and shares PID namespace
         # Adding -i to bash for interactive mode and setting TERM/SHELL
         os.environ['TERM'] = 'xterm-256color'
         os.environ['SHELL'] = '/bin/bash'
-        # Perintah ini akan membersihkan layar, menjalankan neofetch, lalu masuk ke bash interaktif
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'bash', '--login', '-c', 'clear && neofetch && exec bash -i']
         
+        if lxd_target:
+            cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
+        else:
+            # Perintah ini akan membersihkan layar, menjalankan neofetch, lalu masuk ke bash interaktif
+            cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'bash', '--login', '-c', 'clear && neofetch && exec bash -i']
+            
         os.execvp('nsenter', cmd)
     else:
         # Parent process
@@ -4204,7 +4210,8 @@ SYSTEM_APPS = [
     {"id": "vpn", "name": "VPN", "icon": "fa-solid fa-shield-halved", "color": "linear-gradient(135deg, #ff9a9e, #fecfef)", "url": "/vpn"},
     {"id": "store", "name": "App Store", "icon": "fa-solid fa-store", "color": "linear-gradient(135deg, #FF6B6B, #556270)", "url": "/store"},
     {"id": "mobile-backup", "name": "Mobile Sync", "icon": "fa-solid fa-mobile-screen", "color": "linear-gradient(135deg, #00c6ff, #0072ff)", "url": "/mobile-backup"},
-    {"id": "settings", "name": "Settings", "icon": "fa-solid fa-gear", "color": "linear-gradient(135deg, #36D1DC, #5B86E5)", "url": "/settings"}
+    {"id": "settings", "name": "Settings", "icon": "fa-solid fa-gear", "color": "linear-gradient(135deg, #36D1DC, #5B86E5)", "url": "/settings"},
+    {"id": "lxd", "name": "LXD Manager", "icon": "fa-brands fa-linux", "color": "linear-gradient(135deg, #e66465, #9198e5)", "url": "/lxd"}
 ]
 
 LAYOUT_FILE = os.path.join(DATA_DIR, 'dashboard_layout.json')
@@ -5142,13 +5149,43 @@ def websites_page():
 @app.route('/api/websites/nginx_status')
 @login_required
 def nginx_status():
-    """Cek status Nginx service"""
+    """Cek status Nginx service — host-aware (works inside Docker with pid:host)"""
     try:
-        result = subprocess.run(['systemctl', 'is-active', 'nginx'], capture_output=True, text=True, timeout=3)
+        # Method 1: nsenter into host PID namespace to run systemctl on host
+        # This works because docker-compose has pid: host
+        result = subprocess.run(
+            ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
+             'systemctl', 'is-active', 'nginx'],
+            capture_output=True, text=True, timeout=5
+        )
         status = result.stdout.strip()
-        return jsonify({'status': status, 'running': status == 'active'})
-    except:
-        return jsonify({'status': 'unknown', 'running': False})
+        if status in ('active', 'inactive', 'failed', 'activating', 'deactivating'):
+            return jsonify({'status': status, 'running': status == 'active'})
+    except Exception:
+        pass
+
+    # Method 2: Fallback — scan /proc for nginx master process on host
+    try:
+        proc_path = os.environ.get('HOST_PROC', '/proc')
+        for pid in os.listdir(proc_path):
+            if not pid.isdigit():
+                continue
+            try:
+                comm_file = os.path.join(proc_path, pid, 'comm')
+                with open(comm_file, 'r') as f:
+                    if f.read().strip() == 'nginx':
+                        # Verify it's master (not worker) by checking cmdline
+                        cmdline_file = os.path.join(proc_path, pid, 'cmdline')
+                        with open(cmdline_file, 'r') as cf:
+                            cmdline = cf.read()
+                        if 'master' in cmdline or 'nginx' in cmdline:
+                            return jsonify({'status': 'active', 'running': True})
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return jsonify({'status': 'unknown', 'running': False})
 
 @app.route('/api/websites/reload_nginx', methods=['POST'])
 @login_required
@@ -5161,6 +5198,289 @@ def reload_nginx():
         return jsonify({'success': False, 'output': str(e)})
 
 
+# ============================================================
+# THREAT DETECTION — Nginx Log Scanner
+# ============================================================
+import re as _re
+from collections import defaultdict
+
+# Known scanner/bot User-Agent patterns
+SCANNER_UA_PATTERNS = [
+    r'nikto', r'sqlmap', r'nmap', r'masscan', r'zgrab', r'nuclei',
+    r'dirbuster', r'gobuster', r'wfuzz', r'hydra', r'metasploit',
+    r'python-requests', r'go-http-client', r'curl/', r'wget/',
+    r'scrapy', r'ahrefsbot', r'semrushbot', r'mj12bot', r'dotbot',
+    r'petalbot', r'bytespider', r'gptbot', r'claudebot', r'ccbot',
+    r'dataforseobot', r'yandexbot', r'baiduspider', r'360spider',
+    r'acunetix', r'nessus', r'openvas', r'burpsuite', r'zap',
+    r'whatweb', r'wpscan', r'joomscan', r'droopescan',
+    r'libwww-perl', r'lwp-trivial', r'java/', r'jakarta',
+    r'zgrab', r'internet-explorer/[0-6]',  # Old IE often bots
+]
+
+# Suspicious URL path patterns (scanning/exploit attempts)
+SUSPICIOUS_PATH_PATTERNS = [
+    r'\.php$', r'wp-login', r'wp-admin', r'xmlrpc\.php',
+    r'\.env', r'\.git/', r'\.htaccess', r'\.htpasswd',
+    r'admin/', r'phpmyadmin', r'pma/', r'mysql/',
+    r'/etc/passwd', r'/etc/shadow', r'proc/self',
+    r'union.*select', r'select.*from', r'drop.*table',
+    r'<script', r'javascript:', r'onerror=', r'onload=',
+    r'\.\./\.\.',  # Path traversal
+    r'cmd=', r'exec=', r'system\(', r'passthru\(',
+    r'eval\(', r'base64_decode',
+    r'\.bak$', r'\.sql$', r'\.zip$', r'\.tar\.gz$',
+    r'config\.', r'backup\.', r'dump\.',
+    r'/cgi-bin/', r'/shell', r'/cmd',
+    r'jndi:', r'\$\{',  # Log4Shell
+    r'actuator/', r'solr/', r'jenkins/',
+]
+
+NGINX_LOG_PATHS = [
+    '/host/root/var/log/nginx/access.log',
+    '/var/log/nginx/access.log',
+]
+
+def _parse_nginx_log_line(line):
+    """Parse a single Nginx combined log format line"""
+    pattern = r'(\S+) - (\S+) \[([^\]]+)\] "(\S+) (\S+) (\S+)" (\d+) (\d+) "([^"]*)" "([^"]*)"'
+    m = _re.match(pattern, line)
+    if not m:
+        return None
+    return {
+        'ip': m.group(1),
+        'user': m.group(2),
+        'time': m.group(3),
+        'method': m.group(4),
+        'path': m.group(5),
+        'proto': m.group(6),
+        'status': int(m.group(7)),
+        'size': int(m.group(8)),
+        'referer': m.group(9),
+        'ua': m.group(10),
+    }
+
+def _classify_threat(entry):
+    """Return threat type string or None"""
+    ua_lower = entry['ua'].lower()
+    path_lower = entry['path'].lower()
+
+    # Check UA
+    for pat in SCANNER_UA_PATTERNS:
+        if _re.search(pat, ua_lower, _re.IGNORECASE):
+            return 'Scanner/Bot UA'
+
+    # Check path
+    for pat in SUSPICIOUS_PATH_PATTERNS:
+        if _re.search(pat, path_lower, _re.IGNORECASE):
+            return 'Suspicious Path'
+
+    # High 4xx rate (checked at aggregation level, not per-line)
+    if entry['status'] in (400, 401, 403, 404, 405, 429):
+        return '4xx Error'
+
+    return None
+
+@app.route('/api/websites/threats')
+@login_required
+def get_threats():
+    """
+    Scan Nginx access log and return:
+    - Top threat IPs with request counts, threat types, last seen
+    - Recent suspicious requests (last 200 lines)
+    - Summary stats
+    """
+    log_file = None
+    for path in NGINX_LOG_PATHS:
+        if os.path.exists(path):
+            log_file = path
+            break
+
+    if not log_file:
+        return jsonify({'error': 'Nginx access log not found', 'threats': [], 'recent': [], 'stats': {}})
+
+    # Read last N lines efficiently
+    MAX_LINES = 5000
+    try:
+        result = subprocess.run(['tail', '-n', str(MAX_LINES), log_file],
+                                capture_output=True, text=True, timeout=5)
+        lines = result.stdout.splitlines()
+    except Exception as e:
+        return jsonify({'error': str(e), 'threats': [], 'recent': [], 'stats': {}})
+
+    # Aggregate per IP
+    ip_data = defaultdict(lambda: {
+        'count': 0, 'threat_count': 0, 'threat_types': set(),
+        'paths': [], 'statuses': defaultdict(int),
+        'last_seen': '', 'ua': '', 'is_threat': False
+    })
+
+    recent_threats = []
+    total_requests = 0
+    total_threats = 0
+
+    for line in lines:
+        entry = _parse_nginx_log_line(line)
+        if not entry:
+            continue
+        total_requests += 1
+        ip = entry['ip']
+        d = ip_data[ip]
+        d['count'] += 1
+        d['last_seen'] = entry['time']
+        d['ua'] = entry['ua'][:120]
+        d['statuses'][str(entry['status'])] += 1
+
+        threat_type = _classify_threat(entry)
+        if threat_type:
+            d['threat_count'] += 1
+            d['threat_types'].add(threat_type)
+            d['is_threat'] = True
+            if len(d['paths']) < 5:
+                d['paths'].append(entry['path'][:100])
+            total_threats += 1
+
+            if len(recent_threats) < 50:
+                recent_threats.append({
+                    'ip': ip,
+                    'time': entry['time'],
+                    'method': entry['method'],
+                    'path': entry['path'][:120],
+                    'status': entry['status'],
+                    'ua': entry['ua'][:100],
+                    'threat_type': threat_type,
+                })
+
+    # Build threat IP list — IPs with high 4xx rate OR scanner UA
+    threat_ips = []
+    for ip, d in ip_data.items():
+        if not d['is_threat']:
+            # Also flag IPs with >10 4xx errors even if no scanner UA
+            total_4xx = sum(v for k, v in d['statuses'].items() if k.startswith('4'))
+            if total_4xx >= 10:
+                d['is_threat'] = True
+                d['threat_types'].add('High 4xx Rate')
+                d['threat_count'] += total_4xx
+
+        if d['is_threat']:
+            threat_ips.append({
+                'ip': ip,
+                'total_requests': d['count'],
+                'threat_requests': d['threat_count'],
+                'threat_types': list(d['threat_types']),
+                'sample_paths': d['paths'],
+                'statuses': dict(d['statuses']),
+                'last_seen': d['last_seen'],
+                'ua': d['ua'],
+            })
+
+    # Sort by threat_requests desc
+    threat_ips.sort(key=lambda x: x['threat_requests'], reverse=True)
+
+    return jsonify({
+        'log_file': log_file,
+        'lines_scanned': len(lines),
+        'stats': {
+            'total_requests': total_requests,
+            'total_threats': total_threats,
+            'unique_threat_ips': len(threat_ips),
+        },
+        'threats': threat_ips[:100],
+        'recent': list(reversed(recent_threats)),  # newest first
+    })
+
+
+@app.route('/api/websites/threats/block', methods=['POST'])
+@admin_required
+def block_threat_ip():
+    """Block an IP via iptables (requires privileged container)"""
+    data = request.json or {}
+    ip = data.get('ip', '').strip()
+
+    # Basic IP validation
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid IP address'})
+
+    try:
+        # Check if already blocked
+        check = subprocess.run(
+            ['iptables', '-C', 'INPUT', '-s', ip, '-j', 'DROP'],
+            capture_output=True, timeout=5
+        )
+        if check.returncode == 0:
+            return jsonify({'success': True, 'message': f'{ip} already blocked'})
+
+        result = subprocess.run(
+            ['iptables', '-I', 'INPUT', '-s', ip, '-j', 'DROP'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            audit_log('IP_BLOCKED', f"Blocked IP {ip} via iptables", session.get('username'))
+            return jsonify({'success': True, 'message': f'{ip} blocked successfully'})
+        else:
+            return jsonify({'success': False, 'error': result.stderr})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/websites/threats/unblock', methods=['POST'])
+@admin_required
+def unblock_threat_ip():
+    """Unblock an IP via iptables"""
+    data = request.json or {}
+    ip = data.get('ip', '').strip()
+
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid IP address'})
+
+    try:
+        result = subprocess.run(
+            ['iptables', '-D', 'INPUT', '-s', ip, '-j', 'DROP'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            audit_log('IP_UNBLOCKED', f"Unblocked IP {ip} via iptables", session.get('username'))
+            return jsonify({'success': True, 'message': f'{ip} unblocked'})
+        else:
+            return jsonify({'success': False, 'error': result.stderr or 'IP not in block list'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/websites/threats/blocked_ips')
+@login_required
+def get_blocked_ips():
+    """List currently blocked IPs from iptables"""
+    try:
+        result = subprocess.run(
+            ['iptables', '-L', 'INPUT', '-n', '--line-numbers'],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = result.stdout.splitlines()
+        blocked = []
+        for line in lines:
+            if 'DROP' in line:
+                parts = line.split()
+                # Format: num  DROP  all  --  IP  0.0.0.0/0  ...
+                for part in parts:
+                    try:
+                        import ipaddress
+                        addr = ipaddress.ip_address(part)
+                        blocked.append(str(addr))
+                        break
+                    except ValueError:
+                        continue
+        return jsonify({'blocked': blocked})
+    except Exception as e:
+        return jsonify({'blocked': [], 'error': str(e)})
+# ============================================================
+
 
 @app.route('/api/storage/info')
 @login_required
@@ -5168,6 +5488,7 @@ def storage_info():
     """Info lengkap semua mount point disk"""
     partitions = []
     try:
+
         for part in psutil.disk_partitions(all=False):
             try:
                 usage = psutil.disk_usage(part.mountpoint)
@@ -5549,6 +5870,105 @@ def web_monitor_backup():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/lxd')
+@login_required
+def lxd_page():
+    """Halaman LXD Container Manager"""
+    return render_template('lxd.html')
+
+@app.route('/api/lxd/containers')
+@login_required
+def api_lxd_containers():
+    """Daftar semua LXD containers"""
+    try:
+        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'list', '--format', 'json'], capture_output=True, text=True)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            return jsonify({'containers': data})
+        else:
+            return jsonify({'error': res.stderr}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/lxd/action', methods=['POST'])
+@login_required
+def api_lxd_action():
+    """Start/Stop/Restart/Delete LXD container"""
+    data = request.json
+    name = data.get('name')
+    action = data.get('action')
+    
+    if not name or action not in ['start', 'stop', 'restart', 'delete']:
+        return jsonify({'success': False, 'error': 'Invalid params'})
+    
+    try:
+        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', action, name]
+        if action == 'delete':
+            cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'delete', '-f', name]
+            
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': res.stderr})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/lxd/create', methods=['POST'])
+@login_required
+def api_lxd_create():
+    """Create LXD container"""
+    data = request.json
+    name = data.get('name')
+    image = data.get('image', 'ubuntu:22.04')
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Name is required'})
+        
+    try:
+        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'launch', image, name]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': res.stderr})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/lxd/config', methods=['POST'])
+@login_required
+def api_lxd_config():
+    """Set LXD container resource limits (CPU, RAM, Storage)"""
+    data = request.json
+    name = data.get('name')
+    ram = data.get('ram')
+    cpu = data.get('cpu')
+    storage = data.get('storage')
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Name is required'})
+        
+    try:
+        # Set Memory
+        if ram:
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'limits.memory', ram])
+        
+        # Set CPU
+        if cpu:
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'limits.cpu', str(cpu)])
+            
+        # Set Storage
+        if storage:
+            # Try setting device property directly first
+            res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'set', name, 'root', f'size={storage}'], capture_output=True)
+            if res.returncode != 0:
+                # If it fails, device might not be overridden yet, so override it
+                subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'override', name, 'root', f'size={storage}'])
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     print("Starting Development Server on http://localhost:5000")

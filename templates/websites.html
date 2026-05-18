@@ -168,7 +168,55 @@
         .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-muted); }
         .empty-state i { font-size: 3rem; opacity: 0.3; margin-bottom: 1rem; display: block; }
 
-        @media(max-width:768px){ .page-wrap{ padding: 1rem; } .page-header{ flex-direction: column; align-items: flex-start; } }
+        /* Threat Detection */
+        .threat-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.2rem; }
+        .threat-stat { background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); border-radius: 12px; padding: 1rem; text-align: center; }
+        .threat-stat.safe { background: rgba(78,205,196,0.08); border-color: rgba(78,205,196,0.2); }
+        .threat-stat-val { font-size: 1.8rem; font-weight: 700; color: #ff6b6b; }
+        .threat-stat.safe .threat-stat-val { color: #4ecdc4; }
+        .threat-stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 0.2rem; }
+
+        .threat-tag {
+            display: inline-block; font-size: 0.65rem; font-weight: 600;
+            padding: 2px 7px; border-radius: 6px; margin: 1px;
+            background: rgba(255,107,107,0.15); color: #ff6b6b;
+            border: 1px solid rgba(255,107,107,0.3);
+        }
+        .threat-tag.scanner { background: rgba(255,230,109,0.15); color: #ffe66d; border-color: rgba(255,230,109,0.3); }
+        .threat-tag.path { background: rgba(255,107,107,0.15); color: #ff6b6b; border-color: rgba(255,107,107,0.3); }
+        .threat-tag.rate { background: rgba(244,128,36,0.15); color: #f48024; border-color: rgba(244,128,36,0.3); }
+
+        .block-btn {
+            background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);
+            color: #ff6b6b; padding: 3px 10px; border-radius: 8px;
+            font-size: 0.72rem; cursor: pointer; font-family: inherit;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .block-btn:hover { background: rgba(255,107,107,0.3); }
+        .block-btn.blocked { background: rgba(78,205,196,0.15); border-color: rgba(78,205,196,0.3); color: #4ecdc4; }
+
+        .tab-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .tab-btn {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-muted); padding: 0.45rem 1rem; border-radius: 10px;
+            cursor: pointer; font-family: inherit; font-size: 0.82rem;
+            transition: all 0.2s;
+        }
+        .tab-btn.active { background: rgba(35,213,171,0.15); border-color: rgba(35,213,171,0.4); color: #23d5ab; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .path-chip {
+            display: inline-block; font-family: monospace; font-size: 0.7rem;
+            background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
+            color: var(--text-muted); margin: 1px; max-width: 200px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        #threat-loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+
+        @media(max-width:768px){ .page-wrap{ padding: 1rem; } .page-header{ flex-direction: column; align-items: flex-start; } .threat-stats{ grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -293,39 +341,153 @@
         </div>
     </div>
 
+    <!-- ===== THREAT DETECTION ===== -->
+    <div class="glass card">
+        <div class="section-title" style="justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+            <span><i class="fa-solid fa-shield-halved" style="color:#ff6b6b"></i> Threat Detection — IP Scanner & Attacker Monitor</span>
+            <div style="display:flex; gap:0.6rem; align-items:center;">
+                <span id="threat-scan-info" style="font-size:0.75rem; color:var(--text-muted);"></span>
+                <button class="action-btn" onclick="loadThreats()" style="padding:0.35rem 0.9rem; font-size:0.8rem;">
+                    <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary stats -->
+        <div class="threat-stats">
+            <div class="threat-stat">
+                <div class="threat-stat-val" id="t-total">—</div>
+                <div class="threat-stat-label">Total Requests Scanned</div>
+            </div>
+            <div class="threat-stat">
+                <div class="threat-stat-val" id="t-threats">—</div>
+                <div class="threat-stat-label">Suspicious Requests</div>
+            </div>
+            <div class="threat-stat">
+                <div class="threat-stat-val" id="t-ips">—</div>
+                <div class="threat-stat-label">Unique Threat IPs</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('tab-ips', this)">
+                <i class="fa-solid fa-network-wired"></i> Threat IPs
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-recent', this)">
+                <i class="fa-solid fa-clock-rotate-left"></i> Recent Activity
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-blocked', this)">
+                <i class="fa-solid fa-ban"></i> Blocked IPs
+            </button>
+        </div>
+
+        <!-- Tab: Threat IPs -->
+        <div id="tab-ips" class="tab-content active">
+            <div id="threat-loading" style="text-align:center; padding:3rem; color:var(--text-muted);">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem; margin-bottom:1rem; display:block;"></i>
+                Scanning Nginx access log...
+            </div>
+            <div id="threat-ips-table" style="display:none; overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>Threat Type</th>
+                            <th>Requests</th>
+                            <th>Suspicious</th>
+                            <th>Sample Paths</th>
+                            <th>Last Seen</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="threat-ips-body"></tbody>
+                </table>
+                <div id="threat-ips-empty" style="display:none;" class="empty-state">
+                    <i class="fa-solid fa-shield-check" style="color:#4ecdc4; opacity:1;"></i>
+                    <p style="color:#4ecdc4; font-size:1rem;">No threats detected in recent logs</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Recent Activity -->
+        <div id="tab-recent" class="tab-content">
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>IP</th>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th>Status</th>
+                            <th>Threat Type</th>
+                            <th>User-Agent</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-body">
+                        <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab: Blocked IPs -->
+        <div id="tab-blocked" class="tab-content">
+            <div style="margin-bottom:1rem; display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
+                <input id="manual-block-ip" type="text" placeholder="Enter IP to block manually..."
+                    style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15); color:white;
+                           padding:0.5rem 1rem; border-radius:10px; font-family:inherit; font-size:0.85rem; flex:1; min-width:200px;">
+                <button class="action-btn" onclick="blockManualIP()" style="background:rgba(255,107,107,0.15); border-color:rgba(255,107,107,0.3); color:#ff6b6b;">
+                    <i class="fa-solid fa-ban"></i> Block IP
+                </button>
+                <button class="action-btn" onclick="loadBlockedIPs()" style="font-size:0.8rem; padding:0.4rem 0.8rem;">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+            <div id="blocked-list">
+                <div style="text-align:center; color:var(--text-muted); padding:2rem;">Loading blocked IPs...</div>
+            </div>
+        </div>
+    </div>
+    <!-- ===== END THREAT DETECTION ===== -->
+
 </div>
 
 <div id="toast"></div>
 
 <script>
+// ---- Toast ----
 function showToast(msg, type='info') {
-    const colors = { success: '#4ecdc4', error: '#ff6b6b', info: '#23a6d5' };
-    const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' };
+    const colors = { success: '#4ecdc4', error: '#ff6b6b', info: '#23a6d5', warn: '#ffe66d' };
+    const icons  = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info', warn: 'fa-triangle-exclamation' };
     const t = document.getElementById('toast');
-    t.innerHTML = `<i class="fa-solid ${icons[type]}" style="color:${colors[type]}"></i> ${msg}`;
+    t.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}" style="color:${colors[type]||colors.info}"></i> ${msg}`;
     t.style.display = 'flex';
     setTimeout(() => t.style.display = 'none', 3500);
 }
 
+// ---- Nginx Status ----
 async function checkNginxStatus() {
     try {
         const res = await fetch('/api/websites/nginx_status');
         const data = await res.json();
-        const pill = document.getElementById('nginx-status-pill');
+        const pill    = document.getElementById('nginx-status-pill');
         const statVal = document.getElementById('nginx-stat-val');
-        const txt = document.getElementById('nginx-status-text');
+        const txt     = document.getElementById('nginx-status-text');
+        const dot     = pill.querySelector('span');
         if (data.running) {
-            pill.querySelector('span').style.background = '#4ecdc4';
-            txt.textContent = 'Nginx Running';
-            txt.style.color = '#4ecdc4';
-            statVal.textContent = 'Active';
-            statVal.style.color = '#4ecdc4';
+            dot.style.background   = '#4ecdc4';
+            txt.textContent        = 'Nginx Running';
+            txt.style.color        = '#4ecdc4';
+            statVal.textContent    = 'Active';
+            statVal.style.color    = '#4ecdc4';
         } else {
-            pill.querySelector('span').style.background = '#ff6b6b';
-            txt.textContent = 'Nginx Stopped';
-            txt.style.color = '#ff6b6b';
-            statVal.textContent = 'Down';
-            statVal.style.color = '#ff6b6b';
+            dot.style.background   = '#ff6b6b';
+            txt.textContent        = 'Nginx Stopped';
+            txt.style.color        = '#ff6b6b';
+            statVal.textContent    = 'Down';
+            statVal.style.color    = '#ff6b6b';
         }
     } catch(e) {}
 }
@@ -333,14 +495,206 @@ async function checkNginxStatus() {
 async function reloadNginx() {
     showToast('Reloading Nginx...', 'info');
     try {
-        const res = await fetch('/api/websites/reload_nginx', { method: 'POST' });
+        const res  = await fetch('/api/websites/reload_nginx', { method: 'POST' });
         const data = await res.json();
-        showToast(data.success ? 'Nginx reloaded successfully' : 'Reload failed: ' + data.output, data.success ? 'success' : 'error');
+        showToast(data.success ? 'Nginx reloaded successfully' : 'Reload failed: ' + data.output,
+                  data.success ? 'success' : 'error');
     } catch(e) { showToast('Request failed', 'error'); }
 }
 
+// ---- Tabs ----
+function switchTab(id, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+    if (id === 'tab-blocked') loadBlockedIPs();
+}
+
+// ---- Threat Detection ----
+let threatData = null;
+
+function threatTagClass(type) {
+    if (type.includes('Scanner') || type.includes('Bot')) return 'scanner';
+    if (type.includes('Path'))  return 'path';
+    if (type.includes('4xx'))   return 'rate';
+    return '';
+}
+
+async function loadThreats() {
+    document.getElementById('threat-loading').style.display = 'block';
+    document.getElementById('threat-ips-table').style.display = 'none';
+    try {
+        const res  = await fetch('/api/websites/threats');
+        const data = await res.json();
+        threatData = data;
+
+        if (data.error) {
+            document.getElementById('threat-loading').innerHTML =
+                `<i class="fa-solid fa-circle-exclamation" style="color:#ff6b6b; font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
+                 ${data.error}`;
+            return;
+        }
+
+        // Update stats
+        document.getElementById('t-total').textContent   = (data.stats.total_requests || 0).toLocaleString();
+        document.getElementById('t-threats').textContent = (data.stats.total_threats   || 0).toLocaleString();
+        document.getElementById('t-ips').textContent     = (data.stats.unique_threat_ips || 0).toLocaleString();
+        document.getElementById('threat-scan-info').textContent =
+            `Scanned ${(data.lines_scanned||0).toLocaleString()} lines from ${data.log_file || 'access.log'}`;
+
+        // Threat IPs table
+        const tbody = document.getElementById('threat-ips-body');
+        tbody.innerHTML = '';
+        if (!data.threats || data.threats.length === 0) {
+            document.getElementById('threat-ips-empty').style.display = 'block';
+        } else {
+            document.getElementById('threat-ips-empty').style.display = 'none';
+            data.threats.forEach(t => {
+                const tags = (t.threat_types || []).map(tt =>
+                    `<span class="threat-tag ${threatTagClass(tt)}">${tt}</span>`).join('');
+                const paths = (t.sample_paths || []).map(p =>
+                    `<span class="path-chip" title="${p}">${p}</span>`).join('');
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-family:monospace; font-weight:600;">${t.ip}</td>
+                    <td>${tags}</td>
+                    <td style="text-align:center;">${t.total_requests}</td>
+                    <td style="text-align:center; color:#ff6b6b; font-weight:600;">${t.threat_requests}</td>
+                    <td style="max-width:220px;">${paths || '<span style="color:var(--text-muted)">—</span>'}</td>
+                    <td style="font-size:0.78rem; color:var(--text-muted);">${t.last_seen || '—'}</td>
+                    <td>
+                        <button class="block-btn" id="block-btn-${t.ip.replace(/\./g,'-')}"
+                            onclick="blockIP('${t.ip}', this)">
+                            <i class="fa-solid fa-ban"></i> Block
+                        </button>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Recent activity table
+        const rbody = document.getElementById('recent-body');
+        rbody.innerHTML = '';
+        if (!data.recent || data.recent.length === 0) {
+            rbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No recent suspicious activity</td></tr>';
+        } else {
+            data.recent.forEach(r => {
+                const statusColor = r.status >= 500 ? '#ff6b6b' : r.status >= 400 ? '#ffe66d' : '#4ecdc4';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:0.78rem; color:var(--text-muted); white-space:nowrap;">${r.time}</td>
+                    <td style="font-family:monospace; font-size:0.85rem;">${r.ip}</td>
+                    <td><span style="background:rgba(35,166,213,0.15); color:#23a6d5; padding:1px 7px; border-radius:5px; font-size:0.75rem;">${r.method}</span></td>
+                    <td style="font-family:monospace; font-size:0.78rem; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.path}">${r.path}</td>
+                    <td><span style="color:${statusColor}; font-weight:600;">${r.status}</span></td>
+                    <td><span class="threat-tag ${threatTagClass(r.threat_type)}">${r.threat_type}</span></td>
+                    <td style="font-size:0.72rem; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.ua}">${r.ua}</td>`;
+                rbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('threat-loading').style.display = 'none';
+        document.getElementById('threat-ips-table').style.display = 'block';
+
+    } catch(e) {
+        document.getElementById('threat-loading').innerHTML =
+            `<i class="fa-solid fa-circle-exclamation" style="color:#ff6b6b; font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
+             Failed to load threat data`;
+    }
+}
+
+async function blockIP(ip, btn) {
+    if (!confirm(`Block IP ${ip} via iptables?\nThis will drop all incoming traffic from this IP.`)) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    try {
+        const res  = await fetch('/api/websites/threats/block', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip})
+        });
+        const data = await res.json();
+        if (data.success) {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Blocked';
+            btn.classList.add('blocked');
+            showToast(`${ip} blocked successfully`, 'success');
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-ban"></i> Block';
+            showToast('Block failed: ' + data.error, 'error');
+        }
+    } catch(e) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-ban"></i> Block';
+        showToast('Request failed', 'error');
+    }
+}
+
+async function blockManualIP() {
+    const ip = document.getElementById('manual-block-ip').value.trim();
+    if (!ip) { showToast('Enter an IP address first', 'warn'); return; }
+    await blockIP(ip, { innerHTML: '', disabled: false, classList: { add: ()=>{} } });
+    loadBlockedIPs();
+}
+
+async function loadBlockedIPs() {
+    const container = document.getElementById('blocked-list');
+    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading...</div>';
+    try {
+        const res  = await fetch('/api/websites/threats/blocked_ips');
+        const data = await res.json();
+        if (!data.blocked || data.blocked.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#4ecdc4; opacity:1;"></i><p style="color:#4ecdc4;">No IPs currently blocked</p></div>';
+            return;
+        }
+        container.innerHTML = `
+            <table>
+                <thead><tr><th>#</th><th>Blocked IP</th><th>Action</th></tr></thead>
+                <tbody>${data.blocked.map((ip, i) => `
+                    <tr>
+                        <td style="color:var(--text-muted); font-size:0.8rem;">${i+1}</td>
+                        <td style="font-family:monospace; font-weight:600;">${ip}</td>
+                        <td>
+                            <button class="block-btn blocked" onclick="unblockIP('${ip}', this)">
+                                <i class="fa-solid fa-lock-open"></i> Unblock
+                            </button>
+                        </td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+    } catch(e) {
+        container.innerHTML = '<div style="color:#ff6b6b; padding:1rem;">Failed to load blocked IPs</div>';
+    }
+}
+
+async function unblockIP(ip, btn) {
+    if (!confirm(`Unblock IP ${ip}?`)) return;
+    btn.disabled = true;
+    try {
+        const res  = await fetch('/api/websites/threats/unblock', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip})
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`${ip} unblocked`, 'success');
+            loadBlockedIPs();
+        } else {
+            btn.disabled = false;
+            showToast('Unblock failed: ' + data.error, 'error');
+        }
+    } catch(e) {
+        btn.disabled = false;
+        showToast('Request failed', 'error');
+    }
+}
+
+// ---- Init ----
 checkNginxStatus();
 setInterval(checkNginxStatus, 10000);
+loadThreats();
 </script>
 </body>
 </html>

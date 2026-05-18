@@ -63,7 +63,7 @@ if [ -f "/etc/casaos/gateway.ini" ]; then
     echo -e "${YELLOW}[INFO] CasaOS Terdeteksi! Memeriksa konfigurasi port...${NC}"
     
     # Ambil port saat ini
-    CURRENT_PORT=$(grep -oP '(?<=port = )\d+' /etc/casaos/gateway.ini)
+    CURRENT_PORT=$(grep -oP 'port\s*=\s*\K\d+' /etc/casaos/gateway.ini)
     
     if [ "$CURRENT_PORT" == "80" ]; then
         echo -e "${YELLOW}[ACTION] CasaOS menggunakan Port 80. Menggeser ke Port 9999...${NC}"

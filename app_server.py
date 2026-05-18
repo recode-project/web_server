@@ -1179,11 +1179,20 @@ def handle_start_terminal(data):
         os.dup2(slave_fd, 0)
         os.dup2(slave_fd, 1)
         os.dup2(slave_fd, 2)
+        
+        # Set controlling terminal to avoid "Inappropriate ioctl for device"
+        try:
+            import fcntl, termios
+            fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+        except:
+            pass
+            
         os.close(slave_fd)
         
         # Use nsenter to enter host PID 1 namespace (root shell on host)
         # Assuming container is privileged and shares PID namespace
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'bash']
+        # Use nsenter with -l (login shell) to load host environment/PATH
+        cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'bash', '-l']
         
         # Optional: Try to respect path if mapped, but safest is default host root
         # If we wanted to preserve path, we'd need to map container path to host path
