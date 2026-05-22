@@ -6013,6 +6013,147 @@ def api_lxd_config():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/lxd/device/add', methods=['POST'])
+@login_required
+def api_lxd_device_add():
+    """Add a proxy device (Port Forwarding) to container"""
+    data = request.json
+    name = data.get('name')
+    device_name = data.get('device_name')
+    host_port = data.get('host_port')
+    container_port = data.get('container_port')
+    protocol = data.get('protocol', 'tcp')
+    
+    if not name or not device_name or not host_port or not container_port:
+        return jsonify({'success': False, 'error': 'All fields are required'})
+        
+    try:
+        listen_str = f"{protocol}:0.0.0.0:{host_port}"
+        connect_str = f"{protocol}:127.0.0.1:{container_port}"
+        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'add', name, device_name, 'proxy', f'listen={listen_str}', f'connect={connect_str}']
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': res.stderr or res.stdout})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/lxd/device/remove', methods=['POST'])
+@login_required
+def api_lxd_device_remove():
+    """Remove a device from container"""
+    data = request.json
+    name = data.get('name')
+    device_name = data.get('device_name')
+    
+    if not name or not device_name:
+        return jsonify({'success': False, 'error': 'Name and device_name are required'})
+        
+    try:
+        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'remove', name, device_name]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': res.stderr or res.stdout})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/lxd/advanced', methods=['POST'])
+@login_required
+def api_lxd_advanced():
+    """Set advanced container settings (nesting, privileged, autostart)"""
+    data = request.json
+    name = data.get('name')
+    nesting = data.get('nesting') # 'true' or 'false'
+    privileged = data.get('privileged') # 'true' or 'false'
+    autostart = data.get('autostart') # 'true' or 'false'
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Name is required'})
+        
+    try:
+        if nesting is not None:
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.nesting', nesting])
+        if privileged is not None:
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.privileged', privileged])
+        if autostart is not None:
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'boot.autostart', autostart])
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/lxd/tools/install', methods=['POST'])
+@login_required
+def api_lxd_tools_install():
+    """Install and configure Tailscale or Wireguard in the container"""
+    data = request.json
+    name = data.get('name')
+    tool = data.get('tool') # 'tailscale' or 'wireguard'
+    
+    if not name or tool not in ['tailscale', 'wireguard']:
+        return jsonify({'success': False, 'error': 'Invalid parameters'})
+        
+    try:
+        # 1. Enable Nesting and TUN device first (essential for VPNs)
+        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.nesting', 'true'])
+        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'add', name, 'tun', 'unix-char', 'path=/dev/net/tun'], capture_output=True)
+        
+        # 2. Check and install dependencies (curl)
+        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'apt-get update && apt-get install -y curl || apk add curl || yum install -y curl'], capture_output=True)
+        
+        if tool == 'tailscale':
+            install_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'curl -fsSL https://tailscale.com/install.sh | sh']
+            res = subprocess.run(install_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                return jsonify({'success': False, 'error': f'Failed to install Tailscale: {res.stderr}'})
+                
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'systemctl', 'enable', '--now', 'tailscaled'], capture_output=True)
+            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'service', 'tailscaled', 'start'], capture_output=True)
+            
+            # Run tailscale up and capture login URL from stdout/stderr (using 15s timeout to not block)
+            up_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'up', '--timeout=15s']
+            try:
+                up_res = subprocess.run(up_cmd, capture_output=True, text=True, timeout=20)
+                output = up_res.stdout + "\n" + up_res.stderr
+            except subprocess.TimeoutExpired as te:
+                output = (te.stdout.decode('utf-8', errors='ignore') if te.stdout else "") + "\n" + (te.stderr.decode('utf-8', errors='ignore') if te.stderr else "")
+                
+            login_url = ""
+            for line in output.split('\n'):
+                if "https://login.tailscale.com" in line:
+                    # Find exact URL
+                    words = line.split()
+                    for word in words:
+                        if word.startswith("https://login.tailscale.com"):
+                            login_url = word.strip()
+                            break
+                    if login_url:
+                        break
+                    
+            return jsonify({
+                'success': True, 
+                'message': 'Tailscale installed successfully!', 
+                'login_url': login_url,
+                'output': output
+            })
+            
+        elif tool == 'wireguard':
+            install_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'apt-get install -y wireguard iptables || apk add wireguard-tools || yum install -y wireguard-tools']
+            res = subprocess.run(install_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                return jsonify({'success': False, 'error': f'Failed to install Wireguard: {res.stderr}'})
+                
+            return jsonify({
+                'success': True,
+                'message': 'Wireguard package and iptables installed successfully! You can configure it via the container terminal.'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
     print("Starting Development Server on http://localhost:5000")
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+

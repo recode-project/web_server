@@ -148,7 +148,7 @@
         }
         .modal {
             background: #1e1e28; border: 1px solid rgba(255,255,255,0.1);
-            border-radius: var(--radius-lg); padding: 2rem; width: 100%; max-width: 450px;
+            border-radius: var(--radius-lg); padding: 2rem; width: 100%; max-width: 600px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
         .modal-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; }
@@ -160,6 +160,21 @@
         }
         .form-control:focus { outline: none; border-color: #9198e5; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1.5rem; }
+
+        /* Modal Tabs */
+        .modal-tabs {
+            display: flex; gap: 0.3rem; border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: none; border: none; color: var(--text-muted); padding: 0.5rem 0.9rem;
+            font-family: inherit; font-size: 0.85rem; cursor: pointer; border-radius: 8px;
+            transition: all 0.2s; display: flex; align-items: center; gap: 0.4rem;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.05); color: white; }
+        .tab-btn.active { background: rgba(145,152,229,0.15); color: #9198e5; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
         /* Toast */
         #toast {
@@ -248,24 +263,184 @@
 <!-- Config Modal -->
 <div class="modal-overlay" id="config-modal">
     <div class="modal">
-        <div class="modal-title">Resource Limits</div>
+        <div class="modal-title" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <span>Configure Container</span>
+            <span style="font-size:0.8rem; font-family:monospace; color:#9198e5;" id="cfg-title-name"></span>
+        </div>
         <input type="hidden" id="cfg-name">
-        <div class="form-group">
-            <label>CPU Cores</label>
-            <input type="number" id="cfg-cpu" class="form-control" placeholder="e.g. 2">
+        
+        <!-- Tab Navigation -->
+        <div class="modal-tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-resources')">
+                <i class="fa-solid fa-microchip"></i> Resources
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-network')">
+                <i class="fa-solid fa-network-wired"></i> Port Forwarding
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-advanced')">
+                <i class="fa-solid fa-sliders"></i> Advanced
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-tools')">
+                <i class="fa-solid fa-toolbox"></i> VPN & Tools
+            </button>
         </div>
-        <div class="form-group">
-            <label>Memory (RAM)</label>
-            <input type="text" id="cfg-ram" class="form-control" placeholder="e.g. 2GB or 512MB">
+        
+        <!-- Tab 1: Resources -->
+        <div class="tab-content active" id="tab-resources">
+            <div class="form-group">
+                <label>CPU Cores</label>
+                <input type="number" id="cfg-cpu" class="form-control" placeholder="e.g. 2">
+            </div>
+            <div class="form-group">
+                <label>Memory (RAM)</label>
+                <input type="text" id="cfg-ram" class="form-control" placeholder="e.g. 2GB or 512MB">
+            </div>
+            <div class="form-group">
+                <label>Storage (Root Disk Size)</label>
+                <input type="text" id="cfg-storage" class="form-control" placeholder="e.g. 20GB">
+            </div>
+            <div class="modal-actions" style="margin-top:1rem;">
+                <button class="action-btn" onclick="closeConfigModal()">Cancel</button>
+                <button class="action-btn primary" onclick="saveConfig()" id="btn-config">Save Limits</button>
+            </div>
         </div>
-        <div class="form-group">
-            <label>Storage (Root Disk)</label>
-            <input type="text" id="cfg-storage" class="form-control" placeholder="e.g. 20GB">
+        
+        <!-- Tab 2: Network / Port Forwarding -->
+        <div class="tab-content" id="tab-network">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                Forward host ports to container ports (LXD Proxy Device). Expose web or daemon servers.
+            </div>
+            
+            <div id="proxy-list" style="margin-bottom: 1rem; max-height: 120px; overflow-y: auto;">
+                <!-- Dynamically Rendered Proxy Devices -->
+            </div>
+            
+            <div style="background: rgba(255,255,255,0.02); padding: 0.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <i class="fa-solid fa-plus-circle" style="color: #4ecdc4;"></i> Add Forwarding rule
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.75rem;">Device Name</label>
+                        <input type="text" id="net-device-name" class="form-control" style="padding:0.5rem;" placeholder="e.g. http80">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.75rem;">Protocol</label>
+                        <select id="net-protocol" class="form-control" style="padding:0.5rem; height:34px;">
+                            <option value="tcp">TCP</option>
+                            <option value="udp">UDP</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.75rem;">Host Port</label>
+                        <input type="number" id="net-host-port" class="form-control" style="padding:0.5rem;" placeholder="e.g. 8080">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.75rem;">Container Port</label>
+                        <input type="number" id="net-container-port" class="form-control" style="padding:0.5rem;" placeholder="e.g. 80">
+                    </div>
+                </div>
+                <button class="action-btn primary" onclick="addProxyDevice()" id="btn-add-proxy" style="width: 100%; justify-content: center; margin-top: 0.4rem; padding: 0.5rem;">
+                    Add Proxy Device
+                </button>
+            </div>
+            <div class="modal-actions" style="margin-top:1rem;">
+                <button class="action-btn" onclick="closeConfigModal()">Close</button>
+            </div>
         </div>
-        <div class="modal-actions">
-            <button class="action-btn" onclick="closeConfigModal()">Cancel</button>
-            <button class="action-btn primary" onclick="saveConfig()" id="btn-config">Save Config</button>
+        
+        <!-- Tab 3: Advanced -->
+        <div class="tab-content" id="tab-advanced">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Modify security permissions and start-up characteristics.
+            </div>
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 0.6rem 0.8rem; border-radius: 10px; margin-bottom: 0.6rem;">
+                <div>
+                    <div style="font-weight:600; font-size:0.85rem;">Boot Autostart</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">Start container automatically on system boot.</div>
+                </div>
+                <select id="adv-autostart" class="form-control" style="width: 100px; padding:0.4rem;">
+                    <option value="false">Disabled</option>
+                    <option value="true">Enabled</option>
+                </select>
+            </div>
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 0.6rem 0.8rem; border-radius: 10px; margin-bottom: 0.6rem;">
+                <div>
+                    <div style="font-weight:600; font-size:0.85rem;">Nesting Support</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">Enables running Docker inside this container.</div>
+                </div>
+                <select id="adv-nesting" class="form-control" style="width: 100px; padding:0.4rem;">
+                    <option value="false">Disabled</option>
+                    <option value="true">Enabled</option>
+                </select>
+            </div>
+            <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 0.6rem 0.8rem; border-radius: 10px; margin-bottom: 1rem;">
+                <div>
+                    <div style="font-weight:600; font-size:0.85rem;">Privileged Mode</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">Runs container with full administrative rights.</div>
+                </div>
+                <select id="adv-privileged" class="form-control" style="width: 100px; padding:0.4rem;">
+                    <option value="false">Disabled</option>
+                    <option value="true">Enabled</option>
+                </select>
+            </div>
+            <button class="action-btn primary" onclick="saveAdvancedConfig()" id="btn-save-advanced" style="width: 100%; justify-content: center; padding:0.6rem;">
+                Save Advanced Settings
+            </button>
+            <div class="modal-actions" style="margin-top:1rem;">
+                <button class="action-btn" onclick="closeConfigModal()">Cancel</button>
+            </div>
         </div>
+        
+        <!-- Tab 4: VPN & Tools -->
+        <div class="tab-content" id="tab-tools">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Instal VPN overlay dengan mudah langsung dari dashboard kamu.
+            </div>
+            
+            <!-- Tailscale -->
+            <div style="background: rgba(255,255,255,0.02); padding: 0.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 0.8rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-circle-nodes" style="color: #ff6b6b; font-size: 1.1rem;"></i>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.85rem;">Tailscale Mesh VPN</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">Koneksikan container secara mesh.</div>
+                        </div>
+                    </div>
+                    <button class="action-btn" onclick="installTool('tailscale')" id="btn-install-tailscale" style="padding:0.4rem 0.8rem; border-color: rgba(255,107,107,0.3); color: #ff6b6b; font-size:0.75rem; font-weight:600;">
+                        Install Tailscale
+                    </button>
+                </div>
+                <div id="tailscale-status" style="display: none; background: rgba(0,0,0,0.3); padding: 0.6rem; border-radius: 8px; font-family: monospace; font-size: 0.7rem; color: #a0a0b0; max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 0.5rem;">
+                </div>
+            </div>
+
+            <!-- Wireguard -->
+            <div style="background: rgba(255,255,255,0.02); padding: 0.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-lock" style="color: #4ecdc4; font-size: 1.1rem;"></i>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.85rem;">Wireguard Packages</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">Instalasi wg-tools & iptables otomatis.</div>
+                        </div>
+                    </div>
+                    <button class="action-btn" onclick="installTool('wireguard')" id="btn-install-wireguard" style="padding:0.4rem 0.8rem; border-color: rgba(78,205,196,0.3); color: #4ecdc4; font-size:0.75rem; font-weight:600;">
+                        Install Wireguard
+                    </button>
+                </div>
+                <div id="wireguard-status" style="display: none; background: rgba(0,0,0,0.3); padding: 0.6rem; border-radius: 8px; font-family: monospace; font-size: 0.7rem; color: #a0a0b0; white-space: pre-wrap; margin-top: 0.5rem;">
+                </div>
+            </div>
+            
+            <div class="modal-actions" style="margin-top:1rem;">
+                <button class="action-btn" onclick="closeConfigModal()">Close</button>
+            </div>
+        </div>
+        
     </div>
 </div>
 
@@ -291,16 +466,221 @@ function showToast(msg, type='info') {
 function openCreateModal() { document.getElementById('create-modal').style.display = 'flex'; }
 function closeCreateModal() { document.getElementById('create-modal').style.display = 'none'; }
 
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    // Find active tab button by class name/onclick content
+    const btns = document.querySelectorAll('.tab-btn');
+    btns.forEach(btn => {
+        if (btn.getAttribute('onclick').includes(tabId)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    document.getElementById(tabId).classList.add('active');
+}
+
 function openConfigModal(name) {
     const c = containersData[name];
     if (!c) return;
     document.getElementById('cfg-name').value = name;
+    document.getElementById('cfg-title-name').textContent = `[ ${name} ]`;
     document.getElementById('cfg-cpu').value = (c.expanded_config && c.expanded_config['limits.cpu']) || '';
     document.getElementById('cfg-ram').value = (c.expanded_config && c.expanded_config['limits.memory']) || '';
     document.getElementById('cfg-storage').value = (c.expanded_devices && c.expanded_devices.root && c.expanded_devices.root.size) || '';
+    
+    // Advanced fields
+    document.getElementById('adv-autostart').value = (c.expanded_config && c.expanded_config['boot.autostart']) || 'false';
+    document.getElementById('adv-nesting').value = (c.expanded_config && c.expanded_config['security.nesting']) || 'false';
+    document.getElementById('adv-privileged').value = (c.expanded_config && c.expanded_config['security.privileged']) || 'false';
+    
+    // Proxy device list
+    renderProxyList(c);
+    
+    // Reset VPN status
+    document.getElementById('tailscale-status').style.display = 'none';
+    document.getElementById('wireguard-status').style.display = 'none';
+    
+    switchTab('tab-resources');
     document.getElementById('config-modal').style.display = 'flex';
 }
 function closeConfigModal() { document.getElementById('config-modal').style.display = 'none'; }
+
+function renderProxyList(container) {
+    const wrap = document.getElementById('proxy-list');
+    let html = '';
+    const devices = container.expanded_devices || {};
+    let count = 0;
+    
+    for (let devName in devices) {
+        const d = devices[devName];
+        if (d.type === 'proxy') {
+            count++;
+            html += `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 0.5rem 0.8rem; border-radius: 8px; margin-bottom: 0.4rem; font-size: 0.75rem;">
+                <div>
+                    <span style="font-weight: 600; color: #a29bfe; font-family: monospace;">${devName}</span>
+                    <span style="color: var(--text-muted);"> (${d.listen} ➜ ${d.connect})</span>
+                </div>
+                <button class="ctrl-btn delete" onclick="removeProxyDevice('${devName}')" title="Delete Proxy Device" style="width:24px; height:24px; font-size:0.65rem;">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>`;
+        }
+    }
+    
+    if (count === 0) {
+        wrap.innerHTML = '<div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 0.5rem 0; opacity:0.6;">No port forwarding rules defined.</div>';
+    } else {
+        wrap.innerHTML = html;
+    }
+}
+
+async function addProxyDevice() {
+    const name = document.getElementById('cfg-name').value;
+    const device_name = document.getElementById('net-device-name').value.trim();
+    const protocol = document.getElementById('net-protocol').value;
+    const host_port = document.getElementById('net-host-port').value.trim();
+    const container_port = document.getElementById('net-container-port').value.trim();
+    
+    if (!device_name || !host_port || !container_port) {
+        return showToast('Please fill all forwarding fields', 'error');
+    }
+    
+    const btn = document.getElementById('btn-add-proxy');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding...';
+    
+    try {
+        const res = await fetch('/api/lxd/device/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, device_name, protocol, host_port, container_port })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Proxy ${device_name} added successfully!`, 'success');
+            document.getElementById('net-device-name').value = '';
+            document.getElementById('net-host-port').value = '';
+            document.getElementById('net-container-port').value = '';
+            
+            // Reload containers data and update modal view
+            await fetchContainers();
+            openConfigModal(name);
+            switchTab('tab-network');
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch(e) {
+        showToast('Request failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Add Proxy Device';
+    }
+}
+
+async function removeProxyDevice(device_name) {
+    const name = document.getElementById('cfg-name').value;
+    if (!confirm(`Are you sure you want to remove proxy device "${device_name}"?`)) return;
+    
+    showToast(`Removing proxy ${device_name}...`, 'info');
+    try {
+        const res = await fetch('/api/lxd/device/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, device_name })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Proxy ${device_name} removed`, 'success');
+            await fetchContainers();
+            openConfigModal(name);
+            switchTab('tab-network');
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch(e) {
+        showToast('Request failed', 'error');
+    }
+}
+
+async function saveAdvancedConfig() {
+    const name = document.getElementById('cfg-name').value;
+    const autostart = document.getElementById('adv-autostart').value;
+    const nesting = document.getElementById('adv-nesting').value;
+    const privileged = document.getElementById('adv-privileged').value;
+    
+    const btn = document.getElementById('btn-save-advanced');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    
+    try {
+        const res = await fetch('/api/lxd/advanced', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, autostart, nesting, privileged })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Advanced configurations updated successfully!', 'success');
+            await fetchContainers();
+            closeConfigModal();
+        } else {
+            showToast(`Error: ${data.error}`, 'error');
+        }
+    } catch(e) {
+        showToast('Request failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Save Advanced Settings';
+    }
+}
+
+async function installTool(tool) {
+    const name = document.getElementById('cfg-name').value;
+    const btn = document.getElementById(`btn-install-${tool}`);
+    const statusBox = document.getElementById(`${tool}-status`);
+    
+    if (!confirm(`Are you sure you want to install ${tool} inside "${name}"? This requires downloading packages and may take up to a minute.`)) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Installing...';
+    statusBox.style.display = 'block';
+    statusBox.innerHTML = `[System] Starting ${tool} installation workflow for ${name}...\n`;
+    
+    try {
+        const res = await fetch('/api/lxd/tools/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, tool })
+        });
+        const data = await res.json();
+        if (data.success) {
+            statusBox.innerHTML += `✓ Installation completed successfully!\n`;
+            if (tool === 'tailscale') {
+                if (data.login_url) {
+                    statusBox.innerHTML += `\n🔗 TAILSCALE LOGIN URL:\n<a href="${data.login_url}" target="_blank" style="color: #4ecdc4; text-decoration: underline; word-break: break-all;">${data.login_url}</a>\n`;
+                } else {
+                    statusBox.innerHTML += `\nOutput Logs:\n${data.output || 'Complete.'}`;
+                }
+            } else {
+                statusBox.innerHTML += `\n${data.message}`;
+            }
+            showToast(`${tool} installed!`, 'success');
+            fetchContainers();
+        } else {
+            statusBox.innerHTML += `❌ Error: ${data.error}\n`;
+            showToast('Installation failed', 'error');
+        }
+    } catch(e) {
+        statusBox.innerHTML += `❌ Request failed.\n`;
+        showToast('Request failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `Install ${tool.charAt(0).toUpperCase() + tool.slice(1)}`;
+    }
+}
 
 async function saveConfig() {
     const name = document.getElementById('cfg-name').value;
