@@ -406,11 +406,14 @@
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fa-solid fa-circle-nodes" style="color: #ff6b6b; font-size: 1.1rem;"></i>
                         <div>
-                            <div style="font-weight: 600; font-size: 0.85rem;">Tailscale Mesh VPN</div>
+                            <div style="font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                Tailscale Mesh VPN
+                                <span id="ts-status-badge" style="font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px; display: none; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">Checking...</span>
+                            </div>
                             <div style="font-size: 0.7rem; color: var(--text-muted);">Koneksikan container secara mesh.</div>
                         </div>
                     </div>
-                    <button class="action-btn" onclick="installTool('tailscale')" id="btn-install-tailscale" style="padding:0.4rem 0.8rem; border-color: rgba(255,107,107,0.3); color: #ff6b6b; font-size:0.75rem; font-weight:600;">
+                    <button class="action-btn" onclick="installTool('tailscale')" id="btn-install-tailscale" style="padding:0.4rem 0.8rem; border-color: rgba(255,107,107,0.3); color: #ff6b6b; font-size:0.75rem; font-weight:600; display: flex; align-items: center; gap: 0.3rem;">
                         Install Tailscale
                     </button>
                 </div>
@@ -424,11 +427,14 @@
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fa-solid fa-lock" style="color: #4ecdc4; font-size: 1.1rem;"></i>
                         <div>
-                            <div style="font-weight: 600; font-size: 0.85rem;">Wireguard Packages</div>
+                            <div style="font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                                Wireguard Packages
+                                <span id="wg-status-badge" style="font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px; display: none; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">Checking...</span>
+                            </div>
                             <div style="font-size: 0.7rem; color: var(--text-muted);">Instalasi wg-tools & iptables otomatis.</div>
                         </div>
                     </div>
-                    <button class="action-btn" onclick="installTool('wireguard')" id="btn-install-wireguard" style="padding:0.4rem 0.8rem; border-color: rgba(78,205,196,0.3); color: #4ecdc4; font-size:0.75rem; font-weight:600;">
+                    <button class="action-btn" onclick="installTool('wireguard')" id="btn-install-wireguard" style="padding:0.4rem 0.8rem; border-color: rgba(78,205,196,0.3); color: #4ecdc4; font-size:0.75rem; font-weight:600; display: flex; align-items: center; gap: 0.3rem;">
                         Install Wireguard
                     </button>
                 </div>
@@ -479,6 +485,10 @@ function switchTab(tabId) {
     });
     
     document.getElementById(tabId).classList.add('active');
+    
+    if (tabId === 'tab-tools') {
+        fetchToolsStatus();
+    }
 }
 
 function openConfigModal(name) {
@@ -669,6 +679,7 @@ async function installTool(tool) {
             }
             showToast(`${tool} installed!`, 'success');
             fetchContainers();
+            fetchToolsStatus();
         } else {
             statusBox.innerHTML += `❌ Error: ${data.error}\n`;
             showToast('Installation failed', 'error');
@@ -679,6 +690,109 @@ async function installTool(tool) {
     } finally {
         btn.disabled = false;
         btn.innerHTML = `Install ${tool.charAt(0).toUpperCase() + tool.slice(1)}`;
+    }
+}
+
+async function fetchToolsStatus() {
+    const name = document.getElementById('cfg-name').value;
+    const tsBadge = document.getElementById('ts-status-badge');
+    const wgBadge = document.getElementById('wg-status-badge');
+    const tsBtn = document.getElementById('btn-install-tailscale');
+    const wgBtn = document.getElementById('btn-install-wireguard');
+    
+    if (!name) return;
+    
+    tsBadge.style.display = 'inline-block';
+    tsBadge.style.background = 'rgba(255,255,255,0.1)';
+    tsBadge.style.color = '#fff';
+    tsBadge.textContent = 'Checking...';
+    
+    wgBadge.style.display = 'inline-block';
+    wgBadge.style.background = 'rgba(255,255,255,0.1)';
+    wgBadge.style.color = '#fff';
+    wgBadge.textContent = 'Checking...';
+    
+    try {
+        const res = await fetch(`/api/lxd/tools/status?name=${encodeURIComponent(name)}`);
+        const data = await res.json();
+        
+        if (data.success) {
+            if (!data.running) {
+                tsBadge.style.background = 'rgba(255,107,107,0.15)';
+                tsBadge.style.color = '#ff6b6b';
+                tsBadge.textContent = 'Stopped';
+                
+                wgBadge.style.background = 'rgba(255,107,107,0.15)';
+                wgBadge.style.color = '#ff6b6b';
+                wgBadge.textContent = 'Stopped';
+                return;
+            }
+            
+            // Tailscale status
+            if (data.tailscale.installed) {
+                if (data.tailscale.status === 'Connected') {
+                    tsBadge.style.background = 'rgba(35,213,171,0.15)';
+                    tsBadge.style.color = '#23d5ab';
+                    tsBadge.textContent = data.tailscale.ip ? `Connected (${data.tailscale.ip})` : 'Connected';
+                    tsBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connected';
+                    tsBtn.style.borderColor = 'rgba(35,213,171,0.3)';
+                    tsBtn.style.color = '#23d5ab';
+                } else if (data.tailscale.status === 'Needs Authentication' || data.tailscale.status === 'Disconnected') {
+                    tsBadge.style.background = 'rgba(255,159,67,0.15)';
+                    tsBadge.style.color = '#ff9f43';
+                    tsBadge.textContent = data.tailscale.status;
+                    tsBtn.innerHTML = '<i class="fa-solid fa-key"></i> Authenticate';
+                    tsBtn.style.borderColor = 'rgba(255,159,67,0.4)';
+                    tsBtn.style.color = '#ff9f43';
+                } else {
+                    tsBadge.style.background = 'rgba(255,255,255,0.1)';
+                    tsBadge.style.color = '#a0a0b0';
+                    tsBadge.textContent = 'Stopped';
+                    tsBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
+                    tsBtn.style.borderColor = 'rgba(255,255,255,0.2)';
+                    tsBtn.style.color = '#fff';
+                }
+            } else {
+                tsBadge.style.background = 'rgba(255,107,107,0.15)';
+                tsBadge.style.color = '#ff6b6b';
+                tsBadge.textContent = 'Not Installed';
+                tsBtn.innerHTML = 'Install Tailscale';
+                tsBtn.style.borderColor = 'rgba(255,107,107,0.3)';
+                tsBtn.style.color = '#ff6b6b';
+            }
+            
+            // Wireguard status
+            if (data.wireguard.installed) {
+                if (data.wireguard.status === 'Active') {
+                    wgBadge.style.background = 'rgba(35,213,171,0.15)';
+                    wgBadge.style.color = '#23d5ab';
+                    wgBadge.textContent = 'Active';
+                    wgBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Active';
+                    wgBtn.style.borderColor = 'rgba(35,213,171,0.3)';
+                    wgBtn.style.color = '#23d5ab';
+                } else {
+                    wgBadge.style.background = 'rgba(255,159,67,0.15)';
+                    wgBadge.style.color = '#ff9f43';
+                    wgBadge.textContent = 'Installed';
+                    wgBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Installed';
+                    wgBtn.style.borderColor = 'rgba(78,205,196,0.3)';
+                    wgBtn.style.color = '#4ecdc4';
+                }
+            } else {
+                wgBadge.style.background = 'rgba(255,107,107,0.15)';
+                wgBadge.style.color = '#ff6b6b';
+                wgBadge.textContent = 'Not Installed';
+                wgBtn.innerHTML = 'Install Wireguard';
+                wgBtn.style.borderColor = 'rgba(78,205,196,0.3)';
+                wgBtn.style.color = '#4ecdc4';
+            }
+        } else {
+            tsBadge.textContent = 'Error';
+            wgBadge.textContent = 'Error';
+        }
+    } catch(e) {
+        tsBadge.textContent = 'Error';
+        wgBadge.textContent = 'Error';
     }
 }
 

@@ -6084,6 +6084,79 @@ def api_lxd_advanced():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/lxd/tools/status')
+@login_required
+def api_lxd_tools_status():
+    """Check if Tailscale and Wireguard are installed and get their running status inside the container"""
+    name = request.args.get('name')
+    if not name:
+        return jsonify({'error': 'Container name is required'}), 400
+        
+    try:
+        # Check if container is running first. If not running, tools status cannot be queried.
+        info_res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'info', name], capture_output=True, text=True)
+        if "Status: RUNNING" not in info_res.stdout:
+            return jsonify({
+                'success': True,
+                'running': False,
+                'tailscale': {'installed': False, 'status': 'Container is stopped', 'ip': ''},
+                'wireguard': {'installed': False, 'status': 'Container is stopped'}
+            })
+            
+        # 1. Check Tailscale
+        ts_installed = False
+        ts_status = "Not Installed"
+        ts_ip = ""
+        
+        # Test which tailscale
+        ts_check = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'which', 'tailscale'], capture_output=True, text=True)
+        if ts_check.returncode == 0:
+            ts_installed = True
+            # Check tailscale status
+            ts_status_run = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'status'], capture_output=True, text=True)
+            if "Logged out" in ts_status_run.stdout or "No link established" in ts_status_run.stdout:
+                ts_status = "Disconnected"
+            elif "Authentication required" in ts_status_run.stdout:
+                ts_status = "Needs Authentication"
+            elif ts_status_run.returncode == 0 and len(ts_status_run.stdout.strip()) > 0:
+                ts_status = "Connected"
+                # Try getting Tailscale IP
+                ts_ip_run = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'ip', '-4'], capture_output=True, text=True)
+                if ts_ip_run.returncode == 0:
+                    ts_ip = ts_ip_run.stdout.strip()
+            else:
+                ts_status = "Stopped"
+                
+        # 2. Check Wireguard
+        wg_installed = False
+        wg_status = "Not Installed"
+        
+        wg_check = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'which', 'wg'], capture_output=True, text=True)
+        if wg_check.returncode == 0:
+            wg_installed = True
+            # Check if wireguard module or configs exists / runs
+            wg_show = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'wg', 'show'], capture_output=True, text=True)
+            if wg_show.returncode == 0 and len(wg_show.stdout.strip()) > 0:
+                wg_status = "Active"
+            else:
+                wg_status = "Installed (Inactive)"
+                
+        return jsonify({
+            'success': True,
+            'running': True,
+            'tailscale': {
+                'installed': ts_installed,
+                'status': ts_status,
+                'ip': ts_ip
+            },
+            'wireguard': {
+                'installed': wg_installed,
+                'status': wg_status
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/lxd/tools/install', methods=['POST'])
 @login_required
 def api_lxd_tools_install():
