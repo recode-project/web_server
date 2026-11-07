@@ -633,11 +633,16 @@
         <div class="offline-banner" id="offline-banner">
             <div>
                 <strong id="offline-title"><i class="fa-solid fa-triangle-exclamation"></i> AdGuard Home Tidak Terhubung</strong>
-                <p id="offline-desc" style="font-size: 0.85rem; margin-top: 0.3rem;">Tidak dapat berkomunikasi dengan daemon AdGuard Home. Pastikan service aktif atau sesuaikan pengaturan koneksi host/port.</p>
+                <p id="offline-desc" style="font-size: 0.85rem; margin-top: 0.3rem;">Tidak dapat berkomunikasi dengan daemon AdGuard Home. Pastikan service aktif atau pasang secara otomatis via Docker.</p>
             </div>
-            <button class="btn-action" id="btn-offline-config">
-                <i class="fa-solid fa-wrench"></i> Sesuaikan Pengaturan
-            </button>
+            <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                <button class="btn-action primary" id="btn-open-install">
+                    <i class="fa-solid fa-download"></i> Pasang Otomatis (Docker)
+                </button>
+                <button class="btn-action" id="btn-offline-config">
+                    <i class="fa-solid fa-wrench"></i> Sesuaikan Pengaturan
+                </button>
+            </div>
         </div>
 
         <!-- Master Protection Banner -->
@@ -836,6 +841,47 @@
                     <button type="button" class="btn-action" id="btn-cancel-settings">Batal</button>
                     <button type="submit" class="btn-action primary" id="btn-save-settings">
                         <i class="fa-solid fa-check"></i> Uji & Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 1-Click Install Modal -->
+    <div class="modal-overlay" id="modal-install">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-brands fa-docker" style="color: #38bdf8;"></i> Pasang AdGuard Home (Docker)</h3>
+                <button class="modal-close-btn" id="btn-close-install-modal">&times;</button>
+            </div>
+            <form id="form-install" onsubmit="return false;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                    Sistem akan mengunduh image resmi <code>adguard/adguardhome:latest</code> dan menjalankan kontainer Docker mandiri dengan persistensi data otomatis.
+                </p>
+
+                <div class="form-row" style="margin-top: 1rem;">
+                    <div class="form-group">
+                        <label for="inst-web-port">Port Web Dashboard</label>
+                        <input type="number" id="inst-web-port" value="8053" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="inst-dns-port">Port DNS</label>
+                        <input type="number" id="inst-dns-port" value="53" required>
+                    </div>
+                </div>
+
+                <div style="font-size: 0.78rem; color: #f59e0b; margin-top: 0.8rem; line-height: 1.4;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Pastikan Port 53 tidak terikat oleh layanan lain (mis. <code>systemd-resolved</code>).
+                </div>
+
+                <div id="install-log-box" style="display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.8rem; margin-top: 1rem; font-family: monospace; font-size: 0.8rem; max-height: 120px; overflow-y: auto;">
+                    <div id="install-log-text"><i class="fa-solid fa-spinner fa-spin"></i> Memulai instalasi...</div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-action" id="btn-cancel-install">Batal</button>
+                    <button type="submit" class="btn-action primary" id="btn-submit-install">
+                        <i class="fa-solid fa-rocket"></i> Pasang Sekarang
                     </button>
                 </div>
             </form>

@@ -7082,6 +7082,107 @@ def api_adblocker_config():
         'message': 'Konfigurasi AdGuard Home berhasil disimpan dan diverifikasi aktif!'
     })
 
+@app.route('/api/adblocker/install', methods=['POST'])
+@login_required
+def api_adblocker_install():
+    """1-Click AdGuard Home Docker installer"""
+    role = session.get('role', 'readonly')
+    if not has_permission(role, 'adblocker', 'full'):
+        return jsonify({'success': False, 'error': 'Hak akses Admin/Owner diperlukan untuk instalasi'}), 403
+
+    data = request.json or {}
+    web_port = int(data.get('web_port', 8053))
+    dns_port = int(data.get('dns_port', 53))
+
+    try:
+        import docker as docker_lib
+        client = docker_lib.from_env()
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Tidak dapat terhubung ke Docker Engine: {str(e)}. Pastikan Docker aktif di server.'
+        }), 500
+
+    container_name = "adguardhome"
+    
+    # 1. Cek apakah container sudah ada
+    try:
+        existing = client.containers.get(container_name)
+        if existing.status == 'running':
+            return jsonify({
+                'success': True,
+                'already_running': True,
+                'message': f'Kontainer {container_name} sudah terpasang dan berstatus aktif.'
+            })
+        else:
+            existing.start()
+            audit_log('ADBLOCKER_INSTALL', f"Started existing container {container_name}", session.get('username'))
+            return jsonify({
+                'success': True,
+                'message': f'Kontainer {container_name} yang ada berhasil diaktifkan kembali.'
+            })
+    except docker_lib.errors.NotFound:
+        pass
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Gagal memeriksa status kontainer: {str(e)}'}), 500
+
+    # 2. Pull image dan buat kontainer baru
+    try:
+        image_name = "adguard/adguardhome:latest"
+        try:
+            client.images.pull(image_name)
+        except Exception as pull_err:
+            print(f"[AdBlocker Install] Pull warning: {pull_err}")
+
+        # Port bindings
+        ports = {
+            '53/tcp': dns_port,
+            '53/udp': dns_port,
+            '80/tcp': web_port,
+            '3000/tcp': 3000
+        }
+
+        # Volume mounts (Docker named volumes portabel)
+        volumes = {
+            'adguard_work': {'bind': '/opt/adguardhome/work', 'mode': 'rw'},
+            'adguard_conf': {'bind': '/opt/adguardhome/conf', 'mode': 'rw'}
+        }
+
+        container = client.containers.run(
+            image=image_name,
+            name=container_name,
+            ports=ports,
+            volumes=volumes,
+            restart_policy={"Name": "unless-stopped"},
+            detach=True
+        )
+
+        # 3. Simpan konfigurasi awal di data/adblocker_config.json
+        cfg = get_adblocker_config()
+        cfg['host'] = 'host.docker.internal'
+        cfg['port'] = web_port
+        save_adblocker_config(cfg)
+
+        audit_log('ADBLOCKER_INSTALL', f"Installed new container {container_name} on web_port={web_port}, dns_port={dns_port}", session.get('username'))
+
+        return jsonify({
+            'success': True,
+            'container_id': container.short_id,
+            'message': f'AdGuard Home berhasil dipasang dan dijalankan pada port Web {web_port} dan DNS {dns_port}.',
+            'web_port': web_port,
+            'dns_port': dns_port
+        })
+    except docker_lib.errors.APIError as api_err:
+        err_msg = str(api_err)
+        if "port is already allocated" in err_msg or "address already in use" in err_msg:
+            return jsonify({
+                'success': False,
+                'error': f'Port bentrok: {err_msg}. Jika port 53 digunakan systemd-resolved, gunakan port DNS lain atau matikan stub listener host.'
+            }), 409
+        return jsonify({'success': False, 'error': f'Docker API error: {err_msg}'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Gagal menginstal AdGuard Home: {str(e)}'}), 500
+
 
 if __name__ == '__main__':
     # Dev server: bind ke loopback saja secara default agar Werkzeug debugger

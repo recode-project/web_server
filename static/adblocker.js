@@ -23,6 +23,16 @@
         offlineBanner: document.getElementById('offline-banner'),
         offlineDesc: document.getElementById('offline-desc'),
         btnOfflineConfig: document.getElementById('btn-offline-config'),
+        btnOpenInstall: document.getElementById('btn-open-install'),
+        modalInstall: document.getElementById('modal-install'),
+        btnCloseInstallModal: document.getElementById('btn-close-install-modal'),
+        btnCancelInstall: document.getElementById('btn-cancel-install'),
+        formInstall: document.getElementById('form-install'),
+        btnSubmitInstall: document.getElementById('btn-submit-install'),
+        instWebPort: document.getElementById('inst-web-port'),
+        instDnsPort: document.getElementById('inst-dns-port'),
+        installLogBox: document.getElementById('install-log-box'),
+        installLogText: document.getElementById('install-log-text'),
         linkWebConsole: document.getElementById('link-web-console'),
         btnRefresh: document.getElementById('btn-refresh'),
         btnOpenSettings: document.getElementById('btn-open-settings'),
@@ -470,6 +480,85 @@
     }
 
     /**
+     * Modal Instalasi AdGuard Home via Docker
+     */
+    function openInstallModal() {
+        if (!elements.modalInstall) return;
+        if (elements.installLogBox) elements.installLogBox.style.display = 'none';
+        if (elements.btnSubmitInstall) {
+            elements.btnSubmitInstall.disabled = false;
+            elements.btnSubmitInstall.innerHTML = '<i class="fa-solid fa-rocket"></i> Pasang Sekarang';
+        }
+        elements.modalInstall.classList.add('open');
+    }
+
+    function closeInstallModal() {
+        if (!elements.modalInstall) return;
+        elements.modalInstall.classList.remove('open');
+    }
+
+    async function handleSubmitInstall(e) {
+        e.preventDefault();
+
+        const btn = elements.btnSubmitInstall;
+        const btnCancel = elements.btnCancelInstall;
+        const logBox = elements.installLogBox;
+        const logText = elements.installLogText;
+
+        const webPort = parseInt(elements.instWebPort.value, 10) || 8053;
+        const dnsPort = parseInt(elements.instDnsPort.value, 10) || 53;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memasang...';
+        if (btnCancel) btnCancel.disabled = true;
+
+        if (logBox && logText) {
+            logBox.style.display = 'block';
+            logText.innerHTML = `
+                <div><i class="fa-solid fa-circle-notch fa-spin"></i> Menghubungi Docker daemon...</div>
+                <div><i class="fa-solid fa-cloud-arrow-down"></i> Mengunduh image adguard/adguardhome:latest...</div>
+                <div><i class="fa-solid fa-gears"></i> Menyiapkan volume persistensi dan port binding...</div>
+            `;
+        }
+
+        try {
+            const res = await fetch('/api/adblocker/install', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ web_port: webPort, dns_port: dnsPort })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                if (logText) {
+                    logText.innerHTML += `<div style="color: #34d399;"><i class="fa-solid fa-circle-check"></i> ${escapeHtml(data.message)}</div>`;
+                }
+                showToast('AdGuard Home berhasil dipasang!', 'success');
+
+                setTimeout(() => {
+                    closeInstallModal();
+                    fetchStatus();
+                    fetchRules();
+                }, 2000);
+            } else {
+                if (logText) {
+                    logText.innerHTML += `<div style="color: #f87171;"><i class="fa-solid fa-circle-xmark"></i> ${escapeHtml(data.error || 'Gagal memasang')}</div>`;
+                }
+                showToast(`Gagal memasang: ${data.error || 'Terjadi kesalahan'}`, 'error');
+            }
+        } catch (err) {
+            if (logText) {
+                logText.innerHTML += `<div style="color: #f87171;"><i class="fa-solid fa-circle-xmark"></i> Kesalahan jaringan: ${escapeHtml(err.message)}</div>`;
+            }
+            showToast(`Kesalahan jaringan: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-rocket"></i> Pasang Sekarang';
+            if (btnCancel) btnCancel.disabled = false;
+        }
+    }
+
+    /**
      * Escape HTML untuk keamanan DOM
      */
     function escapeHtml(str) {
@@ -516,11 +605,24 @@
         if (elements.btnCancelSettings) elements.btnCancelSettings.addEventListener('click', closeSettingsModal);
         if (elements.formSettings) elements.formSettings.addEventListener('submit', handleSaveSettings);
 
+        // Install Modal triggers
+        if (elements.btnOpenInstall) elements.btnOpenInstall.addEventListener('click', openInstallModal);
+        if (elements.btnCloseInstallModal) elements.btnCloseInstallModal.addEventListener('click', closeInstallModal);
+        if (elements.btnCancelInstall) elements.btnCancelInstall.addEventListener('click', closeInstallModal);
+        if (elements.formInstall) elements.formInstall.addEventListener('submit', handleSubmitInstall);
+
         // Tutup modal jika klik di backdrop
         if (elements.modalSettings) {
             elements.modalSettings.addEventListener('click', (e) => {
                 if (e.target === elements.modalSettings) {
                     closeSettingsModal();
+                }
+            });
+        }
+        if (elements.modalInstall) {
+            elements.modalInstall.addEventListener('click', (e) => {
+                if (e.target === elements.modalInstall) {
+                    closeInstallModal();
                 }
             });
         }
@@ -541,3 +643,4 @@
     });
 
 })();
+
