@@ -12,6 +12,8 @@
     let currentConfig = null;
     let isFetchingStatus = false;
     let autoRefreshTimer = null;
+    let currentLanIp = '192.168.1.4';
+    let currentTailscaleIp = '100.87.49.14';
 
     // DOM Elements
     const elements = {
@@ -20,6 +22,11 @@
         badgeStatus: document.getElementById('badge-status'),
         protectionDesc: document.getElementById('protection-desc'),
         toggleProtection: document.getElementById('toggle-protection'),
+        // Security Toggles
+        toggleSafebrowsing: document.getElementById('toggle-safebrowsing'),
+        toggleSafesearch: document.getElementById('toggle-safesearch'),
+        toggleParental: document.getElementById('toggle-parental'),
+        // Banners & Controls
         offlineBanner: document.getElementById('offline-banner'),
         offlineDesc: document.getElementById('offline-desc'),
         btnOfflineConfig: document.getElementById('btn-offline-config'),
@@ -41,13 +48,19 @@
         modalSettings: document.getElementById('modal-settings'),
         formSettings: document.getElementById('form-settings'),
         btnSaveSettings: document.getElementById('btn-save-settings'),
+        // IP Chips & Copy
+        valLanIp: document.getElementById('val-lan-ip'),
+        valTailscaleIp: document.getElementById('val-tailscale-ip'),
+        btnCopyLan: document.getElementById('btn-copy-lan'),
+        btnCopyTailscale: document.getElementById('btn-copy-tailscale'),
         // Metrics
         valTotalQueries: document.getElementById('val-total-queries'),
         valBlockedQueries: document.getElementById('val-blocked-queries'),
         valBlockedRatio: document.getElementById('val-blocked-ratio'),
         barBlockedRatio: document.getElementById('bar-blocked-ratio'),
         valAvgLatency: document.getElementById('val-avg-latency'),
-        dnsChipsList: document.getElementById('dns-chips-list'),
+        // Chart Canvas
+        activityChart: document.getElementById('activity-chart'),
         // Tables
         tableBlockedBody: document.getElementById('table-blocked-body'),
         tableQueriedBody: document.getElementById('table-queried-body'),
@@ -55,6 +68,9 @@
         badgeTopBlocked: document.getElementById('badge-top-blocked'),
         badgeTopQueried: document.getElementById('badge-top-queried'),
         badgeTopClients: document.getElementById('badge-top-clients'),
+        // Query Log
+        tableQuerylogBody: document.getElementById('table-querylog-body'),
+        btnRefreshLog: document.getElementById('btn-refresh-log'),
         // Rules
         rulesTextarea: document.getElementById('rules-textarea'),
         btnSaveRules: document.getElementById('btn-save-rules'),
@@ -92,11 +108,32 @@
     }
 
     /**
-     * Format angka ke format ribuan (locale)
+     * Format angka ke format ribuan
      */
     function formatNumber(num) {
         if (typeof num !== 'number') return '0';
         return num.toLocaleString('id-ID');
+    }
+
+    /**
+     * Menyalin teks ke clipboard
+     */
+    async function copyToClipboard(text, label) {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+            showToast(`${label} berhasil disalin! (${text})`, 'success');
+        } catch (err) {
+            showToast(`Gagal menyalin: ${err.message}`, 'error');
+        }
     }
 
     /**
@@ -124,7 +161,7 @@
     }
 
     /**
-     * Render antarmuka saat AdGuard Home offline / gagal terhubung
+     * Render antarmuka saat AdGuard Home offline
      */
     function renderDisconnected(errorMsg) {
         if (elements.offlineBanner) {
@@ -192,26 +229,27 @@
                 : 'Proteksi DNS sedang DINONAKTIFKAN. Seluruh permintaan DNS diteruskan tanpa filtering.';
         }
 
+        // Update Quick Security Toggles
+        if (elements.toggleSafebrowsing) elements.toggleSafebrowsing.checked = Boolean(data.safebrowsing_enabled);
+        if (elements.toggleSafesearch) elements.toggleSafesearch.checked = Boolean(data.safesearch_enabled);
+        if (elements.toggleParental) elements.toggleParental.checked = Boolean(data.parental_enabled);
+
         // Update Web Console Link
         if (elements.linkWebConsole && data.base_url) {
-            // Gunakan hostname dari window.location agar link console dapat dibuka dari klien eksternal
             const clientHost = window.location.hostname;
             const port = (data.status && data.status.http_port) ? data.status.http_port : 8053;
             elements.linkWebConsole.href = `http://${clientHost}:${port}`;
         }
 
-        // Update DNS Listen Chips
-        if (elements.dnsChipsList && Array.isArray(data.dns_addresses)) {
-            const port = data.dns_port || 53;
-            const validIps = data.dns_addresses.filter(ip => ip !== '0.0.0.0' && ip !== '::');
-            const clientHost = window.location.hostname;
-            if (clientHost && !validIps.includes(clientHost)) {
-                validIps.unshift(clientHost);
-            }
-
-            elements.dnsChipsList.innerHTML = validIps.slice(0, 4).map(ip => 
-                `<span class="dns-chip"><i class="fa-solid fa-server"></i> ${ip}:${port}</span>`
-            ).join('');
+        // Update Accurate DNS IPs (LAN vs Tailscale)
+        const port = data.dns_port || 53;
+        if (data.lan_ips && data.lan_ips.length > 0) {
+            currentLanIp = data.lan_ips[0].ip;
+            if (elements.valLanIp) elements.valLanIp.textContent = `${currentLanIp}:${port}`;
+        }
+        if (data.tailscale_ips && data.tailscale_ips.length > 0) {
+            currentTailscaleIp = data.tailscale_ips[0].ip;
+            if (elements.valTailscaleIp) elements.valTailscaleIp.textContent = `${currentTailscaleIp}:${port}`;
         }
 
         // Render KPI Metrics
@@ -231,10 +269,132 @@
         elements.barBlockedRatio.style.width = `${Math.min(100, Math.max(0, ratio))}%`;
         elements.valAvgLatency.textContent = `${latencyMs} ms`;
 
+        // Render 24-Hour Activity Chart
+        renderActivityChart(stats.dns_queries || [], stats.blocked_filtering || []);
+
         // Render Tables
         renderDomainTable(elements.tableBlockedBody, elements.badgeTopBlocked, stats.top_blocked_domains || [], 'Blokir', 'Domain');
         renderDomainTable(elements.tableQueriedBody, elements.badgeTopQueried, stats.top_queried_domains || [], 'Permintaan', 'Domain');
         renderClientsTable(elements.tableClientsBody, elements.badgeTopClients, stats.top_clients || []);
+    }
+
+    /**
+     * Render Grafik Time-Series Aktivitas DNS 24 Jam via HTML5 Canvas
+     */
+    function renderActivityChart(totalQueries, blockedQueries) {
+        const canvas = elements.activityChart;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.parentElement.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
+        // Atur resolusi retina
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        const width = rect.width;
+        const height = rect.height;
+
+        ctx.clearRect(0, 0, width, height);
+
+        const len = Math.max(totalQueries.length, blockedQueries.length, 24);
+        if (len === 0) return;
+
+        // Cari nilai maksimum untuk skala Y
+        let maxVal = 10;
+        for (let i = 0; i < len; i++) {
+            const t = totalQueries[i] || 0;
+            if (t > maxVal) maxVal = t;
+        }
+        maxVal = Math.ceil(maxVal * 1.15); // Padding 15% atas
+
+        const paddingBottom = 26;
+        const paddingTop = 15;
+        const paddingLeft = 35;
+        const paddingRight = 15;
+        const chartW = width - paddingLeft - paddingRight;
+        const chartH = height - paddingTop - paddingBottom;
+
+        // Gambar Grid Garis Horizontal
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px Inter, sans-serif';
+        ctx.textAlign = 'right';
+
+        const gridSteps = 4;
+        for (let i = 0; i <= gridSteps; i++) {
+            const y = paddingTop + (chartH / gridSteps) * i;
+            const val = Math.round(maxVal - (maxVal / gridSteps) * i);
+            ctx.beginPath();
+            ctx.moveTo(paddingLeft, y);
+            ctx.lineTo(width - paddingRight, y);
+            ctx.stroke();
+            ctx.fillText(val > 1000 ? (val / 1000).toFixed(1) + 'k' : val, paddingLeft - 6, y + 3);
+        }
+
+        // Gambar Garis Total Queries (Biru Cyan)
+        drawChartLine(ctx, totalQueries, len, maxVal, paddingLeft, paddingTop, chartW, chartH, '#38bdf8', 'rgba(56, 189, 248, 0.25)');
+
+        // Gambar Garis Blocked Queries (Merah)
+        drawChartLine(ctx, blockedQueries, len, maxVal, paddingLeft, paddingTop, chartW, chartH, '#ef4444', 'rgba(239, 68, 68, 0.3)');
+
+        // Label Sumbu X (Waktu 24h - Tiap 4 jam)
+        ctx.fillStyle = '#94a3b8';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < len; i += 4) {
+            const x = paddingLeft + (chartW / (len - 1)) * i;
+            const hourOffset = (24 - len + i);
+            const hourLabel = `${hourOffset < 0 ? hourOffset + 24 : hourOffset}:00`;
+            ctx.fillText(hourLabel, x, height - 6);
+        }
+    }
+
+    function drawChartLine(ctx, dataArr, len, maxVal, pLeft, pTop, cW, cH, strokeColor, fillColor) {
+        if (!dataArr || dataArr.length === 0) return;
+
+        const points = [];
+        for (let i = 0; i < len; i++) {
+            const val = dataArr[i] || 0;
+            const x = pLeft + (cW / (len - 1)) * i;
+            const y = pTop + cH - (val / maxVal) * cH;
+            points.push({ x, y });
+        }
+
+        // Area Fill Gradient
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, pTop + cH);
+        for (let i = 0; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.lineTo(points[points.length - 1].x, pTop + cH);
+        ctx.closePath();
+
+        const grad = ctx.createLinearGradient(0, pTop, 0, pTop + cH);
+        grad.addColorStop(0, fillColor);
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Stroke Line
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Dots on points
+        ctx.fillStyle = strokeColor;
+        for (let i = 0; i < points.length; i += 3) {
+            ctx.beginPath();
+            ctx.arc(points[i].x, points[i].y, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 
     /**
@@ -249,9 +409,7 @@
             return;
         }
 
-        if (badge) {
-            badge.textContent = `${items.length} Domain`;
-        }
+        if (badge) badge.textContent = `${items.length} Domain`;
 
         tbody.innerHTML = items.slice(0, 10).map(item => {
             let name = '';
@@ -290,9 +448,7 @@
             return;
         }
 
-        if (badge) {
-            badge.textContent = `${clients.length} Klien`;
-        }
+        if (badge) badge.textContent = `${clients.length} Klien`;
 
         tbody.innerHTML = clients.slice(0, 10).map(item => {
             let clientIp = '';
@@ -321,7 +477,54 @@
     }
 
     /**
-     * Toggle Proteksi DNS AdGuard
+     * Mengambil riwayat query DNS langsung (Live Query Log)
+     */
+    async function fetchQueryLog() {
+        if (!elements.tableQuerylogBody) return;
+
+        try {
+            const res = await fetch('/api/adblocker/querylog?limit=12');
+            const data = await res.json();
+
+            if (res.ok && data.success && Array.isArray(data.data)) {
+                renderQueryLogTable(data.data);
+            }
+        } catch (err) {
+            console.error('[AdBlocker] Gagal mengambil query log:', err);
+        }
+    }
+
+    function renderQueryLogTable(logs) {
+        const tbody = elements.tableQuerylogBody;
+        if (!tbody) return;
+
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-hint">Belum ada log query DNS terbaru.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = logs.map(item => {
+            const isBlocked = item.reason && item.reason !== 'NotFilteredNotFound' && item.reason !== 'Rewrite';
+            const statusClass = isBlocked ? 'pill-blocked' : 'pill-allowed';
+            const statusText = isBlocked ? 'Blocked' : 'Processed';
+
+            const timeStr = item.time ? new Date(item.time).toLocaleTimeString('id-ID') : '-';
+            const client = item.client || item.client_proto || '-';
+            const domain = item.question ? item.question.name : (item.name || '-');
+
+            return `
+                <tr>
+                    <td style="color: var(--text-muted); font-family: monospace;">${escapeHtml(timeStr)}</td>
+                    <td><span class="status-pill ${statusClass}">${statusText}</span></td>
+                    <td class="domain-name" title="${domain}"><strong>${escapeHtml(domain)}</strong></td>
+                    <td style="font-family: monospace; color: #a855f7;">${escapeHtml(client)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Toggle Proteksi DNS Master
      */
     async function handleToggleProtection(e) {
         const targetState = e.target.checked;
@@ -340,13 +543,42 @@
                 await fetchStatus();
             } else {
                 e.target.checked = !targetState;
-                showToast(`Gagal mengubah status: ${data.error || 'Unknown error'}`, 'error');
+                showToast(`Gagal: ${data.error || 'Unknown error'}`, 'error');
             }
         } catch (err) {
             e.target.checked = !targetState;
             showToast(`Kesalahan jaringan: ${err.message}`, 'error');
         } finally {
             e.target.disabled = false;
+        }
+    }
+
+    /**
+     * Toggle Fitur Keamanan Tambahan
+     */
+    async function handleToggleFeature(featureName, checkboxEl) {
+        const targetState = checkboxEl.checked;
+        checkboxEl.disabled = true;
+
+        try {
+            const res = await fetch(`/api/adblocker/feature/${featureName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: targetState })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                showToast(`Fitur ${featureName} ${targetState ? 'diaktifkan' : 'dinonaktifkan'}.`, 'success');
+            } else {
+                checkboxEl.checked = !targetState;
+                showToast(`Gagal: ${data.error || 'Akses ditolak'}`, 'error');
+            }
+        } catch (err) {
+            checkboxEl.checked = !targetState;
+            showToast(`Kesalahan jaringan: ${err.message}`, 'error');
+        } finally {
+            checkboxEl.disabled = false;
         }
     }
 
@@ -394,7 +626,7 @@
                 showToast(`Aturan berhasil disimpan (${data.rules_count} rules aktif).`, 'success');
                 updateRulesCount(data.rules_count);
             } else {
-                showToast(`Gagal menyimpan aturan: ${data.error || 'Akses ditolak'}`, 'error');
+                showToast(`Gagal: ${data.error || 'Akses ditolak'}`, 'error');
             }
         } catch (err) {
             showToast(`Kesalahan jaringan: ${err.message}`, 'error');
@@ -580,6 +812,14 @@
                 showToast('Memperbarui data AdBlocker...', 'success');
                 fetchStatus();
                 fetchRules();
+                fetchQueryLog();
+            });
+        }
+
+        if (elements.btnRefreshLog) {
+            elements.btnRefreshLog.addEventListener('click', () => {
+                fetchQueryLog();
+                showToast('Log DNS diperbarui', 'success');
             });
         }
 
@@ -587,6 +827,26 @@
             elements.toggleProtection.addEventListener('change', handleToggleProtection);
         }
 
+        // Quick Security Toggles
+        if (elements.toggleSafebrowsing) {
+            elements.toggleSafebrowsing.addEventListener('change', () => handleToggleFeature('safebrowsing', elements.toggleSafebrowsing));
+        }
+        if (elements.toggleSafesearch) {
+            elements.toggleSafesearch.addEventListener('change', () => handleToggleFeature('safesearch', elements.toggleSafesearch));
+        }
+        if (elements.toggleParental) {
+            elements.toggleParental.addEventListener('change', () => handleToggleFeature('parental', elements.toggleParental));
+        }
+
+        // Copy IP Handlers
+        if (elements.btnCopyLan) {
+            elements.btnCopyLan.addEventListener('click', () => copyToClipboard(currentLanIp, 'IP LAN Router'));
+        }
+        if (elements.btnCopyTailscale) {
+            elements.btnCopyTailscale.addEventListener('click', () => copyToClipboard(currentTailscaleIp, 'IP Tailscale'));
+        }
+
+        // Rules
         if (elements.btnSaveRules) {
             elements.btnSaveRules.addEventListener('click', handleSaveRules);
         }
@@ -611,26 +871,28 @@
         if (elements.btnCancelInstall) elements.btnCancelInstall.addEventListener('click', closeInstallModal);
         if (elements.formInstall) elements.formInstall.addEventListener('submit', handleSubmitInstall);
 
-        // Tutup modal jika klik di backdrop
+        // Backdrop click
         if (elements.modalSettings) {
             elements.modalSettings.addEventListener('click', (e) => {
-                if (e.target === elements.modalSettings) {
-                    closeSettingsModal();
-                }
+                if (e.target === elements.modalSettings) closeSettingsModal();
             });
         }
         if (elements.modalInstall) {
             elements.modalInstall.addEventListener('click', (e) => {
-                if (e.target === elements.modalInstall) {
-                    closeInstallModal();
-                }
+                if (e.target === elements.modalInstall) closeInstallModal();
             });
         }
 
-        // Auto polling saat dokumen aktif
+        // Resize window -> redraw chart
+        window.addEventListener('resize', () => {
+            fetchStatus();
+        });
+
+        // Auto polling
         autoRefreshTimer = setInterval(() => {
             if (!document.hidden) {
                 fetchStatus();
+                fetchQueryLog();
             }
         }, 8000);
     }
@@ -640,7 +902,7 @@
         setupEventListeners();
         fetchStatus();
         fetchRules();
+        fetchQueryLog();
     });
 
 })();
-

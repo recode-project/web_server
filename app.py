@@ -6939,6 +6939,31 @@ def adguard_api_call(endpoint, method='GET', json_body=None, custom_cfg=None):
     except Exception as e:
         return False, str(e), 500
 
+def get_host_network_ips():
+    """Mengambil IP LAN fisik dan IP Tailscale host yang valid untuk DNS"""
+    lan_ips = []
+    tailscale_ips = []
+    try:
+        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'ip', '-j', 'addr'], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            for iface in data:
+                name = iface.get('ifname', '')
+                if name == 'lo' or name.startswith('br-') or name.startswith('docker') or name.startswith('veth') or name.startswith('lxd'):
+                    continue
+                for addr in iface.get('addr_info', []):
+                    if addr.get('family') == 'inet':
+                        ip = addr.get('local')
+                        if ip and not ip.startswith('127.'):
+                            if name.startswith('tailscale') or name.startswith('wg'):
+                                tailscale_ips.append({'name': name, 'ip': ip, 'type': 'Tailscale VPN'})
+                            else:
+                                lan_ips.append({'name': name, 'ip': ip, 'type': 'LAN / Router'})
+    except Exception as e:
+        print(f"[AdBlocker] Error detecting host IPs: {e}")
+        
+    return lan_ips, tailscale_ips
+
 @app.route('/adblocker')
 @login_required
 @requires_permission('adblocker')
@@ -6950,7 +6975,7 @@ def adblocker_page():
 @login_required
 @requires_permission('adblocker')
 def api_adblocker_status():
-    """Mengambil status proteksi dan statistik query AdGuard Home"""
+    """Mengambil status proteksi, statistik query, IP host, dan status fitur keamanan"""
     cfg = get_adblocker_config()
     proto = "https" if cfg.get("tls") else "http"
     base_url = f"{proto}://{cfg.get('host')}:{cfg.get('port')}"
@@ -6970,6 +6995,22 @@ def api_adblocker_status():
     ok_stats, res_stats, code_stats = adguard_api_call('/control/stats')
     stats_data = res_stats if ok_stats and isinstance(res_stats, dict) else {}
 
+    # Ambil IP jaringan host yang valid
+    lan_ips, tailscale_ips = get_host_network_ips()
+    if not lan_ips:
+        # Fallback jika nsenter tidak mengembalikan IP
+        for ip in res_status.get('dns_addresses', []):
+            if ip not in ['127.0.0.1', '::1', '0.0.0.0'] and not ip.startswith('172.') and not ip.startswith('192.168.64.'):
+                if ip.startswith('100.'):
+                    tailscale_ips.append({'name': 'tailscale', 'ip': ip, 'type': 'Tailscale VPN'})
+                else:
+                    lan_ips.append({'name': 'lan', 'ip': ip, 'type': 'LAN / Router'})
+
+    # Ambil status fitur keamanan tambahan
+    ok_sb, sb_st, _ = adguard_api_call('/control/safebrowsing/status')
+    ok_ss, ss_st, _ = adguard_api_call('/control/safesearch/status')
+    ok_par, par_st, _ = adguard_api_call('/control/parental/status')
+
     return jsonify({
         'connected': True,
         'base_url': base_url,
@@ -6978,8 +7019,42 @@ def api_adblocker_status():
         'protection_enabled': res_status.get('protection_enabled', False),
         'dns_addresses': res_status.get('dns_addresses', []),
         'dns_port': res_status.get('dns_port', 53),
-        'version': res_status.get('version', 'Unknown')
+        'version': res_status.get('version', 'Unknown'),
+        'lan_ips': lan_ips,
+        'tailscale_ips': tailscale_ips,
+        'safebrowsing_enabled': sb_st.get('enabled', False) if ok_sb and isinstance(sb_st, dict) else False,
+        'safesearch_enabled': ss_st.get('enabled', False) if ok_ss and isinstance(ss_st, dict) else False,
+        'parental_enabled': par_st.get('enabled', False) if ok_par and isinstance(par_st, dict) else False
     })
+
+@app.route('/api/adblocker/feature/<feature_name>', methods=['POST'])
+@login_required
+@requires_permission('adblocker', 'full')
+def api_adblocker_feature_toggle(feature_name):
+    """Toggle SafeBrowsing, SafeSearch, atau Parental Control"""
+    if feature_name not in ['safebrowsing', 'safesearch', 'parental']:
+        return jsonify({'success': False, 'error': f'Fitur {feature_name} tidak valid'}), 400
+
+    data = request.json or {}
+    enable = bool(data.get('enabled', False))
+    action = 'enable' if enable else 'disable'
+
+    ok, res, code = adguard_api_call(f'/control/{feature_name}/{action}', method='POST')
+    if ok:
+        audit_log('ADBLOCKER_FEATURE', f"{feature_name} set to {enable}", session.get('username'))
+        return jsonify({'success': True, 'feature': feature_name, 'enabled': enable})
+    return jsonify({'success': False, 'error': str(res)}), code
+
+@app.route('/api/adblocker/querylog', methods=['GET'])
+@login_required
+@requires_permission('adblocker')
+def api_adblocker_querylog():
+    """Mengambil riwayat query DNS terakhir"""
+    limit = int(request.args.get('limit', 15))
+    ok, res, code = adguard_api_call(f'/control/querylog?limit={limit}')
+    if ok and isinstance(res, dict):
+        return jsonify({'success': True, 'data': res.get('data', [])})
+    return jsonify({'success': False, 'error': str(res)}), code
 
 @app.route('/api/adblocker/toggle', methods=['POST'])
 @login_required
