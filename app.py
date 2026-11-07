@@ -1371,11 +1371,18 @@ def _can_use_nsenter():
 
 def _build_terminal_command(lxd_target=None):
     """Susun perintah shell sesuai privilege yang benar-benar tersedia."""
-    # Jalankan greeter hanya kalau tool-nya ada, supaya shell tidak mati saat neofetch absen.
+    # Jalankan greeter adaptif sesuai lebar kolom layar (tput cols)
+    # Jika layar sempit (<75 kolom seperti HP portrait), matikan logo ASCII raksasa
     greeter = (
         'clear; '
-        'if command -v fastfetch >/dev/null 2>&1; then fastfetch; '
-        'elif command -v neofetch >/dev/null 2>&1; then neofetch; fi; '
+        'COLS=$(tput cols 2>/dev/null || echo 80); '
+        'if [ "$COLS" -ge 75 ]; then '
+        '  if command -v fastfetch >/dev/null 2>&1; then fastfetch; '
+        '  elif command -v neofetch >/dev/null 2>&1; then neofetch; fi; '
+        'else '
+        '  if command -v fastfetch >/dev/null 2>&1; then fastfetch -l none; '
+        '  elif command -v neofetch >/dev/null 2>&1; then neofetch --off; fi; '
+        'fi; '
         'exec bash -i'
     )
 

@@ -3,7 +3,6 @@ const socket = io();
         let activeTab = null;
         let tabCounter = 0;
         let isReadOnly = false;
-        let currentFontSize = 14;
 
         // ============================================================
         // DETEKSI PERANGKAT SENTUH
@@ -15,6 +14,9 @@ const socket = io();
         const IS_TOUCH = ('ontouchstart' in window) ||
             (navigator.maxTouchPoints > 0) ||
             window.matchMedia('(pointer: coarse)').matches;
+
+        // Font 11px di perangkat sentuh agar kapasitas baris naik menjadi 60-65 kolom
+        let currentFontSize = IS_TOUCH ? 11 : 14;
 
         // Status modifier untuk toolbar mobile (sekali pakai / one-shot)
         let modCtrl = false;
@@ -34,6 +36,10 @@ const socket = io();
         let customCommands = JSON.parse(localStorage.getItem('customCommands') || '[]');
 
         document.addEventListener('DOMContentLoaded', () => {
+            const fontSelect = document.getElementById('font-size');
+            if (fontSelect) {
+                fontSelect.value = String(currentFontSize);
+            }
             addTab(startPath, startCmd ? 'Command' : 'Terminal 1');
             renderCustomCommands();
             initMobileInput();

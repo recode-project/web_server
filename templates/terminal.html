@@ -605,19 +605,21 @@
             #kbd-toggle { display: inline-flex; }
 
             .container {
-                padding: 0.5rem;
-                gap: 0.5rem;
+                padding: 0.25rem;
+                gap: 0.35rem;
+                height: 100dvh;
+                min-height: 100dvh;
             }
 
             .header {
-                padding: 0.5rem 0.6rem;
-                gap: 0.5rem;
+                padding: 0.4rem 0.5rem;
+                gap: 0.4rem;
                 flex-wrap: nowrap;
             }
 
             .header h2 { display: none; }
 
-            .tab { min-width: 110px; padding: 0.45rem 0.7rem; }
+            .tab { min-width: 100px; padding: 0.35rem 0.6rem; font-size: 0.8rem; }
 
             /* Tombol close tab selalu terlihat: tidak ada hover di layar sentuh */
             .tab .close-tab { opacity: 1; }
@@ -626,8 +628,8 @@
             .quick-commands {
                 flex-wrap: nowrap;
                 overflow-x: auto;
-                padding: 0.5rem;
-                gap: 0.5rem;
+                padding: 0.35rem;
+                gap: 0.4rem;
                 -webkit-overflow-scrolling: touch;
             }
 
@@ -639,7 +641,7 @@
             }
 
             .terminal-wrap { 
-                padding: 0.5rem;
+                padding: 0.25rem;
                 min-height: 0;
                 height: 100%;
                 width: 100%;
@@ -657,8 +659,8 @@
             .terminal-container::after { display: none; }
 
             .settings-bar {
-                padding: 0.5rem 0.7rem;
-                gap: 0.8rem;
+                padding: 0.4rem 0.6rem;
+                gap: 0.6rem;
                 font-size: 0.75rem;
             }
 
@@ -803,6 +805,9 @@
         <div class="settings-bar">
             <label>Font:
                 <select id="font-size" onchange="changeFontSize(this.value)">
+                    <option value="9">9px</option>
+                    <option value="10">10px</option>
+                    <option value="11">11px</option>
                     <option value="12">12px</option>
                     <option value="14" selected>14px</option>
                     <option value="16">16px</option>
@@ -834,7 +839,7 @@ Restart App=systemctl restart myapp"></textarea>
         </div>
     </div>
 
-    <script src="/static/terminal.js?v=2"></script>
+    <script src="/static/terminal.js?v=3"></script>
 </body>
 
 </html>
