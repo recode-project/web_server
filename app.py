@@ -1369,33 +1369,20 @@ def _can_use_nsenter():
         return False
 
 
-def _build_terminal_command(lxd_target=None):
-    """Susun perintah shell sesuai privilege yang benar-benar tersedia."""
-    # Jalankan greeter adaptif sesuai lebar kolom layar (tput cols)
-    # Jika layar sempit (<75 kolom seperti HP portrait), matikan logo ASCII raksasa
-    greeter = (
-        'clear; '
-        'COLS=$(tput cols 2>/dev/null || echo 80); '
-        'if [ "$COLS" -ge 75 ]; then '
-        '  if command -v fastfetch >/dev/null 2>&1; then fastfetch; '
-        '  elif command -v neofetch >/dev/null 2>&1; then neofetch; fi; '
-        'else '
-        '  if command -v fastfetch >/dev/null 2>&1; then fastfetch -l none; '
-        '  elif command -v neofetch >/dev/null 2>&1; then neofetch --off; fi; '
-        'fi; '
-        'exec bash -i'
-    )
-
+def _build_terminal_command(lxd_target=None, start_path=None):
+    """Susun perintah shell resmi user ekaharefa identik dengan login SSH asli."""
     if _can_use_nsenter():
         prefix = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
         if lxd_target:
             return prefix + ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
-        return prefix + ['bash', '--login', '-c', greeter]
+        if start_path and start_path not in ['/root', '/', '/home/ekaharefa']:
+            return prefix + ['runuser', '-l', 'ekaharefa', '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
+        return prefix + ['runuser', '-l', 'ekaharefa']
 
     # Fallback: shell lokal tanpa privilege host (dev / non-privileged deployment).
     if lxd_target:
         return ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
-    return ['bash', '--login', '-c', greeter]
+    return ['bash', '--login', '-i']
 
 
 def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_env=None):
@@ -1464,12 +1451,13 @@ def handle_start_terminal(data):
     data = data or {}
     session_id = data.get('session_id', 'default')
     lxd_target = data.get('lxd_target')
+    start_path = data.get('path')
 
     # Satu sesi per session_id: bersihkan sesi lama agar fd/pid tidak bocor.
     if session_id in terminal_sessions:
         handle_stop_terminal({'session_id': session_id})
 
-    cmd = _build_terminal_command(lxd_target)
+    cmd = _build_terminal_command(lxd_target, start_path=start_path)
     _spawn_pty_session(session_id, cmd)
     emit('terminal_started', {'session_id': session_id})
 

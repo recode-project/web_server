@@ -28,7 +28,7 @@ const socket = io();
 
         // URL params
         const urlParams = new URLSearchParams(window.location.search);
-        const startPath = urlParams.get('path') || '/root';
+        const startPath = urlParams.get('path') || '/home/ekaharefa';
         const startCmd = urlParams.get('cmd') || '';
         const lxdTarget = urlParams.get('lxd') || null;
 
