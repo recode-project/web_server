@@ -240,9 +240,10 @@
         /* Toggle Switches */
         .switch {
             position: relative;
-            display: inline-block;
-            width: 56px;
-            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            width: 52px;
+            height: 28px;
             flex-shrink: 0;
         }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -250,34 +251,36 @@
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(255, 255, 255, 0.2);
+            background-color: rgba(255, 255, 255, 0.18);
             transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-radius: 30px;
+            border-radius: 28px;
             border: 1px solid rgba(255, 255, 255, 0.15);
         }
         .slider:before {
             position: absolute;
             content: "";
-            height: 22px;
-            width: 22px;
+            height: 20px;
+            width: 20px;
             left: 3px;
-            top: 3px;
+            top: 50%;
+            transform: translateY(-50%);
             background-color: white;
             transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 50%;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
         }
         input:checked + .slider {
             background-color: var(--accent-green);
             box-shadow: 0 0 16px var(--accent-green-glow);
         }
-        input:checked + .slider:before { transform: translateX(26px); }
+        input:checked + .slider:before { transform: translate(24px, -50%); }
 
         /* Small / Compact Switch for Quick Toggles */
         .switch-sm {
             position: relative;
-            display: inline-block;
-            width: 46px;
+            display: inline-flex;
+            align-items: center;
+            width: 44px;
             height: 24px;
             flex-shrink: 0;
         }
@@ -286,7 +289,7 @@
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: rgba(255, 255, 255, 0.2);
+            background-color: rgba(255, 255, 255, 0.18);
             transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 24px;
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -294,11 +297,11 @@
         .switch-sm .slider:before {
             position: absolute;
             content: "";
-            height: 18px;
-            width: 18px;
-            left: 2px;
-            top: 2px;
-            bottom: auto;
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            top: 50%;
+            transform: translateY(-50%);
             background-color: white;
             transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 50%;
@@ -309,7 +312,7 @@
             box-shadow: 0 0 12px var(--accent-green-glow);
         }
         .switch-sm input:checked + .slider:before {
-            transform: translateX(22px);
+            transform: translate(20px, -50%);
         }
 
         /* Quick Security Toggles Bar */
@@ -524,10 +527,10 @@
             color: #fff;
         }
 
-        /* Analytics Dual Panel */
+        /* Analytics 3-Column Panel */
         .analytics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 1.5rem;
             margin-bottom: 1.8rem;
         }
@@ -536,6 +539,7 @@
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            min-width: 0;
         }
         .panel-title {
             font-size: 1.05rem;
@@ -545,6 +549,8 @@
             justify-content: space-between;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             padding-bottom: 0.8rem;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
         .panel-title span {
             display: flex;
@@ -553,7 +559,7 @@
         }
         .table-wrap {
             overflow-x: auto;
-            max-height: 360px;
+            max-height: 380px;
         }
         table.data-table {
             width: 100%;
@@ -569,6 +575,7 @@
             position: sticky;
             top: 0;
             background: rgba(26, 28, 42, 0.95);
+            z-index: 2;
         }
         table.data-table td {
             padding: 0.65rem 0.8rem;
@@ -597,6 +604,122 @@
             padding: 2rem 1rem;
             color: var(--text-muted);
             font-size: 0.85rem;
+        }
+
+        /* Top Clients Specific UI */
+        .client-info-cell {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 0;
+        }
+        .client-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        .client-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .client-name-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .client-name {
+            font-weight: 600;
+            color: #fff;
+            font-size: 0.85rem;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-edit-client {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-edit-client:hover {
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.15);
+        }
+        .client-ip-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .client-ip {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .client-tag {
+            font-size: 0.65rem;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            font-weight: 600;
+        }
+        .client-stat-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.3rem;
+        }
+        .client-count-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+        }
+        .client-count {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: #38bdf8;
+        }
+        .client-percent {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .client-progress-bar {
+            width: 80px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .client-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.4s ease;
+        }
+        .client-progress-fill.green {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+        .client-progress-fill.amber {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+        .client-progress-fill.blue {
+            background: linear-gradient(90deg, #38bdf8, #0284c7);
         }
 
         /* Live Query Log Section */
@@ -1026,22 +1149,27 @@
                 </div>
             </div>
 
-            <!-- Top Clients -->
-            <div class="glass panel-card" style="grid-column: 1 / -1;">
+            <!-- Top Active Clients -->
+            <div class="glass panel-card">
                 <div class="panel-title">
-                    <span><i class="fa-solid fa-laptop-code" style="color: #a855f7;"></i> Top Active Clients</span>
-                    <span id="badge-top-clients" class="count-badge">0 Klien</span>
+                    <span><i class="fa-solid fa-users-gear" style="color: #a855f7;"></i> Klien Teratas</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span id="badge-top-clients" class="count-badge">0 Klien</span>
+                        <button class="btn-action" id="btn-refresh-clients" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" title="Refresh Data Klien">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="table-wrap">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Client IP / Host</th>
-                                <th style="text-align: right;">Total Permintaan</th>
+                                <th>Klien & Perangkat</th>
+                                <th style="text-align: right;">Permintaan</th>
                             </tr>
                         </thead>
                         <tbody id="table-clients-body">
-                            <tr><td colspan="2" class="empty-hint">Memuat data...</td></tr>
+                            <tr><td colspan="2" class="empty-hint">Memuat data klien...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1167,6 +1295,32 @@
                     <button type="button" class="btn-action" id="btn-cancel-install">Batal</button>
                     <button type="submit" class="btn-action primary" id="btn-submit-install">
                         <i class="fa-solid fa-rocket"></i> Pasang Sekarang
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rename Client Modal -->
+    <div class="modal-overlay" id="modal-rename-client">
+        <div class="modal-box" style="max-width: 440px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-pen-to-square" style="color: #38bdf8;"></i> Beri Nama Perangkat</h3>
+                <button class="modal-close-btn" id="btn-close-rename-modal">&times;</button>
+            </div>
+            <form id="form-rename-client" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="rename-client-ip">Alamat IP Klien</label>
+                    <input type="text" id="rename-client-ip" readonly style="opacity: 0.75; cursor: not-allowed; font-family: monospace;">
+                </div>
+                <div class="form-group" style="margin-top: 0.8rem;">
+                    <label for="rename-client-name">Nama / Alias Perangkat</label>
+                    <input type="text" id="rename-client-name" placeholder="Misal: HP Tuan Eka, Laptop Lenovo, Smart TV" required autofocus>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-action" id="btn-cancel-rename">Batal</button>
+                    <button type="submit" class="btn-action primary" id="btn-submit-rename">
+                        <i class="fa-solid fa-floppy-disk"></i> Simpan Nama
                     </button>
                 </div>
             </form>

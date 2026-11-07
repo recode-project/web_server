@@ -7011,12 +7011,61 @@ def api_adblocker_status():
     ok_ss, ss_st, _ = adguard_api_call('/control/safesearch/status')
     ok_par, par_st, _ = adguard_api_call('/control/parental/status')
 
+    # Format Klien Teratas dengan Nama Perangkat (Device Name) & Rasio Persentase
+    client_names = {}
+    ok_c, clients_data, _ = adguard_api_call('/control/clients')
+    if ok_c and isinstance(clients_data, dict):
+        for c in (clients_data.get('clients') or []):
+            c_name = c.get('name', '')
+            for cid in (c.get('ids') or []):
+                client_names[cid] = c_name
+        for ac in (clients_data.get('auto_clients') or []):
+            ac_name = ac.get('name', '')
+            ac_ip = ac.get('ip', '')
+            if ac_ip and ac_name and ac_ip not in client_names:
+                client_names[ac_ip] = ac_name
+
+    raw_clients = stats_data.get('top_clients', [])
+    total_q = stats_data.get('num_dns_queries', 0)
+    formatted_clients = []
+
+    lan_ip_values = [x.get('ip') for x in lan_ips]
+    for item in raw_clients:
+        if isinstance(item, dict):
+            for ip, count in item.items():
+                name = client_names.get(ip, '')
+                # Heuristik otomatis nama jika belum dinamai
+                if not name:
+                    if ip == '192.168.1.1':
+                        name = 'Router / Gateway'
+                    elif ip == '192.168.64.1' or ip in lan_ip_values:
+                        name = 'Host Server (ekaharefa)'
+                    elif ip.startswith('100.'):
+                        name = 'Klien Tailscale'
+                    else:
+                        try:
+                            resolved = socket.gethostbyaddr(ip)[0]
+                            if resolved and resolved != ip:
+                                name = resolved
+                        except Exception:
+                            pass
+
+                pct = round((count / total_q * 100), 2) if total_q > 0 else 0
+                formatted_clients.append({
+                    'ip': ip,
+                    'name': name or 'Perangkat Tanpa Nama',
+                    'has_custom_name': bool(name and name != 'Perangkat Tanpa Nama'),
+                    'count': count,
+                    'percent': pct
+                })
+
     return jsonify({
         'connected': True,
         'base_url': base_url,
         'web_port': cfg.get('port', 8053),
         'status': res_status,
         'stats': stats_data,
+        'top_clients_formatted': formatted_clients,
         'protection_enabled': res_status.get('protection_enabled', False),
         'dns_addresses': res_status.get('dns_addresses', []),
         'dns_port': res_status.get('dns_port', 53),
@@ -7027,6 +7076,53 @@ def api_adblocker_status():
         'safesearch_enabled': ss_st.get('enabled', False) if ok_ss and isinstance(ss_st, dict) else False,
         'parental_enabled': par_st.get('enabled', False) if ok_par and isinstance(par_st, dict) else False
     })
+
+@app.route('/api/adblocker/client/rename', methods=['POST'])
+@login_required
+@requires_permission('adblocker', 'full')
+def api_adblocker_client_rename():
+    """Memberi nama atau alias pada perangkat / client IP di AdGuard Home"""
+    data = request.json or {}
+    ip = str(data.get('ip', '')).strip()
+    name = str(data.get('name', '')).strip()
+
+    if not ip or not name:
+        return jsonify({'success': False, 'error': 'Alamat IP dan nama perangkat wajib diisi'}), 400
+
+    # Cek apakah client sudah ada di AdGuard
+    ok_f, find_res, _ = adguard_api_call(f'/control/clients/find?ip0={ip}')
+    client_exists = False
+    old_name = None
+    if ok_f and isinstance(find_res, list) and len(find_res) > 0:
+        c_info = find_res[0].get(ip, {})
+        if c_info.get('name'):
+            client_exists = True
+            old_name = c_info.get('name')
+
+    if client_exists and old_name:
+        payload = {
+            'name': old_name,
+            'data': {
+                'name': name,
+                'ids': [ip],
+                'use_global_settings': True,
+                'filtering_enabled': True
+            }
+        }
+        ok, res, code = adguard_api_call('/control/clients/update', method='POST', json_body=payload)
+    else:
+        payload = {
+            'name': name,
+            'ids': [ip],
+            'use_global_settings': True,
+            'filtering_enabled': True
+        }
+        ok, res, code = adguard_api_call('/control/clients/add', method='POST', json_body=payload)
+
+    if ok:
+        audit_log('ADBLOCKER_CLIENT_RENAME', f"Renamed client {ip} to '{name}'", session.get('username'))
+        return jsonify({'success': True, 'message': f"Perangkat {ip} berhasil dinamai '{name}'."})
+    return jsonify({'success': False, 'error': str(res)}), code
 
 @app.route('/api/adblocker/feature/<feature_name>', methods=['POST'])
 @login_required

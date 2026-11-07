@@ -68,6 +68,15 @@
         badgeTopBlocked: document.getElementById('badge-top-blocked'),
         badgeTopQueried: document.getElementById('badge-top-queried'),
         badgeTopClients: document.getElementById('badge-top-clients'),
+        btnRefreshClients: document.getElementById('btn-refresh-clients'),
+        // Rename Client Modal
+        modalRenameClient: document.getElementById('modal-rename-client'),
+        btnCloseRenameModal: document.getElementById('btn-close-rename-modal'),
+        btnCancelRename: document.getElementById('btn-cancel-rename'),
+        formRenameClient: document.getElementById('form-rename-client'),
+        btnSubmitRename: document.getElementById('btn-submit-rename'),
+        renameClientIp: document.getElementById('rename-client-ip'),
+        renameClientName: document.getElementById('rename-client-name'),
         // Query Log
         tableQuerylogBody: document.getElementById('table-querylog-body'),
         btnRefreshLog: document.getElementById('btn-refresh-log'),
@@ -274,7 +283,7 @@
         // Render Tables
         renderDomainTable(elements.tableBlockedBody, elements.badgeTopBlocked, stats.top_blocked_domains || [], 'Blokir', 'Domain');
         renderDomainTable(elements.tableQueriedBody, elements.badgeTopQueried, stats.top_queried_domains || [], 'Permintaan', 'Domain');
-        renderClientsTable(elements.tableClientsBody, elements.badgeTopClients, stats.top_clients || []);
+        renderClientsTable(elements.tableClientsBody, elements.badgeTopClients, data.top_clients_formatted || stats.top_clients || [], total);
     }
 
     /**
@@ -436,9 +445,41 @@
     }
 
     /**
-     * Render daftar klien teraktif
+     * Menentukan icon perangkat berdasarkan nama dan IP
      */
-    function renderClientsTable(tbody, badge, clients) {
+    function getDeviceIcon(name, ip) {
+        const lowerName = (name || '').toLowerCase();
+        if (lowerName.includes('router') || lowerName.includes('gateway') || ip === '192.168.1.1') {
+            return 'fa-solid fa-network-wired';
+        }
+        if (lowerName.includes('phone') || lowerName.includes('hp') || lowerName.includes('android') || lowerName.includes('iphone') || lowerName.includes('ipad') || lowerName.includes('mobile')) {
+            return 'fa-solid fa-mobile-screen';
+        }
+        if (lowerName.includes('server') || lowerName.includes('ekaharefa') || lowerName.includes('host') || lowerName.includes('lenovo')) {
+            return 'fa-solid fa-server';
+        }
+        if (lowerName.includes('laptop') || lowerName.includes('pc') || lowerName.includes('desktop') || lowerName.includes('computer') || lowerName.includes('macbook')) {
+            return 'fa-solid fa-laptop';
+        }
+        if (lowerName.includes('tv') || lowerName.includes('smarttv') || lowerName.includes('stb')) {
+            return 'fa-solid fa-tv';
+        }
+        return 'fa-solid fa-desktop';
+    }
+
+    /**
+     * Menentukan warna progress bar berdasarkan persentase
+     */
+    function getProgressClass(percent) {
+        if (percent >= 40) return 'green';
+        if (percent >= 10) return 'amber';
+        return 'blue';
+    }
+
+    /**
+     * Render daftar klien teratas lengkap dengan Nama Perangkat, Ikon, Persentase, dan Tombol Rename
+     */
+    function renderClientsTable(tbody, badge, clients, totalQueries = 0) {
         if (!tbody) return;
 
         if (!clients || clients.length === 0) {
@@ -450,29 +491,145 @@
         if (badge) badge.textContent = `${clients.length} Klien`;
 
         tbody.innerHTML = clients.slice(0, 10).map(item => {
-            let clientIp = '';
+            let ip = '';
+            let name = '';
             let count = 0;
+            let percent = 0;
+            let hasCustomName = false;
 
-            if (typeof item === 'object') {
-                const keys = Object.keys(item);
-                if (keys.length > 0) {
-                    clientIp = keys[0];
-                    count = item[clientIp];
+            if (item && typeof item === 'object') {
+                if ('ip' in item && 'count' in item) {
+                    ip = item.ip;
+                    name = item.name || 'Perangkat Tanpa Nama';
+                    count = item.count;
+                    percent = item.percent || 0;
+                    hasCustomName = Boolean(item.has_custom_name);
+                } else {
+                    const keys = Object.keys(item);
+                    if (keys.length > 0) {
+                        ip = keys[0];
+                        count = item[ip];
+                        name = ip === '192.168.1.1' ? 'Router / Gateway' : 'Perangkat Tanpa Nama';
+                        percent = totalQueries > 0 ? Number(((count / totalQueries) * 100).toFixed(2)) : 0;
+                    }
                 }
             }
+
+            const deviceIcon = getDeviceIcon(name, ip);
+            const progressClass = getProgressClass(percent);
+            const displayPercent = percent > 0 ? `${percent}%` : '<1%';
 
             return `
                 <tr>
                     <td>
-                        <i class="fa-solid fa-desktop" style="color: #a855f7; margin-right: 6px;"></i>
-                        <span class="domain-name">${escapeHtml(clientIp)}</span>
+                        <div class="client-info-cell">
+                            <div class="client-avatar" title="${escapeHtml(name)}">
+                                <i class="${deviceIcon}"></i>
+                            </div>
+                            <div class="client-meta">
+                                <div class="client-name-row">
+                                    <span class="client-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                                    <button type="button" class="btn-edit-client" data-ip="${escapeHtml(ip)}" data-name="${escapeHtml(name)}" title="Ganti Nama Perangkat">
+                                        <i class="fa-solid fa-pencil"></i>
+                                    </button>
+                                </div>
+                                <div class="client-ip-row">
+                                    <span class="client-ip">${escapeHtml(ip)}</span>
+                                    ${hasCustomName ? '<span class="client-tag">Kustom</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
                     </td>
-                    <td style="text-align: right;">
-                        <span class="count-badge">${formatNumber(count)} req</span>
+                    <td style="text-align: right; vertical-align: middle;">
+                        <div class="client-stat-cell">
+                            <div class="client-count-row">
+                                <strong class="client-count">${formatNumber(count)}</strong>
+                                <span class="client-percent">${displayPercent}</span>
+                            </div>
+                            <div class="client-progress-bar" title="${displayPercent} dari total query">
+                                <div class="client-progress-fill ${progressClass}" style="width: ${Math.min(100, Math.max(3, percent))}%;"></div>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
+
+        // Pasang event listener untuk tombol edit / rename klien
+        const editButtons = tbody.querySelectorAll('.btn-edit-client');
+        editButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetIp = btn.getAttribute('data-ip');
+                const targetName = btn.getAttribute('data-name');
+                openRenameModal(targetIp, targetName);
+            });
+        });
+    }
+
+    /**
+     * Modal Rename Client
+     */
+    function openRenameModal(ip, currentName) {
+        if (!elements.modalRenameClient) return;
+
+        if (elements.renameClientIp) elements.renameClientIp.value = ip || '';
+        if (elements.renameClientName) {
+            elements.renameClientName.value = (currentName && currentName !== 'Perangkat Tanpa Nama') ? currentName : '';
+        }
+
+        elements.modalRenameClient.classList.add('open');
+        setTimeout(() => {
+            if (elements.renameClientName) elements.renameClientName.focus();
+        }, 100);
+    }
+
+    function closeRenameModal() {
+        if (!elements.modalRenameClient) return;
+        elements.modalRenameClient.classList.remove('open');
+    }
+
+    async function handleSubmitRename(e) {
+        e.preventDefault();
+
+        const ip = elements.renameClientIp ? elements.renameClientIp.value.trim() : '';
+        const name = elements.renameClientName ? elements.renameClientName.value.trim() : '';
+
+        if (!ip || !name) {
+            showToast('Nama perangkat tidak boleh kosong', 'error');
+            return;
+        }
+
+        const btn = elements.btnSubmitRename;
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+        }
+
+        try {
+            const res = await fetch('/api/adblocker/client/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, name })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                showToast(data.message || `Perangkat ${ip} berhasil dinamai.`, 'success');
+                closeRenameModal();
+                await fetchStatus();
+            } else {
+                showToast(`Gagal: ${data.error || 'Terjadi kesalahan'}`, 'error');
+            }
+        } catch (err) {
+            showToast(`Kesalahan jaringan: ${err.message}`, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
     }
 
     /**
@@ -864,6 +1021,17 @@
         if (elements.btnCancelSettings) elements.btnCancelSettings.addEventListener('click', closeSettingsModal);
         if (elements.formSettings) elements.formSettings.addEventListener('submit', handleSaveSettings);
 
+        // Rename Client Modal triggers
+        if (elements.btnRefreshClients) {
+            elements.btnRefreshClients.addEventListener('click', () => {
+                showToast('Memperbarui daftar klien...', 'success');
+                fetchStatus();
+            });
+        }
+        if (elements.btnCloseRenameModal) elements.btnCloseRenameModal.addEventListener('click', closeRenameModal);
+        if (elements.btnCancelRename) elements.btnCancelRename.addEventListener('click', closeRenameModal);
+        if (elements.formRenameClient) elements.formRenameClient.addEventListener('submit', handleSubmitRename);
+
         // Install Modal triggers
         if (elements.btnOpenInstall) elements.btnOpenInstall.addEventListener('click', openInstallModal);
         if (elements.btnCloseInstallModal) elements.btnCloseInstallModal.addEventListener('click', closeInstallModal);
@@ -874,6 +1042,11 @@
         if (elements.modalSettings) {
             elements.modalSettings.addEventListener('click', (e) => {
                 if (e.target === elements.modalSettings) closeSettingsModal();
+            });
+        }
+        if (elements.modalRenameClient) {
+            elements.modalRenameClient.addEventListener('click', (e) => {
+                if (e.target === elements.modalRenameClient) closeRenameModal();
             });
         }
         if (elements.modalInstall) {
