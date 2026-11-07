@@ -631,14 +631,11 @@ const socket = io();
 
         socket.on('terminal_error', data => {
             console.error('Terminal error:', data);
-            const msg = data && data.error ? data.error : 'Unknown error';
+            const msg = (data && data.error) ? data.error : 'Unknown error';
             if (activeTab && terminals[activeTab]) {
-                terminals[activeTab].term.write('
-[1;31m[TERMINAL ERROR: ' + msg + '][0m
-');
+                terminals[activeTab].term.write('\r\n\x1b[1;31m[TERMINAL ERROR: ' + msg + ']\x1b[0m\r\n');
             }
         });
-
         socket.on('connect_error', err => {
             console.error('Socket connect error:', err);
         });
