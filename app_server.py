@@ -1,6 +1,7 @@
 import psutil
 import platform
 import socket
+import re
 from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, stream_with_context
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -193,12 +194,121 @@ AUDIT_LOG_FILE = os.path.join(DATA_DIR, 'audit.log')
 LOGIN_ATTEMPTS_FILE = os.path.join(DATA_DIR, 'login_attempts.json')
 APP_SETTINGS_FILE = os.path.join(DATA_DIR, 'app_settings.json')
 
+# ============ AUTO-DETECT DEVICE NAME ============
+_STALE_SERVER_NAMES = {
+    'amlogic server',
+    'my server',
+    'my dashboard',
+}
+
+
+def _read_host_text(path):
+    """Read a sysfs/procfs node, stripping NUL bytes and whitespace."""
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read().strip(b'\x00 \t\r\n')
+        val = raw.decode('utf-8', errors='ignore').strip()
+        return val or None
+    except Exception:
+        return None
+
+
+def _looks_like_sku(s):
+    """Heuristic for OEM machine codes like '10MR000XGE' / '82K2001BID'."""
+    if not s:
+        return False
+    if any(ch.islower() or ch.isspace() or ch in '._:/,()' for ch in s):
+        return False
+    return bool(re.fullmatch(r'[A-Z0-9][A-Z0-9\-]{3,}', s)) and any(ch.isdigit() for ch in s)
+
+
+def _clean_vendor(v):
+    """Tidy a DMI vendor string ('LENOVO' -> 'Lenovo')."""
+    if not v:
+        return None
+    v = v.strip()
+    if v.isupper():
+        v = v.title()
+    v = re.sub(r'\s+(inc|corp|corporation|co|ltd|llc|computer inc|technologies|gmbh)\.?$', '', v, flags=re.I).strip()
+    v = v.replace('ASUSTeK', 'ASUS').replace('asustek', 'ASUS').replace('Gigabyte Technology', 'Gigabyte')
+    return v or None
+
+
+def detect_device_name():
+    """Auto-detect a human-friendly device/model name.
+
+    Honors the HOST_SYS / HOST_PROC mounts from docker-compose.yml so it
+    works inside the container (privileged + /sys and /proc mounted ro).
+    """
+    host_sys = os.environ.get('HOST_SYS', '/sys')
+    host_proc = os.environ.get('HOST_PROC', '/proc')
+
+    # 1) ARM / embedded boards expose their model via device-tree
+    dt_paths = [
+        os.path.join(host_sys, 'firmware', 'devicetree', 'base', 'model'),
+        os.path.join(host_proc, 'device-tree', 'model'),
+        '/proc/device-tree/model',
+    ]
+    for p in dt_paths:
+        model = _read_host_text(p)
+        if model:
+            return model
+
+    # 2) Standard x86 PCs via DMI sysfs
+    dmi = os.path.join(host_sys, 'class', 'dmi', 'id')
+    vendor = _clean_vendor(_read_host_text(os.path.join(dmi, 'sys_vendor')))
+    product_name = _read_host_text(os.path.join(dmi, 'product_name'))
+    product_version = _read_host_text(os.path.join(dmi, 'product_version'))
+    product_family = _read_host_text(os.path.join(dmi, 'product_family'))
+    board_name = _read_host_text(os.path.join(dmi, 'board_name'))
+
+    def _usable(s):
+        if not s:
+            return None
+        s = s.strip()
+        if s.lower() in (
+            'not specified', 'unknown', 'to be filled by o.e.m.', 'default string',
+            'o.e.m.', 'system product name', 'system version', 'none', 'standard',
+            'to be filled by oem',
+        ):
+            return None
+        return s
+
+    name = _usable(product_name)
+    version = _usable(product_version)
+    family = _usable(product_family)
+    board = _usable(board_name)
+
+    # Prefer the friendly model string, skip OEM SKU codes like '10MR000XGE'
+    model = None
+    if name and not _looks_like_sku(name):
+        model = name
+    elif version:
+        model = version
+    elif family:
+        model = family
+    elif name:
+        model = name
+    elif board:
+        model = board
+
+    if model:
+        if vendor and vendor.lower() not in model.lower():
+            return (vendor + ' ' + model).strip()
+        return model
+
+    # 3) Fallback to hostname
+    try:
+        hn = socket.gethostname() or platform.node()
+    except Exception:
+        hn = None
+    return hn or 'Eka Dashboard Server'
 
 
 def load_app_settings():
     default_settings = {
         'general': {
-            'server_name': 'Amlogic Server',
+            'server_name': detect_device_name(),
             'timezone': 'Asia/Jakarta',
             'time_format': '24h',
             'date_format': 'DD/MM/YYYY'
@@ -255,10 +365,17 @@ def load_app_settings():
                             default_settings[key] = {**default_settings[key], **saved[key]}
                         else:
                             default_settings[key] = saved[key]
-                return default_settings
     except Exception as e:
         print(f"!!! CRITICAL: Failed to load settings file: {e}")
-        pass
+
+    # Auto-detect device name: override empty/stale defaults so every install
+    # shows its real device (e.g. 'Lenovo ThinkCentre M710q') automatically.
+    general = default_settings.get('general') or {}
+    server_name = (general.get('server_name') or '').strip()
+    if not server_name or server_name.lower() in _STALE_SERVER_NAMES:
+        general['server_name'] = detect_device_name()
+        default_settings['general'] = general
+
     return default_settings
 
 def save_app_settings(settings):
@@ -1654,7 +1771,12 @@ def get_monitoring_config():
         'enabled': mqtt.get('enabled', False),
         'devices': mqtt.get('devices', [])
     }
-    return jsonify({'mqtt': safe_mqtt})
+    general = settings.get('general', {})
+    return jsonify({
+        'mqtt': safe_mqtt,
+        'server_name': (general.get('server_name') or '').strip() or detect_device_name(),
+        'hostname': socket.gethostname()
+    })
 
 @app.route('/api/settings')
 @login_required

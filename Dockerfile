@@ -24,6 +24,9 @@ RUN gcc -o file_lister file_lister.c
 # Expose port Flask (default 5000, tapi kita pakai Gunicorn nanti di 80/custom)
 EXPOSE 5000
 
+# kiro-cli wrapper (reads credentials from host via /host/root mount)
+RUN printf '#!/bin/bash\nHOME=/host/root/home/ekaharefa exec /host/root/home/ekaharefa/.local/bin/kiro-cli "$@"\n' > /usr/local/bin/kiro-cli && chmod +x /usr/local/bin/kiro-cli
+
 # Environment Variable biar Python output langsung tampil di logs
 ENV PYTHONUNBUFFERED=1
 

@@ -466,7 +466,7 @@
         <div class="status-bar">
             <div class="server-name">
                 <span class="dot"></span>
-                Amlogic Server
+                <span id="server-name-text">Server</span>
             </div>
             <div class="status-info">
                 <span><i class="fa-solid fa-clock"></i> Uptime: <strong id="uptime">--</strong></span>
@@ -984,6 +984,15 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             initHomeMonitor();
+
+            // Auto-fill server name from backend device auto-detection
+            fetch('/api/monitoring/config')
+                .then(r => r.json())
+                .then(s => {
+                    const el = document.getElementById('server-name-text');
+                    if (el && s.server_name) el.textContent = s.server_name;
+                })
+                .catch(() => {});
 
             // Handle Access Denied Redirects (e.g. from Terminal access attempt)
             const urlParams = new URLSearchParams(window.location.search);

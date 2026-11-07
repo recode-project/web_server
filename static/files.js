@@ -40,6 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function loadDrives() {
     viewMode = 'drives';
     currentPath = 'drives://';
+
+    const lmBtn = document.getElementById('btn-load-more');
+    if (lmBtn) lmBtn.style.display = 'none';
     
     document.getElementById('file-list').innerHTML = '';
     document.getElementById('status-text').textContent = 'Loading drives...';
@@ -206,6 +209,9 @@ function loadFiles(path, page = 1) {
             hasMore = data.has_more;
             currentPage = page;
 
+            const lmBtn = document.getElementById('btn-load-more');
+            if (lmBtn) lmBtn.style.display = hasMore ? 'block' : 'none';
+
             document.getElementById('status-text').textContent = `${data.total || 0} items`;
             document.getElementById('status-path').textContent = currentPath;
         })
@@ -213,6 +219,12 @@ function loadFiles(path, page = 1) {
             console.error(err);
             isLoading = false;
         });
+}
+
+function loadMore() {
+    if (hasMore && !isLoading) {
+        loadFiles(currentPath, currentPage + 1);
+    }
 }
 
 function updateSidebarActive(path) {

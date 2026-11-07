@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Terminal - Server Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -426,6 +426,218 @@
             gap: 1rem;
             justify-content: flex-end;
         }
+
+        /* ============================================================
+           MOBILE TYPING — KETIK LANGSUNG DI DALAM TERMINAL
+           xterm.js menaruh textarea helper-nya di `left: -9999em`
+           dengan ukuran 0x0 dan z-index negatif. Browser mobile
+           menolak memunculkan keyboard virtual untuk elemen seperti itu.
+           Di perangkat sentuh kita tarik textarea tersebut ke dalam
+           viewport dan bentangkan setransparan mungkin di atas kanvas
+           terminal, sehingga tap = fokus = keyboard muncul, dan semua
+           ketikan langsung masuk ke PTY lewat jalur xterm sendiri.
+           ============================================================ */
+        .terminal-wrap .xterm-helper-textarea.mobile-typing {
+            /* Ditarik ke dalam viewport (aslinya left:-9999em, 0x0) karena
+               browser mobile menolak memunculkan keyboard untuk elemen
+               nol-ukuran di luar layar. Dibuat pipih dan pointer-events:none
+               supaya sentuh/scroll pada kanvas terminal tetap normal —
+               fokus diberikan secara programatis dari handler tap. */
+            position: absolute !important;
+            left: 0 !important;
+            bottom: 0 !important;
+            top: auto !important;
+            width: 100% !important;
+            height: 22px !important;
+            z-index: 1 !important;
+            pointer-events: none !important;
+            opacity: 0.01 !important;
+            background: transparent !important;
+            color: transparent !important;
+            caret-color: transparent !important;
+            border: 0 !important;
+            outline: none !important;
+            resize: none !important;
+            overflow: hidden !important;
+            /* 16px mencegah iOS Safari auto-zoom saat fokus */
+            font-size: 16px !important;
+        }
+
+        /* ============================================================
+           MOBILE INPUT BAR (FALLBACK)
+           Disembunyikan secara default. Hanya dipakai jika ketik
+           langsung bermasalah di HP tertentu.
+           ============================================================ */
+        .mobile-bar {
+            display: none;
+            flex-direction: column;
+            gap: 0.5rem;
+            background: rgba(20, 20, 30, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 14px;
+            padding: 0.6rem;
+        }
+
+        .mobile-bar.visible {
+            display: flex;
+        }
+
+        /* Baris text field hanya tampil saat mode fallback aktif */
+        .mobile-input-row {
+            display: none;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .mobile-bar.fallback .mobile-input-row {
+            display: flex;
+        }
+
+        #mobile-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(85, 239, 196, 0.25);
+            color: #55efc4;
+            /* 16px wajib: mencegah iOS Safari auto-zoom saat input fokus */
+            font-size: 16px;
+            font-family: 'Consolas', Monaco, monospace;
+            padding: 0.6rem 0.8rem;
+            border-radius: 10px;
+            outline: none;
+            min-width: 0;
+        }
+
+        #mobile-input:focus {
+            border-color: #55efc4;
+            box-shadow: 0 0 12px rgba(85, 239, 196, 0.15);
+        }
+
+        .mobile-send {
+            background: rgba(85, 239, 196, 0.15);
+            border: 1px solid rgba(85, 239, 196, 0.4);
+            color: #55efc4;
+            padding: 0.6rem 0.9rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .mobile-send:active {
+            background: rgba(85, 239, 196, 0.3);
+        }
+
+        .mobile-keys {
+            display: flex;
+            gap: 0.35rem;
+            overflow-x: auto;
+            padding-bottom: 0.2rem;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .mobile-keys::-webkit-scrollbar { height: 3px; }
+        .mobile-keys::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .key-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #c9d1d9;
+            /* Target sentuh minimal 40px untuk aksesibilitas */
+            min-width: 42px;
+            min-height: 40px;
+            padding: 0 0.6rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-family: 'Consolas', monospace;
+            font-weight: 600;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .key-btn:active {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        /* Modifier (CTRL/ALT) dalam kondisi armed/aktif */
+        .key-btn.armed {
+            background: rgba(255, 189, 46, 0.2);
+            border-color: rgba(255, 189, 46, 0.6);
+            color: #ffbd2e;
+        }
+
+        .key-btn.danger {
+            color: #ff7675;
+            border-color: rgba(255, 118, 117, 0.3);
+        }
+
+        /* Tombol toggle keyboard di header */
+        #kbd-toggle { display: none; }
+
+        /* ============================================================
+           RESPONSIVE / VIEWPORT
+           100dvh dipakai agar area terminal tidak tertutup keyboard
+           virtual (100vh tidak menyusut saat keyboard muncul).
+           ============================================================ */
+        body {
+            min-height: 100dvh;
+        }
+
+        .container {
+            height: 100dvh;
+        }
+
+        @media (max-width: 900px), (pointer: coarse) {
+            #kbd-toggle { display: inline-flex; }
+
+            .container {
+                padding: 0.5rem;
+                gap: 0.5rem;
+            }
+
+            .header {
+                padding: 0.5rem 0.6rem;
+                gap: 0.5rem;
+                flex-wrap: nowrap;
+            }
+
+            .header h2 { display: none; }
+
+            .tab { min-width: 110px; padding: 0.45rem 0.7rem; }
+
+            /* Tombol close tab selalu terlihat: tidak ada hover di layar sentuh */
+            .tab .close-tab { opacity: 1; }
+
+            /* Panel quick command dilipat jadi satu baris yang bisa di-scroll */
+            .quick-commands {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding: 0.5rem;
+                gap: 0.5rem;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .cmd-category { flex-shrink: 0; }
+
+            .terminal-wrap { padding: 0.5rem; }
+
+            /* Judul window Mac disembunyikan untuk menghemat tinggi layar */
+            .terminal-container::before,
+            .terminal-container::after { display: none; }
+
+            .settings-bar {
+                padding: 0.5rem 0.7rem;
+                gap: 0.8rem;
+                font-size: 0.75rem;
+            }
+
+            .settings-bar .hint-desktop { display: none; }
+
+            /* Blob dekoratif dimatikan: filter blur berat di GPU mobile */
+            body::before,
+            body::after { display: none; }
+        }
     </style>
 </head>
 
@@ -440,6 +652,8 @@
             <div class="tabs" id="tabs"></div>
 
             <button class="btn" onclick="addTab()"><i class="fa-solid fa-plus"></i></button>
+            <button class="btn" id="kbd-toggle" onclick="toggleMobileBar()" title="Tampilkan/sembunyikan keyboard"
+                aria-label="Tampilkan atau sembunyikan input keyboard"><i class="fa-solid fa-keyboard"></i></button>
             <button class="btn" onclick="showCustomCmdModal()"><i class="fa-solid fa-gear"></i></button>
         </div>
 
@@ -513,6 +727,48 @@
         <!-- Terminal Area -->
         <div class="terminal-container" id="terminal-container"></div>
 
+        <!--
+            Mobile Input Bar
+            Aktif otomatis pada perangkat sentuh. Mengirim input ke PTY lewat
+            socket 'terminal_input' sama seperti xterm.onData, jadi tidak ada
+            perubahan protokol di sisi server.
+        -->
+        <div class="mobile-bar" id="mobile-bar">
+            <div class="mobile-keys" id="mobile-keys">
+                <button class="key-btn" data-action="mode" id="key-mode" aria-label="Ganti mode input"
+                    title="Ketik langsung di terminal — ketuk untuk pakai input bar"><i class="fa-solid fa-i-cursor"></i></button>
+                <button class="key-btn" data-mod="ctrl" id="key-ctrl" aria-label="Tombol Ctrl">CTRL</button>
+                <button class="key-btn" data-mod="alt" id="key-alt" aria-label="Tombol Alt">ALT</button>
+                <button class="key-btn" data-seq="\t" aria-label="Tombol Tab">TAB</button>
+                <button class="key-btn" data-seq="\x1b" aria-label="Tombol Escape">ESC</button>
+                <button class="key-btn danger" data-seq="\x03" aria-label="Ctrl C interrupt">^C</button>
+                <button class="key-btn" data-seq="\x04" aria-label="Ctrl D end of file">^D</button>
+                <button class="key-btn" data-seq="\x1a" aria-label="Ctrl Z suspend">^Z</button>
+                <button class="key-btn" data-seq="\x0c" aria-label="Ctrl L clear screen">^L</button>
+                <button class="key-btn" data-seq="\x1b[A" aria-label="Panah atas"><i class="fa-solid fa-arrow-up"></i></button>
+                <button class="key-btn" data-seq="\x1b[B" aria-label="Panah bawah"><i class="fa-solid fa-arrow-down"></i></button>
+                <button class="key-btn" data-seq="\x1b[D" aria-label="Panah kiri"><i class="fa-solid fa-arrow-left"></i></button>
+                <button class="key-btn" data-seq="\x1b[C" aria-label="Panah kanan"><i class="fa-solid fa-arrow-right"></i></button>
+                <button class="key-btn" data-seq="\x1b[H" aria-label="Tombol Home">HOME</button>
+                <button class="key-btn" data-seq="\x1b[F" aria-label="Tombol End">END</button>
+                <button class="key-btn" data-seq="\x1b[5~" aria-label="Page Up">PgUp</button>
+                <button class="key-btn" data-seq="\x1b[6~" aria-label="Page Down">PgDn</button>
+                <button class="key-btn" data-seq="|" aria-label="Karakter pipe">|</button>
+                <button class="key-btn" data-seq="~" aria-label="Karakter tilde">~</button>
+                <button class="key-btn" data-seq="/" aria-label="Karakter garis miring">/</button>
+                <button class="key-btn" data-seq="-" aria-label="Karakter minus">-</button>
+                <button class="key-btn" data-seq="$" aria-label="Karakter dolar">$</button>
+            </div>
+            <div class="mobile-input-row">
+                <input type="text" id="mobile-input" placeholder="Ketik perintah, lalu Enter…" autocomplete="off"
+                    autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send"
+                    aria-label="Input perintah terminal">
+                <button class="mobile-send" onclick="sendMobileInput()" aria-label="Kirim perintah">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
         <!-- Settings -->
         <div class="settings-bar">
             <label>Font:
@@ -527,7 +783,7 @@
                 <input type="checkbox" id="read-only" onchange="toggleReadOnly(this.checked)"> Read-Only
             </label>
             <span id="readonly-badge" class="readonly-badge" style="display:none">READ-ONLY</span>
-            <span style="margin-left:auto; color:#666">Ctrl+C to interrupt • Double-click tab to rename</span>
+            <span class="hint-desktop" style="margin-left:auto; color:#666">Ctrl+C to interrupt • Double-click tab to rename</span>
         </div>
     </div>
 
@@ -556,6 +812,25 @@ Restart App=systemctl restart myapp"></textarea>
         let isReadOnly = false;
         let currentFontSize = 14;
 
+        // ============================================================
+        // DETEKSI PERANGKAT SENTUH
+        // xterm.js memposisikan textarea helper-nya di luar viewport,
+        // sehingga tap pada kanvas terminal tidak memicu keyboard virtual
+        // di Android Chrome / iOS Safari. Karena itu di perangkat sentuh
+        // kita pakai input bar sendiri.
+        // ============================================================
+        const IS_TOUCH = ('ontouchstart' in window) ||
+            (navigator.maxTouchPoints > 0) ||
+            window.matchMedia('(pointer: coarse)').matches;
+
+        // Status modifier untuk toolbar mobile (sekali pakai / one-shot)
+        let modCtrl = false;
+        let modAlt = false;
+
+        // Riwayat perintah dari input bar mobile (panah atas/bawah lokal)
+        let mobileHistory = [];
+        let mobileHistoryIdx = -1;
+
         // URL params
         const urlParams = new URLSearchParams(window.location.search);
         const startPath = urlParams.get('path') || '/root';
@@ -568,6 +843,7 @@ Restart App=systemctl restart myapp"></textarea>
         document.addEventListener('DOMContentLoaded', () => {
             addTab(startPath, startCmd ? 'Command' : 'Terminal 1');
             renderCustomCommands();
+            initMobileInput();
 
             if (startCmd) {
                 setTimeout(() => quickCmd(startCmd), 500);
@@ -639,6 +915,21 @@ Restart App=systemctl restart myapp"></textarea>
             term.open(termWrap);
             fitAddon.fit();
 
+            // Di perangkat sentuh, tarik textarea helper xterm ke dalam
+            // viewport dan bentangkan transparan di atas kanvas. Dengan begitu
+            // tap di mana pun pada terminal = fokus = keyboard virtual muncul,
+            // dan ketikan mengalir lewat term.onData seperti di desktop.
+            if (IS_TOUCH) {
+                const helper = termWrap.querySelector('.xterm-helper-textarea');
+                if (helper) {
+                    helper.classList.add('mobile-typing');
+                    helper.setAttribute('autocapitalize', 'off');
+                    helper.setAttribute('autocorrect', 'off');
+                    helper.setAttribute('autocomplete', 'off');
+                    helper.setAttribute('spellcheck', 'false');
+                }
+            }
+
             // Handle resize
             const resizeObserver = new ResizeObserver(() => {
                 fitAddon.fit();
@@ -691,7 +982,12 @@ Restart App=systemctl restart myapp"></textarea>
             activeTab = sessionId;
 
             if (terminals[sessionId]) {
-                terminals[sessionId].term.focus();
+                // Di perangkat sentuh, fokus hanya diberikan ke terminal jika
+                // mode fallback (input bar) tidak aktif. Saat fallback aktif,
+                // fokus harus tetap di input bar agar keyboard tidak tertutup.
+                if (!IS_TOUCH || !isFallbackMode()) {
+                    terminals[sessionId].term.focus();
+                }
                 terminals[sessionId].fitAddon.fit();
             }
         }
@@ -724,6 +1020,300 @@ Restart App=systemctl restart myapp"></textarea>
                 socket.emit('terminal_input', {
                     session_id: activeTab,
                     input: cmd + '\n'
+                });
+            }
+        }
+
+        // ============================================================
+        // MOBILE INPUT
+        // ============================================================
+
+        /**
+         * Mode input mobile:
+         *   'direct'   -> ketik langsung di dalam terminal (default)
+         *   'fallback' -> pakai input bar terpisah di bawah terminal
+         * Disimpan di localStorage agar pilihan Tuan Eka bertahan.
+         */
+        let mobileMode = localStorage.getItem('termMobileMode') || 'direct';
+
+        function isFallbackMode() {
+            return mobileMode === 'fallback';
+        }
+
+        /** Fokuskan textarea helper xterm milik tab aktif (memicu keyboard). */
+        function focusTerminalInput() {
+            if (!activeTab || !terminals[activeTab]) return;
+            const wrap = document.getElementById('term-wrap-' + activeTab);
+            const helper = wrap && wrap.querySelector('.xterm-helper-textarea');
+            if (helper) {
+                helper.focus({ preventScroll: true });
+            } else {
+                terminals[activeTab].term.focus();
+            }
+        }
+
+        /** Arahkan fokus ke target yang sesuai dengan mode aktif. */
+        function focusMobileTarget() {
+            if (isFallbackMode()) {
+                document.getElementById('mobile-input').focus();
+            } else {
+                focusTerminalInput();
+            }
+        }
+
+        function setMobileMode(mode) {
+            mobileMode = mode;
+            localStorage.setItem('termMobileMode', mode);
+
+            const bar = document.getElementById('mobile-bar');
+            bar.classList.toggle('fallback', isFallbackMode());
+
+            const btn = document.getElementById('key-mode');
+            if (btn) {
+                btn.classList.toggle('armed', isFallbackMode());
+                btn.title = isFallbackMode()
+                    ? 'Mode input bar aktif — ketuk untuk ketik langsung di terminal'
+                    : 'Ketik langsung di terminal — ketuk untuk pakai input bar';
+            }
+
+            clearMods();
+            refitActive();
+            focusMobileTarget();
+        }
+
+        function toggleMobileMode() {
+            setMobileMode(isFallbackMode() ? 'direct' : 'fallback');
+        }
+
+        /**
+         * Kirim data mentah ke PTY sesi aktif.
+         * Jalur yang sama dipakai term.onData, jadi server tidak perlu diubah.
+         */
+        function sendRaw(data) {
+            if (!activeTab || !terminals[activeTab] || isReadOnly) return;
+            socket.emit('terminal_input', {
+                session_id: activeTab,
+                input: data
+            });
+        }
+
+        /** Decode escape literal dari atribut data-seq menjadi byte asli. */
+        function decodeSeq(s) {
+            return s
+                .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+                .replace(/\\t/g, '\t')
+                .replace(/\\r/g, '\r')
+                .replace(/\\n/g, '\n')
+                .replace(/\\e/g, '\x1b');
+        }
+
+        /**
+         * Ubah karakter menjadi control code (Ctrl+A = 0x01, dst).
+         * Mengembalikan null jika karakter di luar rentang yang didukung.
+         */
+        function toCtrlChar(ch) {
+            if (!ch) return null;
+            const c = ch.toLowerCase();
+            const code = c.charCodeAt(0);
+            if (code >= 97 && code <= 122) {          // a-z
+                return String.fromCharCode(code - 96);
+            }
+            const map = {
+                '@': '\x00', '[': '\x1b', '\\': '\x1c',
+                ']': '\x1d', '^': '\x1e', '_': '\x1f', ' ': '\x00'
+            };
+            return map[c] || null;
+        }
+
+        function setMod(which, value) {
+            if (which === 'ctrl') {
+                modCtrl = value;
+                document.getElementById('key-ctrl').classList.toggle('armed', value);
+            } else {
+                modAlt = value;
+                document.getElementById('key-alt').classList.toggle('armed', value);
+            }
+        }
+
+        function clearMods() {
+            setMod('ctrl', false);
+            setMod('alt', false);
+        }
+
+        /**
+         * Terjemahkan satu karakter dengan mempertimbangkan modifier armed.
+         * Modifier bersifat one-shot: otomatis lepas setelah satu karakter.
+         */
+        function applyMods(ch) {
+            let out = ch;
+            if (modCtrl) {
+                const ctrl = toCtrlChar(ch);
+                if (ctrl !== null) out = ctrl;
+            }
+            if (modAlt) {
+                out = '\x1b' + out;   // Alt dikirim sebagai ESC prefix
+            }
+            if (modCtrl || modAlt) clearMods();
+            return out;
+        }
+
+        /** Kirim isi input bar sebagai satu baris perintah + Enter. */
+        function sendMobileInput() {
+            const input = document.getElementById('mobile-input');
+            const value = input.value;
+
+            // Kirim walau kosong: Enter kosong valid di prompt interaktif
+            sendRaw(value + '\r');
+
+            if (value.trim()) {
+                mobileHistory.push(value);
+                if (mobileHistory.length > 100) mobileHistory.shift();
+            }
+            mobileHistoryIdx = mobileHistory.length;
+
+            input.value = '';
+            // Jaga fokus agar keyboard virtual tidak menutup antar perintah
+            input.focus();
+        }
+
+        function refitActive() {
+            // Tunggu layout selesai sebelum fit, agar cols/rows akurat
+            requestAnimationFrame(() => {
+                if (activeTab && terminals[activeTab]) {
+                    terminals[activeTab].fitAddon.fit();
+                    socket.emit('terminal_resize', {
+                        session_id: activeTab,
+                        rows: terminals[activeTab].term.rows,
+                        cols: terminals[activeTab].term.cols
+                    });
+                }
+            });
+        }
+
+        function toggleMobileBar() {
+            const bar = document.getElementById('mobile-bar');
+            const shown = bar.classList.toggle('visible');
+            document.getElementById('kbd-toggle').classList.toggle('active', shown);
+
+            if (shown) {
+                focusMobileTarget();
+            } else {
+                document.getElementById('mobile-input').blur();
+                clearMods();
+            }
+            refitActive();
+        }
+
+        function initMobileInput() {
+            const bar = document.getElementById('mobile-bar');
+            const input = document.getElementById('mobile-input');
+
+            // Toolbar tampil otomatis di perangkat sentuh
+            if (IS_TOUCH) {
+                bar.classList.add('visible');
+                document.getElementById('kbd-toggle').classList.add('active');
+            }
+
+            // Terapkan mode tersimpan (default: ketik langsung di terminal)
+            bar.classList.toggle('fallback', isFallbackMode());
+            const modeBtn = document.getElementById('key-mode');
+            if (modeBtn) {
+                modeBtn.classList.toggle('armed', isFallbackMode());
+            }
+
+            // Toolbar tombol khusus (delegasi event supaya hemat listener)
+            document.getElementById('mobile-keys').addEventListener('click', (e) => {
+                const btn = e.target.closest('.key-btn');
+                if (!btn) return;
+
+                // Tombol pengalih mode input
+                if (btn.dataset.action === 'mode') {
+                    toggleMobileMode();
+                    return;
+                }
+
+                const mod = btn.dataset.mod;
+                if (mod) {
+                    // Toggle modifier saja, tidak mengirim apa pun
+                    setMod(mod, mod === 'ctrl' ? !modCtrl : !modAlt);
+                    focusMobileTarget();
+                    return;
+                }
+
+                const seq = btn.dataset.seq;
+                if (seq !== undefined) {
+                    sendRaw(decodeSeq(seq));
+                    clearMods();
+                    focusMobileTarget();
+                }
+            });
+
+            // mousedown di-cegah agar tap tombol tidak mencuri fokus dari
+            // textarea/input — kalau fokus lepas, keyboard virtual tertutup.
+            // Hanya mousedown: preventDefault pada touchstart akan ikut
+            // membatalkan event click sehingga tombol tidak berfungsi.
+            document.getElementById('mobile-keys').addEventListener('mousedown', (e) => {
+                if (e.target.closest('.key-btn')) e.preventDefault();
+            });
+
+            // Enter mengirim baris; panah atas/bawah menelusuri riwayat lokal
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendMobileInput();
+                    return;
+                }
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (mobileHistoryIdx > 0) {
+                        mobileHistoryIdx--;
+                        input.value = mobileHistory[mobileHistoryIdx];
+                    }
+                    return;
+                }
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (mobileHistoryIdx < mobileHistory.length - 1) {
+                        mobileHistoryIdx++;
+                        input.value = mobileHistory[mobileHistoryIdx];
+                    } else {
+                        mobileHistoryIdx = mobileHistory.length;
+                        input.value = '';
+                    }
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    // Tab = autocomplete shell: kirim buffer + TAB
+                    e.preventDefault();
+                    sendRaw(input.value + '\t');
+                    input.value = '';
+                    return;
+                }
+
+                // Modifier armed: kirim langsung sebagai control code supaya
+                // Ctrl+C instan, tidak menumpuk di input bar.
+                if ((modCtrl || modAlt) && e.key.length === 1) {
+                    e.preventDefault();
+                    sendRaw(applyMods(e.key));
+                }
+            });
+
+            // Tap pada area terminal memunculkan keyboard virtual.
+            // Mode direct: fokus ke textarea xterm yang sudah dibentangkan.
+            // Mode fallback: fokus ke input bar.
+            document.getElementById('terminal-container').addEventListener('click', () => {
+                if (IS_TOUCH) {
+                    focusMobileTarget();
+                }
+            });
+
+            // Keyboard virtual mengubah tinggi viewport: refit agar baris
+            // terakhir tidak tertutup keyboard.
+            if (window.visualViewport) {
+                let vvTimer = null;
+                window.visualViewport.addEventListener('resize', () => {
+                    clearTimeout(vvTimer);
+                    vvTimer = setTimeout(refitActive, 120);
                 });
             }
         }

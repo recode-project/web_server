@@ -21,3 +21,5 @@ keygen.py
 admin_keygen_gui.py
 license_manager.py
 utils/license.py
+file_lister
+.venv/

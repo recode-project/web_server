@@ -1,6 +1,8 @@
 import psutil
 import platform
 import socket
+import re
+import shlex
 from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, stream_with_context, send_file
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -126,6 +128,7 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'full',           # full = read/write/delete
         'terminal': True,
+        'recode': True,            # AI agent CLI (Recode) — akses penuh
         'docker': 'full',          # full = view/start/stop/restart/delete
         'security': 'full',        # full = all settings
         'users': 'full',           # full = add/edit/delete any user
@@ -139,6 +142,7 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'full',
         'terminal': True,
+        'recode': True,            # AI agent CLI — admin boleh
         'docker': 'full',
         'security': 'view',        # view only
         'users': 'limited',        # can manage operator/readonly, NOT owner/admin
@@ -152,6 +156,7 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'read',           # read only
         'terminal': False,
+        'recode': False,           # AI agent CLI = eksekusi shell, operator dilarang
         'docker': 'view',          # view + restart only
         'security': False,
         'users': False,
@@ -165,6 +170,7 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'read',           # read only
         'terminal': False,
+        'recode': False,           # AI agent CLI dilarang
         'docker': 'view',          # view only, no actions
         'security': 'view',        # view only
         'users': False,
@@ -202,12 +208,121 @@ AUDIT_LOG_FILE = os.path.join(DATA_DIR, 'audit.log')
 LOGIN_ATTEMPTS_FILE = os.path.join(DATA_DIR, 'login_attempts.json')
 APP_SETTINGS_FILE = os.path.join(DATA_DIR, 'app_settings.json')
 
+# ============ AUTO-DETECT DEVICE NAME ============
+_STALE_SERVER_NAMES = {
+    'amlogic server',
+    'my server',
+    'my dashboard',
+}
+
+
+def _read_host_text(path):
+    """Read a sysfs/procfs node, stripping NUL bytes and whitespace."""
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read().strip(b'\x00 \t\r\n')
+        val = raw.decode('utf-8', errors='ignore').strip()
+        return val or None
+    except Exception:
+        return None
+
+
+def _looks_like_sku(s):
+    """Heuristic for OEM machine codes like '10MR000XGE' / '82K2001BID'."""
+    if not s:
+        return False
+    if any(ch.islower() or ch.isspace() or ch in '._:/,()' for ch in s):
+        return False
+    return bool(re.fullmatch(r'[A-Z0-9][A-Z0-9\-]{3,}', s)) and any(ch.isdigit() for ch in s)
+
+
+def _clean_vendor(v):
+    """Tidy a DMI vendor string ('LENOVO' -> 'Lenovo')."""
+    if not v:
+        return None
+    v = v.strip()
+    if v.isupper():
+        v = v.title()
+    v = re.sub(r'\s+(inc|corp|corporation|co|ltd|llc|computer inc|technologies|gmbh)\.?$', '', v, flags=re.I).strip()
+    v = v.replace('ASUSTeK', 'ASUS').replace('asustek', 'ASUS').replace('Gigabyte Technology', 'Gigabyte')
+    return v or None
+
+
+def detect_device_name():
+    """Auto-detect a human-friendly device/model name.
+
+    Honors the HOST_SYS / HOST_PROC mounts from docker-compose.yml so it
+    works inside the container (privileged + /sys and /proc mounted ro).
+    """
+    host_sys = os.environ.get('HOST_SYS', '/sys')
+    host_proc = os.environ.get('HOST_PROC', '/proc')
+
+    # 1) ARM / embedded boards expose their model via device-tree
+    dt_paths = [
+        os.path.join(host_sys, 'firmware', 'devicetree', 'base', 'model'),
+        os.path.join(host_proc, 'device-tree', 'model'),
+        '/proc/device-tree/model',
+    ]
+    for p in dt_paths:
+        model = _read_host_text(p)
+        if model:
+            return model
+
+    # 2) Standard x86 PCs via DMI sysfs
+    dmi = os.path.join(host_sys, 'class', 'dmi', 'id')
+    vendor = _clean_vendor(_read_host_text(os.path.join(dmi, 'sys_vendor')))
+    product_name = _read_host_text(os.path.join(dmi, 'product_name'))
+    product_version = _read_host_text(os.path.join(dmi, 'product_version'))
+    product_family = _read_host_text(os.path.join(dmi, 'product_family'))
+    board_name = _read_host_text(os.path.join(dmi, 'board_name'))
+
+    def _usable(s):
+        if not s:
+            return None
+        s = s.strip()
+        if s.lower() in (
+            'not specified', 'unknown', 'to be filled by o.e.m.', 'default string',
+            'o.e.m.', 'system product name', 'system version', 'none', 'standard',
+            'to be filled by oem',
+        ):
+            return None
+        return s
+
+    name = _usable(product_name)
+    version = _usable(product_version)
+    family = _usable(product_family)
+    board = _usable(board_name)
+
+    # Prefer the friendly model string, skip OEM SKU codes like '10MR000XGE'
+    model = None
+    if name and not _looks_like_sku(name):
+        model = name
+    elif version:
+        model = version
+    elif family:
+        model = family
+    elif name:
+        model = name
+    elif board:
+        model = board
+
+    if model:
+        if vendor and vendor.lower() not in model.lower():
+            return (vendor + ' ' + model).strip()
+        return model
+
+    # 3) Fallback to hostname
+    try:
+        hn = socket.gethostname() or platform.node()
+    except Exception:
+        hn = None
+    return hn or 'Eka Dashboard Server'
 
 
 def load_app_settings():
     default_settings = {
         'general': {
-            'server_name': 'Amlogic Server',
+            'server_name': detect_device_name(),
             'timezone': 'Asia/Jakarta',
             'time_format': '24h',
             'date_format': 'DD/MM/YYYY'
@@ -264,10 +379,17 @@ def load_app_settings():
                             default_settings[key] = {**default_settings[key], **saved[key]}
                         else:
                             default_settings[key] = saved[key]
-                return default_settings
     except Exception as e:
         print(f"!!! CRITICAL: Failed to load settings file: {e}")
-        pass
+
+    # Auto-detect device name: override empty/stale defaults so every install
+    # shows its real device (e.g. 'Lenovo ThinkCentre M710q') automatically.
+    general = default_settings.get('general') or {}
+    server_name = (general.get('server_name') or '').strip()
+    if not server_name or server_name.lower() in _STALE_SERVER_NAMES:
+        general['server_name'] = detect_device_name()
+        default_settings['general'] = general
+
     return default_settings
 
 def save_app_settings(settings):
@@ -640,6 +762,7 @@ def dashboard():
 
 
 @app.route('/api/stats')
+@login_required
 def stats():
     # CPU
     cpu_percent = psutil.cpu_percent(interval=None)
@@ -1053,27 +1176,55 @@ import shutil
 def files_page():
     return render_template('files.html')
 
+# --- FILE MANAGER PATH HELPERS ---
+HOST_ROOT = os.environ.get('HOST_ROOT', '/host/root')
+
+def _fm_to_container(path):
+    """Map the user-facing (host) path to the real container path."""
+    if not path:
+        path = '/'
+    if path == '/' or path == HOST_ROOT:
+        return HOST_ROOT
+    if path.startswith('/host/') or path.startswith(HOST_ROOT + '/'):
+        return path
+    return HOST_ROOT + path
+
+
+def _fm_to_ui(path):
+    """Map the container path back to the host path shown in the UI."""
+    if path == HOST_ROOT:
+        return '/'
+    if path.startswith(HOST_ROOT + '/'):
+        return path[len(HOST_ROOT):]
+    return path
+
+
 @app.route('/api/files/list', methods=['GET'])
 @requires_permission('files', 'read')
 def list_files():
     path = request.args.get('path', '/')
     page = int(request.args.get('page', 1))
-    # We can load more items per page now because C is fast!
-    per_page = 50 
+    per_page = 10000
 
-    if not os.path.exists(path):
+    real_path = _fm_to_container(path)
+    if not os.path.isdir(real_path):
         return jsonify({'error': 'Path not found'}), 404
-    
+
     try:
         # Use compiled C binary for Native Speed
-        cmd = ["./file_lister", path, str(page), str(per_page)]
+        cmd = ["./file_lister", real_path, str(page), str(per_page)]
         result = subprocess.check_output(cmd, cwd=BASE_DIR).decode('utf-8')
-        return Response(result, mimetype='application/json')
+        data = json.loads(result)
+        data['current_path'] = _fm_to_ui(data.get('current_path', path))
+        for item in data.get('items', []):
+            item['path'] = _fm_to_ui(item.get('path', ''))
+        return jsonify(data)
     except subprocess.CalledProcessError as e:
         return jsonify({'error': 'C Lister Failed: ' + str(e)}), 500
     except Exception as e:
         # Fallback to Python if binary fails or permission denied
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/files/drives', methods=['GET'])
 @requires_permission('files', 'read')
@@ -1095,7 +1246,7 @@ def get_drives():
             try:
                 usage = psutil.disk_usage(part.mountpoint)
                 drives.append({
-                    'mountpoint': part.mountpoint,
+                    'mountpoint': _fm_to_ui(part.mountpoint),
                     'device': part.device,
                     'fstype': part.fstype,
                     'total': usage.total,
@@ -1105,7 +1256,7 @@ def get_drives():
                 })
             except:
                 drives.append({
-                    'mountpoint': part.mountpoint,
+                    'mountpoint': _fm_to_ui(part.mountpoint),
                     'device': part.device,
                     'fstype': part.fstype,
                 })
@@ -1119,7 +1270,7 @@ def get_drives():
 def file_action():
     data = request.json
     action = data.get('action')
-    path = data.get('path')
+    path = _fm_to_container(data.get('path'))
     
     try:
         if action == 'delete':
@@ -1134,9 +1285,11 @@ def file_action():
                 pass
         elif action == 'rename':
             new_path = data.get('new_path')
+            if new_path:
+                new_path = _fm_to_container(new_path)
             os.rename(path, new_path)
         elif action == 'paste':
-            source = data.get('source')
+            source = _fm_to_container(data.get('source'))
             dest = path # paste into this folder
             # Simple handling: copy raw
             base_name = os.path.basename(source)
@@ -1156,10 +1309,10 @@ def file_action():
 
 @app.route('/api/files/content', methods=['GET', 'POST'])
 def file_content():
-    path = request.args.get('path')
+    path = _fm_to_container(request.args.get('path'))
     if request.method == 'POST':
         data = request.json
-        path = data.get('path')
+        path = _fm_to_container(data.get('path'))
         content = data.get('content')
         try:
             with open(path, 'w') as f:
@@ -1187,54 +1340,133 @@ def file_content():
 def terminal_page():
     return render_template('terminal.html')
 
-# WebSocket handlers for terminal
-@socketio.on('start_terminal')
-def handle_start_terminal(data):
-    session_id = data.get('session_id', 'default')
-    start_path = data.get('path', '/root')
-    
-    # Create PTY
+def _terminal_socket_authorized():
+    """Terminal lewat WebSocket harus tunduk pada aturan auth yang sama dengan /terminal."""
+    try:
+        config = load_security_config()
+    except Exception:
+        config = {}
+
+    if not config.get('require_auth', True):
+        return True
+
+    if not session.get('logged_in'):
+        return False
+
+    return has_permission(session.get('role', 'readonly'), 'terminal', 'any')
+
+
+def _can_use_nsenter():
+    """nsenter ke PID 1 hanya mungkin kalau proses ini root (mis. container privileged)."""
+    if os.geteuid() != 0:
+        return False
+    try:
+        return subprocess.run(
+            ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'true'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+def _build_terminal_command(lxd_target=None):
+    """Susun perintah shell sesuai privilege yang benar-benar tersedia."""
+    # Jalankan greeter hanya kalau tool-nya ada, supaya shell tidak mati saat neofetch absen.
+    greeter = (
+        'clear; '
+        'if command -v fastfetch >/dev/null 2>&1; then fastfetch; '
+        'elif command -v neofetch >/dev/null 2>&1; then neofetch; fi; '
+        'exec bash -i'
+    )
+
+    if _can_use_nsenter():
+        prefix = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+        if lxd_target:
+            return prefix + ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
+        return prefix + ['bash', '--login', '-c', greeter]
+
+    # Fallback: shell lokal tanpa privilege host (dev / non-privileged deployment).
+    if lxd_target:
+        return ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
+    return ['bash', '--login', '-c', greeter]
+
+
+def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_env=None):
+    """Jalankan `cmd` di dalam PTY baru dan daftarkan sesinya.
+
+    Dipakai bersama oleh terminal biasa dan Recode Agent supaya logika fork/PTY,
+    pembersihan fd, dan pembacaan output hanya ada di satu tempat.
+    Mengembalikan True bila proses berhasil di-fork.
+    """
     master_fd, slave_fd = pty.openpty()
-    
-    # Fork shell
+
     pid = os.fork()
     if pid == 0:
         # Child process
-        os.close(master_fd)
-        os.setsid()
-        os.dup2(slave_fd, 0)
-        os.dup2(slave_fd, 1)
-        os.dup2(slave_fd, 2)
-        os.close(slave_fd)
-        
-        lxd_target = data.get('lxd_target')
-        
-        # Use nsenter to enter host PID 1 namespace (root shell on host)
-        # Assuming container is privileged and shares PID namespace
-        # Adding -i to bash for interactive mode and setting TERM/SHELL
-        os.environ['TERM'] = 'xterm-256color'
-        os.environ['SHELL'] = '/bin/bash'
-        
-        if lxd_target:
-            cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
-        else:
-            # Perintah ini akan membersihkan layar, menjalankan neofetch, lalu masuk ke bash interaktif
-            cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'bash', '--login', '-c', 'clear && neofetch && exec bash -i']
-            
-        os.execvp('nsenter', cmd)
-    else:
-        # Parent process
-        os.close(slave_fd)
-        terminal_sessions[session_id] = {
-            'fd': master_fd,
-            'pid': pid
-        }
-        
-        # Start reading thread
-        socketio.start_background_task(read_terminal_output, session_id, master_fd)
-        emit('terminal_started', {'session_id': session_id})
+        try:
+            os.close(master_fd)
+            os.setsid()
+            try:
+                fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+            except Exception:
+                pass
+            os.dup2(slave_fd, 0)
+            os.dup2(slave_fd, 1)
+            os.dup2(slave_fd, 2)
+            if slave_fd > 2:
+                os.close(slave_fd)
 
-def read_terminal_output(session_id, fd):
+            os.environ['TERM'] = 'xterm-256color'
+            os.environ['SHELL'] = '/bin/bash'
+            for key, value in (extra_env or {}).items():
+                os.environ[str(key)] = str(value)
+
+            os.execvp(cmd[0], cmd)
+        except Exception as e:
+            # Tulis alasan gagal ke PTY supaya terlihat di browser, bukan mati senyap.
+            try:
+                os.write(2, f"\r\nGagal menjalankan proses ({cmd[0]}): {e}\r\n".encode())
+            except Exception:
+                pass
+        os._exit(1)
+
+    # Parent process
+    os.close(slave_fd)
+    terminal_sessions[session_id] = {
+        'fd': master_fd,
+        'pid': pid,
+        'event': output_event
+    }
+    socketio.start_background_task(read_terminal_output, session_id, master_fd, output_event)
+    return True
+
+
+# WebSocket handlers for terminal
+@socketio.on('start_terminal')
+def handle_start_terminal(data):
+    if pty is None or fcntl is None:
+        emit('terminal_error', {'error': 'PTY tidak tersedia di platform ini'})
+        return
+
+    if not _terminal_socket_authorized():
+        audit_log('ACCESS_DENIED', 'Unauthenticated start_terminal via WebSocket',
+                  session.get('username'))
+        emit('terminal_error', {'error': 'Authentication required'})
+        return
+
+    data = data or {}
+    session_id = data.get('session_id', 'default')
+    lxd_target = data.get('lxd_target')
+
+    # Satu sesi per session_id: bersihkan sesi lama agar fd/pid tidak bocor.
+    if session_id in terminal_sessions:
+        handle_stop_terminal({'session_id': session_id})
+
+    cmd = _build_terminal_command(lxd_target)
+    _spawn_pty_session(session_id, cmd)
+    emit('terminal_started', {'session_id': session_id})
+
+def read_terminal_output(session_id, fd, output_event='terminal_output'):
     import eventlet
     while session_id in terminal_sessions:
         eventlet.sleep(0.01)
@@ -1242,7 +1474,7 @@ def read_terminal_output(session_id, fd):
             if select.select([fd], [], [], 0.1)[0]:
                 data = os.read(fd, 1024)
                 if data:
-                    socketio.emit('terminal_output', {
+                    socketio.emit(output_event, {
                         'session_id': session_id,
                         'data': data.decode('utf-8', errors='replace')
                     })
@@ -1287,6 +1519,407 @@ def handle_stop_terminal(data):
             os.waitpid(session['pid'], 0)
         except:
             pass
+
+# ============================================================
+# --- RECODE AGENT (AI CLI) ---
+# Menjembatani `recode` CLI (autonomous coding agent) ke dashboard.
+# Tujuan: dashboard ini jadi asisten server di mana pun ia dipasang —
+# kalau `recode` ada di host lokal, dipakai langsung; kalau tidak, jalankan
+# lewat SSH ke mesin yang punya (mis. Lenovo).
+# Eksekusi memakai PTY yang sama dengan terminal, jadi REPL interaktif,
+# streaming jawaban, dan konfirmasi tool berperilaku persis seperti di shell.
+# ============================================================
+
+RECODE_CONFIG_FILE = os.path.join(DATA_DIR, 'recode_config.json')
+
+RECODE_DEFAULT_CONFIG = {
+    'mode': 'auto',            # auto | local | ssh
+    'binary': 'recode',        # nama/path binary di mesin target
+    'local_user': '',          # jalankan sebagai user ini (login shell) saat mode local
+    'default_cwd': '/root',    # working directory awal agent
+    'default_model': '',       # kosong = pakai konfigurasi ~/.recode/config.json
+    'max_iterations': 0,       # 0 = pakai default CLI
+    'ssh': {
+        'host': '',
+        'user': '',
+        'port': 22,
+        'identity_file': ''
+    }
+}
+
+# Binary/user/host divalidasi ketat: nilainya masuk ke argv perintah shell,
+# jadi karakter di luar pola ini ditolak alih-alih di-escape diam-diam.
+_RECODE_BINARY_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
+_RECODE_USER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9._-]{0,31}$')
+_RECODE_HOST_RE = re.compile(r'^[A-Za-z0-9._:-]+$')
+
+
+def load_recode_config():
+    cfg = json.loads(json.dumps(RECODE_DEFAULT_CONFIG))
+    try:
+        if os.path.exists(RECODE_CONFIG_FILE):
+            with open(RECODE_CONFIG_FILE, 'r') as f:
+                saved = json.load(f)
+            for key, value in saved.items():
+                if key == 'ssh' and isinstance(value, dict):
+                    cfg['ssh'] = {**cfg['ssh'], **value}
+                elif key in cfg:
+                    cfg[key] = value
+    except Exception as e:
+        print(f"[RECODE] Gagal memuat config: {e}")
+    return cfg
+
+
+def save_recode_config(cfg):
+    with open(RECODE_CONFIG_FILE, 'w') as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _recode_port(value, default=22):
+    """Normalisasi port. Nilai kosong/None = pakai default; sisanya harus angka.
+
+    Dipisah agar `0` tidak diam-diam berubah jadi 22 (pola `value or 22`),
+    sehingga validator bisa menolaknya sebagai port tidak sah.
+    """
+    if value is None or value == '':
+        return default
+    return int(value)
+
+
+def _recode_validate_config(cfg):
+    """Kembalikan (ok, pesan_error). Validasi sebelum nilai dipakai di argv."""
+    if cfg.get('mode') not in ('auto', 'local', 'ssh'):
+        return False, 'Mode harus auto, local, atau ssh'
+
+    binary = (cfg.get('binary') or '').strip()
+    if not binary or not _RECODE_BINARY_RE.match(binary):
+        return False, 'Nama binary tidak valid (hanya huruf, angka, . _ - /)'
+
+    user = (cfg.get('local_user') or '').strip()
+    if user and not _RECODE_USER_RE.match(user):
+        return False, 'Nama user lokal tidak valid'
+
+    cwd = (cfg.get('default_cwd') or '').strip()
+    if cwd and not cwd.startswith('/'):
+        return False, 'Working directory harus path absolut'
+
+    try:
+        iterations = int(cfg.get('max_iterations') or 0)
+    except (TypeError, ValueError):
+        return False, 'max_iterations harus angka'
+    if iterations < 0 or iterations > 500:
+        return False, 'max_iterations harus 0-500'
+
+    ssh = cfg.get('ssh') or {}
+    host = (ssh.get('host') or '').strip()
+    if host and not _RECODE_HOST_RE.match(host):
+        return False, 'Host SSH tidak valid'
+    ssh_user = (ssh.get('user') or '').strip()
+    if ssh_user and not _RECODE_USER_RE.match(ssh_user):
+        return False, 'User SSH tidak valid'
+    try:
+        port = _recode_port(ssh.get('port'))
+    except (TypeError, ValueError):
+        return False, 'Port SSH harus angka'
+    if not (1 <= port <= 65535):
+        return False, 'Port SSH harus 1-65535'
+    identity = (ssh.get('identity_file') or '').strip()
+    if identity and not identity.startswith('/'):
+        return False, 'Identity file harus path absolut'
+
+    if cfg.get('mode') == 'ssh' and not host:
+        return False, 'Mode ssh membutuhkan host'
+
+    return True, ''
+
+
+def _recode_effective_mode(cfg):
+    mode = cfg.get('mode', 'auto')
+    if mode != 'auto':
+        return mode
+    return 'ssh' if (cfg.get('ssh') or {}).get('host') else 'local'
+
+
+def _recode_inner_command(cfg, task=None, cwd=None, version_only=False):
+    """Susun satu string perintah shell untuk dijalankan di mesin target.
+
+    Semua nilai dinamis dilewatkan shlex.quote, jadi task berisi kutip,
+    backtick, atau `;` tetap jadi satu argumen, bukan perintah baru.
+    """
+    binary = (cfg.get('binary') or 'recode').strip()
+    parts = [shlex.quote(binary)]
+
+    if version_only:
+        parts.append('--version')
+    else:
+        if task:
+            parts += ['--task', shlex.quote(task)]
+            # Non-interaktif: konfirmasi otomatis ditolak agar proses tidak
+            # menggantung menunggu input yang tidak akan datang di mode task.
+            parts.append('--no-interactive')
+        model = (cfg.get('default_model') or '').strip()
+        if model:
+            parts += ['--model', shlex.quote(model)]
+        try:
+            iterations = int(cfg.get('max_iterations') or 0)
+        except (TypeError, ValueError):
+            iterations = 0
+        if iterations > 0:
+            parts += ['--max-iterations', str(iterations)]
+
+    cmd = ' '.join(parts)
+
+    target_cwd = (cwd or cfg.get('default_cwd') or '').strip()
+    if target_cwd and not version_only:
+        cmd = f"cd {shlex.quote(target_cwd)} && {cmd}"
+
+    return cmd
+
+
+def _recode_argv(cfg, task=None, cwd=None, version_only=False):
+    """Bangun argv lengkap sesuai mode efektif (local/ssh)."""
+    inner = _recode_inner_command(cfg, task=task, cwd=cwd, version_only=version_only)
+    mode = _recode_effective_mode(cfg)
+
+    if mode == 'ssh':
+        ssh = cfg.get('ssh') or {}
+        host = (ssh.get('host') or '').strip()
+        user = (ssh.get('user') or '').strip()
+        port = _recode_port(ssh.get('port'))
+        identity = (ssh.get('identity_file') or '').strip()
+
+        argv = [
+            'ssh',
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=accept-new',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'ServerAliveInterval=30'
+        ]
+        # -tt hanya untuk sesi interaktif: memaksa pseudo-TTY di sisi remote
+        # supaya REPL, spinner, dan prompt konfirmasi berperilaku normal.
+        # Probe versi tidak butuh TTY dan jadi lebih bersih tanpanya.
+        if not version_only:
+            argv.insert(1, '-tt')
+        if port != 22:
+            argv += ['-p', str(port)]
+        if identity:
+            argv += ['-i', identity]
+        argv.append(f"{user}@{host}" if user else host)
+        # Login shell di sisi remote supaya PATH nvm/asdf ikut terbaca.
+        argv.append(f"bash -lc {shlex.quote(inner)}")
+        return argv
+
+    # Mode local
+    local_user = (cfg.get('local_user') or '').strip()
+    if local_user and os.geteuid() == 0:
+        base = ['runuser', '-l', local_user, '-c', inner]
+    else:
+        base = ['bash', '-lc', inner]
+
+    # Di container privileged, masuk namespace host dulu supaya melihat
+    # binary dan project milik host, bukan filesystem container.
+    if _can_use_nsenter():
+        return ['nsenter', '-t', '1', '-m', '-u', '-n', '-i'] + base
+    return base
+
+
+def _recode_socket_authorized():
+    """Recode Agent mengeksekusi perintah shell: auth sama ketat dengan terminal."""
+    try:
+        config = load_security_config()
+    except Exception:
+        config = {}
+
+    if not config.get('require_auth', True):
+        return True
+
+    if not session.get('logged_in'):
+        return False
+
+    return has_permission(session.get('role', 'readonly'), 'recode', 'any')
+
+
+@app.route('/recode')
+@requires_permission('recode')
+def recode_page():
+    return render_template('recode.html')
+
+
+@app.route('/api/recode/config', methods=['GET'])
+@requires_permission('recode')
+def recode_get_config():
+    cfg = load_recode_config()
+    cfg['effective_mode'] = _recode_effective_mode(cfg)
+    return jsonify(cfg)
+
+
+@app.route('/api/recode/config', methods=['POST'])
+@admin_required
+def recode_save_config():
+    data = request.json or {}
+    cfg = load_recode_config()
+
+    for key in ('mode', 'binary', 'local_user', 'default_cwd', 'default_model'):
+        if key in data:
+            cfg[key] = (data.get(key) or '').strip()
+    if 'max_iterations' in data:
+        try:
+            cfg['max_iterations'] = int(data.get('max_iterations') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'max_iterations harus angka'}), 400
+
+    if isinstance(data.get('ssh'), dict):
+        incoming = data['ssh']
+        ssh = dict(cfg['ssh'])
+        for key in ('host', 'user', 'identity_file'):
+            if key in incoming:
+                ssh[key] = (incoming.get(key) or '').strip()
+        if 'port' in incoming:
+            try:
+                ssh['port'] = _recode_port(incoming.get('port'))
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Port SSH harus angka'}), 400
+        cfg['ssh'] = ssh
+
+    ok, message = _recode_validate_config(cfg)
+    if not ok:
+        return jsonify({'error': message}), 400
+
+    save_recode_config(cfg)
+    audit_log('RECODE_CONFIG',
+              f"Mode={cfg['mode']} host={cfg['ssh'].get('host') or 'local'}",
+              session.get('username'))
+
+    cfg['effective_mode'] = _recode_effective_mode(cfg)
+    return jsonify({'success': True, 'config': cfg})
+
+
+@app.route('/api/recode/status')
+@requires_permission('recode')
+def recode_status():
+    """Probe ketersediaan CLI di mesin target lewat `recode --version`."""
+    cfg = load_recode_config()
+    ok, message = _recode_validate_config(cfg)
+    mode = _recode_effective_mode(cfg)
+
+    if not ok:
+        return jsonify({'available': False, 'mode': mode, 'error': message})
+
+    if pty is None or fcntl is None:
+        return jsonify({'available': False, 'mode': mode,
+                        'error': 'PTY tidak tersedia di platform ini'})
+
+    argv = _recode_argv(cfg, version_only=True)
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return jsonify({'available': False, 'mode': mode,
+                        'error': 'Timeout saat menghubungi mesin target'})
+    except FileNotFoundError as e:
+        return jsonify({'available': False, 'mode': mode,
+                        'error': f'Perintah tidak ditemukan: {e}'})
+    except Exception as e:
+        return jsonify({'available': False, 'mode': mode, 'error': str(e)})
+
+    output = (proc.stdout or '') + (proc.stderr or '')
+    version = None
+    for line in output.splitlines():
+        line = line.strip()
+        if re.match(r'^\d+\.\d+', line):
+            version = line
+            break
+
+    if proc.returncode != 0 or not version:
+        return jsonify({
+            'available': False,
+            'mode': mode,
+            'error': (output.strip()[-400:] or f'Exit code {proc.returncode}')
+        })
+
+    return jsonify({
+        'available': True,
+        'mode': mode,
+        'version': version,
+        'target': (cfg['ssh'].get('host') or 'localhost') if mode == 'ssh' else 'localhost',
+        'cwd': cfg.get('default_cwd') or '/'
+    })
+
+
+@socketio.on('recode_start')
+def handle_recode_start(data):
+    if pty is None or fcntl is None:
+        emit('recode_error', {'error': 'PTY tidak tersedia di platform ini'})
+        return
+
+    if not _recode_socket_authorized():
+        audit_log('ACCESS_DENIED', 'Unauthorized recode_start via WebSocket',
+                  session.get('username'))
+        emit('recode_error', {'error': 'Authentication required'})
+        return
+
+    data = data or {}
+    session_id = data.get('session_id') or 'recode_default'
+    # Prefix wajib: memisahkan namespace sesi Recode dari sesi terminal biasa
+    # sehingga recode_stop tidak bisa membunuh PTY terminal orang lain.
+    if not str(session_id).startswith('recode_'):
+        session_id = 'recode_' + str(session_id)
+
+    task = (data.get('task') or '').strip() or None
+    cwd = (data.get('cwd') or '').strip() or None
+    if cwd and not cwd.startswith('/'):
+        emit('recode_error', {'error': 'Working directory harus path absolut'})
+        return
+
+    cfg = load_recode_config()
+    ok, message = _recode_validate_config(cfg)
+    if not ok:
+        emit('recode_error', {'error': message})
+        return
+
+    # Satu sesi per session_id: bunuh sesi lama agar fd/pid tidak bocor.
+    if session_id in terminal_sessions:
+        handle_stop_terminal({'session_id': session_id})
+
+    argv = _recode_argv(cfg, task=task, cwd=cwd)
+    audit_log('RECODE_START',
+              f"mode={_recode_effective_mode(cfg)} cwd={cwd or cfg.get('default_cwd')} "
+              f"task={'yes' if task else 'repl'}",
+              session.get('username'))
+
+    _spawn_pty_session(session_id, argv, output_event='recode_output')
+    emit('recode_started', {
+        'session_id': session_id,
+        'mode': _recode_effective_mode(cfg),
+        'cwd': cwd or cfg.get('default_cwd') or '/'
+    })
+
+
+def _recode_owned_session(data):
+    """Pastikan payload hanya menyentuh sesi bernamespace `recode_`."""
+    session_id = str((data or {}).get('session_id') or '')
+    return session_id.startswith('recode_')
+
+
+@socketio.on('recode_input')
+def handle_recode_input(data):
+    if not _recode_socket_authorized() or not _recode_owned_session(data):
+        return
+    handle_terminal_input(data or {})
+
+
+@socketio.on('recode_resize')
+def handle_recode_resize(data):
+    if not _recode_socket_authorized() or not _recode_owned_session(data):
+        return
+    handle_terminal_resize(data or {})
+
+
+@socketio.on('recode_stop')
+def handle_recode_stop(data):
+    if not _recode_socket_authorized() or not _recode_owned_session(data):
+        return
+    handle_stop_terminal(data or {})
+
 
 # --- DOCKER ROUTES ---
 import docker as docker_sdk
@@ -1725,7 +2358,12 @@ def get_monitoring_config():
         'enabled': mqtt.get('enabled', False),
         'devices': mqtt.get('devices', [])
     }
-    return jsonify({'mqtt': safe_mqtt})
+    general = settings.get('general', {})
+    return jsonify({
+        'mqtt': safe_mqtt,
+        'server_name': (general.get('server_name') or '').strip() or detect_device_name(),
+        'hostname': socket.gethostname()
+    })
 
 @app.route('/api/settings')
 @login_required
@@ -1809,11 +2447,6 @@ def face_stats_api():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/terminal')
-@login_required
-def terminal():
-    return render_template('terminal.html')
 
 @app.route('/casaos')
 @login_required
@@ -4242,6 +4875,7 @@ def manage_app_endpoint():
 SYSTEM_APPS = [
     {"id": "files", "name": "Files", "icon": "fa-solid fa-folder-open", "color": "linear-gradient(135deg, #FF9966, #FF5E62)", "url": "/files"},
     {"id": "terminal", "name": "Terminal", "icon": "fa-solid fa-terminal", "color": "linear-gradient(135deg, #2d3436, #636e72)", "url": "/terminal"},
+    {"id": "recode", "name": "Recode AI", "icon": "fa-solid fa-robot", "color": "linear-gradient(135deg, #6a11cb, #2575fc)", "url": "/recode"},
     {"id": "docker", "name": "Docker", "icon": "fa-brands fa-docker", "color": "linear-gradient(135deg, #2496ed, #0db7ed)", "url": "/panel_docker"},
     {"id": "metrics", "name": "Metrics", "icon": "fa-solid fa-chart-line", "color": "linear-gradient(135deg, #f7971e, #ffd200)", "url": "/metrics"},
     {"id": "security", "name": "Security", "icon": "fa-solid fa-shield-halved", "color": "linear-gradient(135deg, #833ab4, #fd1d1d)", "url": "/security"},
@@ -4812,7 +5446,7 @@ def files_upload_endpoint():
          return jsonify({'error': 'Access denied'}), 403
          
     try:
-        dest_path = request.form.get('path', '/')
+        dest_path = _fm_to_container(request.form.get('path', '/'))
         if not os.path.exists(dest_path):
              return jsonify({'error': 'Path not found'}), 404
              
@@ -4848,7 +5482,10 @@ def files_download_endpoint():
     """Download file"""
     try:
         path = request.args.get('path')
-        if not path or not os.path.exists(path):
+        if not path:
+            return jsonify({'error': 'File not found'}), 404
+        path = _fm_to_container(path)
+        if not os.path.exists(path):
             return jsonify({'error': 'File not found'}), 404
         if os.path.isdir(path):
             return jsonify({'error': 'Cannot download directory'}), 400
@@ -6227,6 +6864,18 @@ def api_lxd_tools_install():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    print("Starting Development Server on http://localhost:5000")
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    # Dev server: bind ke loopback saja secara default agar Werkzeug debugger
+    # tidak terekspos ke LAN. Override lewat ENV bila memang perlu diakses
+    # dari perangkat lain (mis. DEV_HOST=0.0.0.0 DEV_DEBUG=0).
+    dev_host = os.environ.get('DEV_HOST', '127.0.0.1')
+    dev_port = int(os.environ.get('DEV_PORT', '5000'))
+    dev_debug = os.environ.get('DEV_DEBUG', '1') == '1'
+
+    if dev_host != '127.0.0.1' and dev_debug:
+        print("WARNING: debug mode aktif pada host non-loopback. "
+              "Werkzeug debugger memungkinkan eksekusi kode arbitrer. "
+              "Set DEV_DEBUG=0 untuk akses dari jaringan.")
+
+    print(f"Starting Development Server on http://{dev_host}:{dev_port}")
+    socketio.run(app, debug=dev_debug, host=dev_host, port=dev_port)
 
