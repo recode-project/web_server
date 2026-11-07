@@ -241,15 +241,14 @@
             elements.linkWebConsole.href = `http://${clientHost}:${port}`;
         }
 
-        // Update Accurate DNS IPs (LAN vs Tailscale)
-        const port = data.dns_port || 53;
+        // Update Accurate DNS IPs (LAN vs Tailscale) - Tampilkan IP murni tanpa port untuk router
         if (data.lan_ips && data.lan_ips.length > 0) {
             currentLanIp = data.lan_ips[0].ip;
-            if (elements.valLanIp) elements.valLanIp.textContent = `${currentLanIp}:${port}`;
+            if (elements.valLanIp) elements.valLanIp.textContent = currentLanIp;
         }
         if (data.tailscale_ips && data.tailscale_ips.length > 0) {
             currentTailscaleIp = data.tailscale_ips[0].ip;
-            if (elements.valTailscaleIp) elements.valTailscaleIp.textContent = `${currentTailscaleIp}:${port}`;
+            if (elements.valTailscaleIp) elements.valTailscaleIp.textContent = currentTailscaleIp;
         }
 
         // Render KPI Metrics
