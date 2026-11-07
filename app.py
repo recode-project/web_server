@@ -136,7 +136,8 @@ PERMISSIONS = {
         'active_sessions': True,   # view + force logout others
         'security_policy': True,   # change global policy
         'services': 'full',        # full = view/start/stop/restart
-        'settings': 'full'         # full = all app settings
+        'settings': 'full',        # full = all app settings
+        'adblocker': 'full'
     },
     'admin': {
         'dashboard': True, 'metrics': True, 'monitoring': True,
@@ -150,7 +151,8 @@ PERMISSIONS = {
         'active_sessions': True,
         'security_policy': False,
         'services': 'full',
-        'settings': 'full'
+        'settings': 'full',
+        'adblocker': 'full'
     },
     'operator': {
         'dashboard': True, 'metrics': True, 'monitoring': True,
@@ -164,7 +166,8 @@ PERMISSIONS = {
         'active_sessions': False,
         'security_policy': False,
         'services': 'limited',     # view + restart whitelisted
-        'settings': 'view'
+        'settings': 'view',
+        'adblocker': 'view'
     },
     'readonly': {
         'dashboard': True, 'metrics': True, 'monitoring': True,
@@ -178,7 +181,8 @@ PERMISSIONS = {
         'active_sessions': False,
         'security_policy': False,
         'services': 'view',        # view only
-        'settings': 'view'
+        'settings': 'view',
+        'adblocker': 'view'
     }
 }
 
@@ -4883,7 +4887,8 @@ SYSTEM_APPS = [
     {"id": "store", "name": "App Store", "icon": "fa-solid fa-store", "color": "linear-gradient(135deg, #FF6B6B, #556270)", "url": "/store"},
     {"id": "mobile-backup", "name": "Mobile Sync", "icon": "fa-solid fa-mobile-screen", "color": "linear-gradient(135deg, #00c6ff, #0072ff)", "url": "/mobile-backup"},
     {"id": "settings", "name": "Settings", "icon": "fa-solid fa-gear", "color": "linear-gradient(135deg, #36D1DC, #5B86E5)", "url": "/settings"},
-    {"id": "lxd", "name": "LXD Manager", "icon": "fa-brands fa-linux", "color": "linear-gradient(135deg, #e66465, #9198e5)", "url": "/lxd"}
+    {"id": "lxd", "name": "LXD Manager", "icon": "fa-brands fa-linux", "color": "linear-gradient(135deg, #e66465, #9198e5)", "url": "/lxd"},
+    {"id": "adblocker", "name": "AdBlocker", "icon": "fa-solid fa-shield-virus", "color": "linear-gradient(135deg, #10b981, #059669)", "url": "/adblocker"}
 ]
 
 LAYOUT_FILE = os.path.join(DATA_DIR, 'dashboard_layout.json')
@@ -6857,6 +6862,226 @@ def api_lxd_tools_install():
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+# =====================================================================
+# ADBLOCKER / ADGUARD HOME INTEGRATION (OPEN SOURCE & PORTABLE)
+# =====================================================================
+ADBLOCKER_CONFIG_FILE = os.path.join(DATA_DIR, 'adblocker_config.json')
+
+def get_adblocker_config():
+    """Mengambil konfigurasi AdGuard Home dari data/adblocker_config.json atau ENV"""
+    cfg = {
+        "host": os.environ.get("ADGUARD_HOST", "127.0.0.1"),
+        "port": int(os.environ.get("ADGUARD_PORT", "8053")),
+        "username": os.environ.get("ADGUARD_USER", ""),
+        "password": os.environ.get("ADGUARD_PASSWORD", ""),
+        "tls": os.environ.get("ADGUARD_TLS", "0") == "1",
+        "timeout": int(os.environ.get("ADGUARD_TIMEOUT", "5"))
+    }
+    if os.path.exists(ADBLOCKER_CONFIG_FILE):
+        try:
+            with open(ADBLOCKER_CONFIG_FILE, 'r') as f:
+                saved = json.load(f)
+                if isinstance(saved, dict):
+                    cfg.update(saved)
+        except Exception as e:
+            print(f"[AdBlocker] Failed to load config: {e}")
+    return cfg
+
+def save_adblocker_config(new_cfg):
+    """Menyimpan konfigurasi AdGuard Home ke data/adblocker_config.json"""
+    cfg = get_adblocker_config()
+    for k in ['host', 'port', 'username', 'tls', 'timeout']:
+        if k in new_cfg:
+            cfg[k] = new_cfg[k]
+    # Hanya perbarui password bila dikirim dan tidak kosong
+    if new_cfg.get('password'):
+        cfg['password'] = new_cfg['password']
+    with open(ADBLOCKER_CONFIG_FILE, 'w') as f:
+        json.dump(cfg, f, indent=2)
+    return cfg
+
+def adguard_api_call(endpoint, method='GET', json_body=None, custom_cfg=None):
+    """Konektor API generik ke AdGuard Home daemon"""
+    cfg = custom_cfg or get_adblocker_config()
+    proto = "https" if cfg.get("tls") else "http"
+    host = cfg.get("host", "127.0.0.1")
+    port = cfg.get("port", 8053)
+    base_url = f"{proto}://{host}:{port}"
+    url = f"{base_url}{endpoint}"
+    
+    auth = None
+    if cfg.get("username") or cfg.get("password"):
+        auth = (cfg.get("username", ""), cfg.get("password", ""))
+        
+    timeout = cfg.get("timeout", 5)
+    
+    try:
+        if method.upper() == 'GET':
+            resp = requests.get(url, auth=auth, timeout=timeout)
+        elif method.upper() == 'POST':
+            resp = requests.post(url, auth=auth, json=json_body, timeout=timeout)
+        else:
+            return False, f"Metode HTTP tidak didukung: {method}", 400
+            
+        if resp.status_code >= 400:
+            return False, f"AdGuard API error ({resp.status_code}): {resp.text}", resp.status_code
+            
+        content_type = resp.headers.get('content-type', '')
+        if 'application/json' in content_type:
+            return True, resp.json(), 200
+        return True, resp.text, 200
+    except requests.exceptions.ConnectionError:
+        return False, f"Tidak dapat terhubung ke AdGuard Home di {base_url}. Pastikan layanan aktif dan host/port sesuai.", 503
+    except requests.exceptions.Timeout:
+        return False, f"Koneksi ke AdGuard Home timeout ({timeout} detik).", 504
+    except Exception as e:
+        return False, str(e), 500
+
+@app.route('/adblocker')
+@login_required
+@requires_permission('adblocker')
+def adblocker_page():
+    """Halaman AdBlocker DNS Manager"""
+    return render_template('adblocker.html')
+
+@app.route('/api/adblocker/status')
+@login_required
+@requires_permission('adblocker')
+def api_adblocker_status():
+    """Mengambil status proteksi dan statistik query AdGuard Home"""
+    cfg = get_adblocker_config()
+    proto = "https" if cfg.get("tls") else "http"
+    base_url = f"{proto}://{cfg.get('host')}:{cfg.get('port')}"
+
+    # Cek status proteksi
+    ok_status, res_status, code_status = adguard_api_call('/control/status')
+    if not ok_status:
+        return jsonify({
+            'connected': False,
+            'error': res_status,
+            'base_url': base_url,
+            'host': cfg.get('host'),
+            'port': cfg.get('port')
+        })
+
+    # Cek statistik query
+    ok_stats, res_stats, code_stats = adguard_api_call('/control/stats')
+    stats_data = res_stats if ok_stats and isinstance(res_stats, dict) else {}
+
+    return jsonify({
+        'connected': True,
+        'base_url': base_url,
+        'status': res_status,
+        'stats': stats_data,
+        'protection_enabled': res_status.get('protection_enabled', False),
+        'dns_addresses': res_status.get('dns_addresses', []),
+        'dns_port': res_status.get('dns_port', 53),
+        'version': res_status.get('version', 'Unknown')
+    })
+
+@app.route('/api/adblocker/toggle', methods=['POST'])
+@login_required
+@requires_permission('adblocker', 'full')
+def api_adblocker_toggle():
+    """Toggle proteksi AdGuard ON/OFF"""
+    data = request.json or {}
+    enabled = bool(data.get('enabled', False))
+    ok, res, code = adguard_api_call('/control/protection', method='POST', json_body={'enabled': enabled})
+    if ok:
+        audit_log('ADBLOCKER_TOGGLE', f"Protection set to {enabled}", session.get('username'))
+        return jsonify({'success': True, 'protection_enabled': enabled})
+    return jsonify({'success': False, 'error': str(res)}), code
+
+@app.route('/api/adblocker/rules', methods=['GET', 'POST'])
+@login_required
+def api_adblocker_rules():
+    """Membaca atau memperbarui custom rules AdGuard Home"""
+    if request.method == 'GET':
+        role = session.get('role', 'readonly')
+        if not has_permission(role, 'adblocker'):
+            return jsonify({'error': 'Permission denied'}), 403
+        ok, res, code = adguard_api_call('/control/filtering/status')
+        if ok and isinstance(res, dict):
+            return jsonify({
+                'success': True,
+                'user_rules': res.get('user_rules', []),
+                'filters': res.get('filters', [])
+            })
+        return jsonify({'success': False, 'error': str(res)}), code
+
+    # POST: Simpan custom rules
+    role = session.get('role', 'readonly')
+    if not has_permission(role, 'adblocker', 'full'):
+        return jsonify({'error': 'Admin/Owner permission required to edit rules'}), 403
+
+    data = request.json or {}
+    rules = data.get('rules', [])
+    if isinstance(rules, str):
+        rules = [line.strip() for line in rules.splitlines() if line.strip()]
+
+    ok, res, code = adguard_api_call('/control/filtering/set_rules', method='POST', json_body={'rules': rules})
+    if ok:
+        audit_log('ADBLOCKER_RULES', f"Updated custom rules ({len(rules)} rules)", session.get('username'))
+        return jsonify({'success': True, 'rules_count': len(rules)})
+    return jsonify({'success': False, 'error': str(res)}), code
+
+@app.route('/api/adblocker/config', methods=['GET', 'POST'])
+@login_required
+def api_adblocker_config():
+    """Membaca atau menyimpan konfigurasi koneksi AdGuard Home"""
+    if request.method == 'GET':
+        role = session.get('role', 'readonly')
+        if not has_permission(role, 'adblocker'):
+            return jsonify({'error': 'Permission denied'}), 403
+        cfg = get_adblocker_config()
+        # Jangan kirim password plaintext
+        safe_cfg = {
+            'host': cfg.get('host', '127.0.0.1'),
+            'port': cfg.get('port', 8053),
+            'username': cfg.get('username', ''),
+            'has_password': bool(cfg.get('password')),
+            'tls': cfg.get('tls', False),
+            'timeout': cfg.get('timeout', 5)
+        }
+        return jsonify({'success': True, 'config': safe_cfg})
+
+    # POST: Simpan konfigurasi koneksi baru
+    role = session.get('role', 'readonly')
+    if not has_permission(role, 'adblocker', 'full'):
+        return jsonify({'error': 'Admin/Owner permission required to update config'}), 403
+
+    data = request.json or {}
+    test_cfg = {
+        'host': str(data.get('host', '127.0.0.1')).strip(),
+        'port': int(data.get('port', 8053)),
+        'username': str(data.get('username', '')).strip(),
+        'password': str(data.get('password', '')),
+        'tls': bool(data.get('tls', False)),
+        'timeout': int(data.get('timeout', 5))
+    }
+    
+    # Bila password kosong di request tapi sebelumnya sudah ada, pertahankan password lama
+    if not test_cfg['password']:
+        existing = get_adblocker_config()
+        test_cfg['password'] = existing.get('password', '')
+
+    # Tes koneksi terlebih dahulu
+    ok, res, code = adguard_api_call('/control/status', custom_cfg=test_cfg)
+    if not ok:
+        return jsonify({
+            'success': False,
+            'error': f"Uji koneksi gagal: {res}. Pastikan kredensial dan alamat sudah benar."
+        }), 400
+
+    saved = save_adblocker_config(test_cfg)
+    audit_log('ADBLOCKER_CONFIG', f"Updated config host={saved.get('host')}:{saved.get('port')}", session.get('username'))
+    return jsonify({
+        'success': True,
+        'message': 'Konfigurasi AdGuard Home berhasil disimpan dan diverifikasi aktif!'
+    })
+
 
 if __name__ == '__main__':
     # Dev server: bind ke loopback saja secara default agar Werkzeug debugger

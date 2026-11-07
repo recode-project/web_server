@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdBlocker DNS — Eka Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --glass-bg: rgba(26, 32, 44, 0.72);
+            --glass-card: rgba(30, 41, 59, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-green-glow: rgba(16, 185, 129, 0.25);
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-amber: #f59e0b;
+            --radius-lg: 20px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            background-color: #0f172a;
+            overflow-x: hidden;
+        }
+
+        .wallpaper {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 40%),
+                        radial-gradient(circle at 85% 80%, rgba(59, 130, 246, 0.22) 0%, transparent 40%),
+                        linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+            z-index: -1;
+        }
+
+        .page-wrap {
+            padding: 2rem 2.5rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .glass {
+            background: var(--glass-card);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+            border-radius: var(--radius-lg);
+        }
+
+        /* Header Navigation */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+        }
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .back-btn {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-muted);
+            padding: 0.45rem 1rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+            transform: translateX(-2px);
+        }
+        .page-title {
+            font-size: 1.85rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            letter-spacing: -0.02em;
+        }
+        .page-title i {
+            color: var(--accent-green);
+            filter: drop-shadow(0 0 10px var(--accent-green-glow));
+        }
+        .page-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            padding: 0.6rem 1.1rem;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .btn-action:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .btn-action.primary {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-color: transparent;
+            box-shadow: 0 4px 14px var(--accent-green-glow);
+        }
+        .btn-action.primary:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        /* Master Protection Bar */
+        .protection-bar {
+            padding: 1.25rem 1.75rem;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            border-left: 4px solid var(--accent-green);
+            transition: border-color 0.3s ease;
+        }
+        .protection-bar.disabled {
+            border-left-color: var(--accent-red);
+        }
+        .protection-info {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+        }
+        .protection-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent-green-glow);
+            color: var(--accent-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            transition: all 0.3s ease;
+        }
+        .protection-bar.disabled .protection-icon {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+        .protection-text h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .status-badge {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            letter-spacing: 0.05em;
+        }
+        .badge-active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .badge-disabled {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .protection-text p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+
+        /* Modern Toggle Switch */
+        .switch-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 32px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 34px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 24px;
+            width: 24px;
+            left: 4px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        input:checked + .slider {
+            background-color: var(--accent-green);
+            box-shadow: 0 0 16px var(--accent-green-glow);
+        }
+        input:checked + .slider:before {
+            transform: translateX(28px);
+        }
+
+        /* Connection Offline Warning */
+        .offline-banner {
+            display: none;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.5rem;
+            margin-bottom: 2rem;
+            color: #fca5a5;
+        }
+        .offline-banner.visible {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        /* KPI Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .metric-card {
+            padding: 1.4rem;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .metric-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-main);
+        }
+        .metric-val {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .metric-footer {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .progress-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.3rem;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+
+        /* Server Listen IPs Banner */
+        .dns-info-bar {
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .dns-chips {
+            display: flex;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .dns-chip {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #38bdf8;
+            padding: 0.3rem 0.7rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.82rem;
+        }
+
+        /* Analytics Dual Panel */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .panel-card {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .panel-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.8rem;
+        }
+        .panel-title span {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .table-wrap {
+            overflow-x: auto;
+            max-height: 380px;
+        }
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        table.data-table th {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            position: sticky;
+            top: 0;
+            background: #1e293b;
+        }
+        table.data-table td {
+            padding: 0.65rem 0.8rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+        }
+        table.data-table tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .domain-name {
+            font-family: monospace;
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .count-badge {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+        .empty-hint {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Custom Rules Manager */
+        .rules-section {
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .rules-textarea {
+            width: 100%;
+            height: 220px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-md);
+            color: #e2e8f0;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            padding: 1rem;
+            margin-top: 1rem;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        .rules-textarea:focus {
+            border-color: var(--accent-green);
+        }
+        .rules-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .rules-hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal-box {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 520px;
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.8rem;
+        }
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.3rem;
+        }
+        .modal-close-btn:hover { color: white; }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .form-group input {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-sm);
+            color: white;
+            padding: 0.65rem 0.9rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .form-group input:focus {
+            border-color: var(--accent-green);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1rem;
+        }
+        .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            margin-top: 0.4rem;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.8rem;
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 0.85rem 1.4rem;
+            border-radius: var(--radius-md);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            z-index: 2000;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            font-size: 0.85rem;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast.success { border-left: 4px solid var(--accent-green); }
+        .toast.error { border-left: 4px solid var(--accent-red); }
+
+        @media (max-width: 768px) {
+            .page-wrap { padding: 1.2rem; }
+            .analytics-grid { grid-template-columns: 1fr; }
+            .form-row { grid-template-columns: 1fr; }
+            .page-title { font-size: 1.4rem; }
+            .protection-bar { flex-direction: column; align-items: flex-start; }
+            .switch-wrap { align-self: flex-end; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wallpaper"></div>
+
+    <div class="page-wrap">
+        <!-- Top Navigation & Header -->
+        <header class="page-header">
+            <div class="header-left">
+                <a href="/" class="back-btn" id="btn-back">
+                    <i class="fa-solid fa-arrow-left"></i> Dashboard
+                </a>
+                <h1 class="page-title">
+                    <i class="fa-solid fa-shield-virus"></i> AdBlocker DNS
+                </h1>
+                <p class="page-subtitle">Network-wide ad, tracker, and malware protection suite</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn-action" id="btn-open-settings" title="AdGuard Connection Settings">
+                    <i class="fa-solid fa-gear"></i> Settings
+                </button>
+                <a href="#" class="btn-action" id="link-web-console" target="_blank" rel="noopener noreferrer" title="Buka AdGuard Web Console Langsung">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Web Console
+                </a>
+                <button class="btn-action primary" id="btn-refresh" title="Perbarui Data">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Offline Banner -->
+        <div class="offline-banner" id="offline-banner">
+            <div>
+                <strong id="offline-title"><i class="fa-solid fa-triangle-exclamation"></i> AdGuard Home Tidak Terhubung</strong>
+                <p id="offline-desc" style="font-size: 0.85rem; margin-top: 0.3rem;">Tidak dapat berkomunikasi dengan daemon AdGuard Home. Pastikan service aktif atau sesuaikan pengaturan koneksi host/port.</p>
+            </div>
+            <button class="btn-action" id="btn-offline-config">
+                <i class="fa-solid fa-wrench"></i> Sesuaikan Pengaturan
+            </button>
+        </div>
+
+        <!-- Master Protection Banner -->
+        <section class="glass protection-bar" id="protection-bar">
+            <div class="protection-info">
+                <div class="protection-icon" id="protection-icon">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div class="protection-text">
+                    <h3>
+                        DNS Protection
+                        <span class="status-badge badge-active" id="badge-status">PROTECTED</span>
+                    </h3>
+                    <p id="protection-desc">Memblokir iklan, pelacak, dan domain phising di seluruh perangkat jaringan.</p>
+                </div>
+            </div>
+            <div class="switch-wrap">
+                <label class="switch">
+                    <input type="checkbox" id="toggle-protection" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Metrics Cards -->
+        <section class="metrics-grid">
+            <div class="glass metric-card">
+                <div class="metric-header">
+                    <span>TOTAL DNS QUERIES (24H)</span>
+                    <div class="metric-icon" style="color: #38bdf8;"><i class="fa-solid fa-server"></i></div>
+                </div>
+                <div class="metric-val" id="val-total-queries">0</div>
+                <div class="metric-footer">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Akumulasi query 24 jam terakhir
+                </div>
+            </div>
+
+            <div class="glass metric-card">
+                <div class="metric-header">
+                    <span>BLOCKED ADS & THREATS</span>
+                    <div class="metric-icon" style="color: #ef4444;"><i class="fa-solid fa-ban"></i></div>
+                </div>
+                <div class="metric-val" id="val-blocked-queries" style="color: #ef4444;">0</div>
+                <div class="metric-footer">
+                    <i class="fa-solid fa-shield-virus"></i> Query dicegat aturan filter
+                </div>
+            </div>
+
+            <div class="glass metric-card">
+                <div class="metric-header">
+                    <span>BLOCKED RATIO</span>
+                    <div class="metric-icon" style="color: #10b981;"><i class="fa-solid fa-percent"></i></div>
+                </div>
+                <div class="metric-val" id="val-blocked-ratio">0.0%</div>
+                <div class="progress-bar-wrap">
+                    <div class="progress-bar-fill" id="bar-blocked-ratio"></div>
+                </div>
+            </div>
+
+            <div class="glass metric-card">
+                <div class="metric-header">
+                    <span>AVG LATENCY</span>
+                    <div class="metric-icon" style="color: #f59e0b;"><i class="fa-solid fa-bolt"></i></div>
+                </div>
+                <div class="metric-val" id="val-avg-latency">0 ms</div>
+                <div class="metric-footer">
+                    <i class="fa-solid fa-microchip"></i> Waktu proses per query
+                </div>
+            </div>
+        </section>
+
+        <!-- DNS Listener Info Bar -->
+        <div class="glass dns-info-bar">
+            <span><i class="fa-solid fa-network-wired"></i> Gunakan DNS Server ini pada Router atau Perangkat Anda:</span>
+            <div class="dns-chips" id="dns-chips-list">
+                <span class="dns-chip">127.0.0.1:53</span>
+            </div>
+        </div>
+
+        <!-- Analytics Panels (Top Blocked & Top Queried) -->
+        <section class="analytics-grid">
+            <!-- Top Blocked Domains -->
+            <div class="glass panel-card">
+                <div class="panel-title">
+                    <span><i class="fa-solid fa-shield-cat" style="color: #ef4444;"></i> Top Blocked Domains</span>
+                    <span id="badge-top-blocked" class="count-badge">0 Domains</span>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th style="text-align: right;">Blokir</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-blocked-body">
+                            <tr><td colspan="2" class="empty-hint">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top Queried Domains -->
+            <div class="glass panel-card">
+                <div class="panel-title">
+                    <span><i class="fa-solid fa-chart-simple" style="color: #38bdf8;"></i> Top Queried Domains</span>
+                    <span id="badge-top-queried" class="count-badge">0 Domains</span>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th style="text-align: right;">Permintaan</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-queried-body">
+                            <tr><td colspan="2" class="empty-hint">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top Clients -->
+            <div class="glass panel-card" style="grid-column: 1 / -1;">
+                <div class="panel-title">
+                    <span><i class="fa-solid fa-laptop-code" style="color: #a855f7;"></i> Top Active Clients</span>
+                    <span id="badge-top-clients" class="count-badge">0 Klien</span>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Client IP / Host</th>
+                                <th style="text-align: right;">Total Permintaan</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-clients-body">
+                            <tr><td colspan="2" class="empty-hint">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Custom Filtering Rules Section -->
+        <section class="glass rules-section">
+            <div class="panel-title">
+                <span><i class="fa-solid fa-filter" style="color: #10b981;"></i> Custom Filtering Rules</span>
+                <button class="btn-action primary" id="btn-save-rules">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan Rules
+                </button>
+            </div>
+            <textarea id="rules-textarea" class="rules-textarea" placeholder="Tambahkan aturan pemblokiran per baris:&#10;||ads.example.com^&#10;||tracker.analytics.com^&#10;@@||goodsite.com^ (whitelist)" spellcheck="false"></textarea>
+            <div class="rules-footer">
+                <span class="rules-hint"><i class="fa-solid fa-circle-info"></i> Sintaks mendukung format AdGuard, Adblock Plus, dan file hosts standar. Baris dimulai dengan <code>!</code> atau <code>#</code> adalah komentar.</span>
+                <span id="rules-count-badge" class="count-badge">0 Aturan</span>
+            </div>
+        </section>
+    </div>
+
+    <!-- Connection Settings Modal -->
+    <div class="modal-overlay" id="modal-settings">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-gear"></i> Pengaturan AdGuard Home</h3>
+                <button class="modal-close-btn" id="btn-close-modal">&times;</button>
+            </div>
+            <form id="form-settings" onsubmit="return false;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cfg-host">Host / IP</label>
+                        <input type="text" id="cfg-host" placeholder="127.0.0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="cfg-port">Port Web UI</label>
+                        <input type="number" id="cfg-port" placeholder="8053" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 0.8rem;">
+                    <label for="cfg-user">Username (Opsional jika tanpa auth)</label>
+                    <input type="text" id="cfg-user" placeholder="admin">
+                </div>
+
+                <div class="form-group" style="margin-top: 0.8rem;">
+                    <label for="cfg-pass">Password</label>
+                    <input type="password" id="cfg-pass" placeholder="Biarkan kosong jika tidak diubah">
+                </div>
+
+                <label class="form-checkbox">
+                    <input type="checkbox" id="cfg-tls"> Gunakan HTTPS (TLS)
+                </label>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-action" id="btn-cancel-settings">Batal</button>
+                    <button type="submit" class="btn-action primary" id="btn-save-settings">
+                        <i class="fa-solid fa-check"></i> Uji & Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification Element -->
+    <div class="toast" id="toast-notify">
+        <i class="fa-solid fa-circle-check" id="toast-icon"></i>
+        <span id="toast-msg">Notifikasi</span>
+    </div>
+
+    <!-- Modular External JavaScript (Strict Compliance: NO INLINE JAVASCRIPT) -->
+    <script src="/static/adblocker.js?v=1"></script>
+</body>
+</html>
