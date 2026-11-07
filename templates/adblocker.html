@@ -698,6 +698,8 @@
             display: flex;
             flex-direction: column;
             gap: 0.4rem;
+            min-width: 0;
+            width: 100%;
         }
         .form-group label {
             font-size: 0.85rem;
@@ -713,12 +715,17 @@
             font-family: inherit;
             font-size: 0.9rem;
             outline: none;
+            width: 100%;
+            box-sizing: border-box;
+            max-width: 100%;
         }
         .form-group input:focus { border-color: var(--accent-green); }
         .form-row {
             display: grid;
             grid-template-columns: 2fr 1fr;
             gap: 1rem;
+            width: 100%;
+            min-width: 0;
         }
         .form-checkbox {
             display: flex;

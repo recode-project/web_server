@@ -234,11 +234,11 @@
         if (elements.toggleSafesearch) elements.toggleSafesearch.checked = Boolean(data.safesearch_enabled);
         if (elements.toggleParental) elements.toggleParental.checked = Boolean(data.parental_enabled);
 
-        // Update Web Console Link
-        if (elements.linkWebConsole && data.base_url) {
+        // Update Web Console Link (Selalu mengarah ke Port 8053 AdGuard Home pada host yang diakses)
+        if (elements.linkWebConsole) {
             const clientHost = window.location.hostname;
-            const port = (data.status && data.status.http_port) ? data.status.http_port : 8053;
-            elements.linkWebConsole.href = `http://${clientHost}:${port}`;
+            const port = data.web_port || 8053;
+            elements.linkWebConsole.href = `${window.location.protocol}//${clientHost}:${port}`;
         }
 
         // Update Accurate DNS IPs (LAN vs Tailscale) - Tampilkan IP murni tanpa port untuk router

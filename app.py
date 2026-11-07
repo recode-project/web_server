@@ -7014,6 +7014,7 @@ def api_adblocker_status():
     return jsonify({
         'connected': True,
         'base_url': base_url,
+        'web_port': cfg.get('port', 8053),
         'status': res_status,
         'stats': stats_data,
         'protection_enabled': res_status.get('protection_enabled', False),
