@@ -10,6 +10,7 @@ Beberapa fitur mungkin masih dalam pengerjaan, terdapat *bug*, atau belum sepenu
 Eka Dashboard adalah sistem panel web terpadu untuk memanajemen layanan server, analitik website, keamanan, dan pengaturan jaringan (seperti Nginx, Docker, dan **LXD Container**) dengan antarmuka yang dinamis, modern, dan informatif.
 
 ### ✨ Pembaruan Terbaru (Update)
+*   **AdBlocker DNS Suite (AdGuard Home)**: Manajemen DNS AdBlocker menyeluruh langsung dari Eka Dashboard. Pantau metrik query 24 jam, pemblokiran ancaman/iklan, latensi DNS, top domain terblokir, top klien aktif, toggle proteksi ON/OFF real-time, serta editor Custom Filter Rules tanpa perlu berpindah tab.
 *   **LXD Manager & Resource Limits**: Kelola container LXD kamu langsung dari Dashboard. Mulai dari buat container, Start, Stop, Delete, akses Terminal web-based, hingga konfigurasi limit RAM, CPU, dan Storage per-container!
 *   **Website Threat Detection**: Pantau IP yang mencoba memindai celah keamanan (brute-force/scanning) dari log Nginx, dan lakukan pemblokiran IP (Firewall) langsung dari UI Website Shield.
 
