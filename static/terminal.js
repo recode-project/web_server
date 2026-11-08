@@ -31,6 +31,7 @@ const socket = io();
         const startPath = urlParams.get('path') || '';
         const startCmd = urlParams.get('cmd') || '';
         const lxdTarget = urlParams.get('lxd') || null;
+        const lxdProject = urlParams.get('lxd_project') || null;
 
         // Load custom commands from localStorage
         let customCommands = JSON.parse(localStorage.getItem('customCommands') || '[]');
@@ -177,7 +178,8 @@ const socket = io();
             socket.emit('start_terminal', {
                 session_id: sessionId,
                 path: path,
-                lxd_target: lxdTarget
+                lxd_target: lxdTarget,
+                lxd_project: lxdProject
             });
 
             switchTab(sessionId);

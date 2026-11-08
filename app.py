@@ -1422,12 +1422,16 @@ def _get_target_host_user():
     return None
 
 
-def _build_terminal_command(lxd_target=None, start_path=None):
+def _build_terminal_command(lxd_target=None, start_path=None, lxd_project=None):
     """Susun perintah shell resmi identik dengan login terminal/SSH host."""
     if _can_use_nsenter():
         prefix = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
         if lxd_target:
-            return prefix + ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
+            lxc_cmd = ['lxc', 'exec', lxd_target]
+            if lxd_project and lxd_project != 'default':
+                lxc_cmd += ['--project', lxd_project]
+            lxc_cmd += ['--', 'bash', '--login', '-i']
+            return prefix + lxc_cmd
         
         target_user = _get_target_host_user()
         if target_user:
@@ -1442,7 +1446,11 @@ def _build_terminal_command(lxd_target=None, start_path=None):
 
     # Fallback: shell lokal tanpa privilege host (dev / non-privileged deployment).
     if lxd_target:
-        return ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
+        lxc_cmd = ['lxc', 'exec', lxd_target]
+        if lxd_project and lxd_project != 'default':
+            lxc_cmd += ['--project', lxd_project]
+        lxc_cmd += ['--', 'bash', '--login', '-i']
+        return lxc_cmd
     return ['bash', '--login', '-i']
 
 
@@ -1512,13 +1520,14 @@ def handle_start_terminal(data):
     data = data or {}
     session_id = data.get('session_id', 'default')
     lxd_target = data.get('lxd_target')
+    lxd_project = data.get('lxd_project')
     start_path = data.get('path')
 
     # Satu sesi per session_id: bersihkan sesi lama agar fd/pid tidak bocor.
     if session_id in terminal_sessions:
         handle_stop_terminal({'session_id': session_id})
 
-    cmd = _build_terminal_command(lxd_target, start_path=start_path)
+    cmd = _build_terminal_command(lxd_target, start_path=start_path, lxd_project=lxd_project)
     _spawn_pty_session(session_id, cmd)
     emit('terminal_started', {'session_id': session_id})
 
@@ -4423,9 +4432,54 @@ def get_app_catalog():
     except Exception as e:
         return jsonify({'error': str(e), 'catalog': []}), 500
 
-def _detect_native_host_app(app_id, catalog_ports=None):
-    """Mendeteksi apakah aplikasi katalog berjalan sebagai service/proses native di host."""
+_host_snapshot_cache = {'time': 0, 'data': (set(), set())}
+
+def _get_host_active_snapshot():
+    """Ambil set service aktif dan proses aktif di host sekaligus dalam 1 batch call (di-cache 8 detik)."""
+    now = time.time()
+    if now - _host_snapshot_cache['time'] < 8:
+        return _host_snapshot_cache['data']
+
+    active_services = set()
+    active_procs = set()
+
+    # 1. Batch systemctl active services (1 call)
+    try:
+        res = run_host_command(['systemctl', 'list-units', '--type=service', '--state=running', '--no-legend', '--no-pager'])
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                parts = line.strip().split()
+                if parts:
+                    unit_full = parts[0].lower()
+                    unit_name = unit_full.replace('.service', '')
+                    active_services.add(unit_full)
+                    active_services.add(unit_name)
+    except Exception:
+        pass
+
+    # 2. Batch host processes (1 call)
+    try:
+        res = run_host_command(['ps', '-eo', 'comm='])
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                proc = line.strip().lower()
+                if proc:
+                    active_procs.add(proc)
+    except Exception:
+        pass
+
+    data = (active_services, active_procs)
+    _host_snapshot_cache['time'] = now
+    _host_snapshot_cache['data'] = data
+    return data
+
+
+def _detect_native_host_app(app_id, catalog_ports=None, host_snapshot=None):
+    """Mendeteksi apakah aplikasi katalog berjalan sebagai service/proses native di host via O(1) in-memory lookup."""
     catalog_ports = catalog_ports or []
+    if host_snapshot is None:
+        host_snapshot = _get_host_active_snapshot()
+    active_services, active_procs = host_snapshot
     
     # Pemetaan aplikasi katalog ke unit service / proses host yang valid
     native_defs = {
@@ -4454,25 +4508,18 @@ def _detect_native_host_app(app_id, catalog_ports=None):
             'ports': []
         }
 
-    # 1. Cek status active pada systemd service host
+    # 1. Cek status active pada systemd service host (O(1) in-memory)
     for s in cfg.get('services', []):
-        try:
-            res = run_host_command(['systemctl', 'is-active', s])
-            if res.returncode == 0 and res.stdout.strip() == 'active':
-                ports = cfg.get('ports') or [{'host': str(p.get('host')), 'container': str(p.get('container')), 'protocol': p.get('protocol', 'tcp')} for p in catalog_ports if p.get('host')]
-                return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
-        except Exception:
-            pass
+        s_low = s.lower()
+        if s_low in active_services or f"{s_low}.service" in active_services:
+            ports = cfg.get('ports') or [{'host': str(p.get('host')), 'container': str(p.get('container')), 'protocol': p.get('protocol', 'tcp')} for p in catalog_ports if p.get('host')]
+            return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
 
-    # 2. Cek apakah ada proses aktif di host via pgrep
+    # 2. Cek apakah ada proses aktif di host (O(1) in-memory)
     for p in cfg.get('procs', []):
-        try:
-            res = run_host_command(['pgrep', '-x', p])
-            if res.returncode == 0 and res.stdout.strip():
-                ports = cfg.get('ports') or [{'host': str(prt.get('host')), 'container': str(prt.get('container')), 'protocol': prt.get('protocol', 'tcp')} for prt in catalog_ports if prt.get('host')]
-                return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
-        except Exception:
-            pass
+        if p.lower() in active_procs:
+            ports = cfg.get('ports') or [{'host': str(prt.get('host')), 'container': str(prt.get('container')), 'protocol': prt.get('protocol', 'tcp')} for prt in catalog_ports if prt.get('host')]
+            return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
 
     return None
 
@@ -4542,6 +4589,9 @@ def get_installed_apps():
              with open(CATALOG_FILE, 'r') as f: full_catalog.extend(json.load(f))
         if os.path.exists(USER_CATALOG_FILE):
              with open(USER_CATALOG_FILE, 'r') as f: full_catalog.extend(json.load(f))
+
+        # Batch load status host snapshot sekali jalan (hilangkan latency)
+        host_snapshot = _get_host_active_snapshot()
              
         for app in full_catalog:
             app_id = app['id']
@@ -4549,9 +4599,9 @@ def get_installed_apps():
             container_name = f"eka_{app_id}"
             info = container_map.get(container_name) or container_map.get(app_id)
             
-            # Jika tidak berjalan di Docker, periksa layanan native di host
+            # Jika tidak berjalan di Docker, periksa layanan native di host via snapshot
             if not info:
-                info = _detect_native_host_app(app_id, app.get('ports', []))
+                info = _detect_native_host_app(app_id, app.get('ports', []), host_snapshot)
 
             if info:
                 installed.append({
@@ -6673,12 +6723,21 @@ def lxd_page():
     """Halaman LXD Container Manager"""
     return render_template('lxd.html')
 
+def _lxc_cmd(args, project='default'):
+    """Bungkus perintah lxc dengan nsenter host dan parameter project jika ada."""
+    cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc']
+    if project and project != 'default':
+        cmd += ['--project', project]
+    cmd += args
+    return cmd
+
+
 @app.route('/api/lxd/containers')
 @login_required
 def api_lxd_containers():
-    """Daftar semua LXD containers"""
+    """Daftar semua LXD containers dari semua project"""
     try:
-        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'list', '--format', 'json'], capture_output=True, text=True)
+        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'list', '--all-projects', '--format', 'json'], capture_output=True, text=True)
         if res.returncode == 0:
             data = json.loads(res.stdout)
             return jsonify({'containers': data})
@@ -6694,14 +6753,15 @@ def api_lxd_action():
     data = request.json
     name = data.get('name')
     action = data.get('action')
+    project = data.get('project') or 'default'
     
     if not name or action not in ['start', 'stop', 'restart', 'delete']:
         return jsonify({'success': False, 'error': 'Invalid params'})
     
     try:
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', action, name]
+        cmd = _lxc_cmd([action, name], project=project)
         if action == 'delete':
-            cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'delete', '-f', name]
+            cmd = _lxc_cmd(['delete', '-f', name], project=project)
             
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
@@ -6718,12 +6778,13 @@ def api_lxd_create():
     data = request.json
     name = data.get('name')
     image = data.get('image', 'ubuntu:22.04')
+    project = data.get('project') or 'default'
     
     if not name:
         return jsonify({'success': False, 'error': 'Name is required'})
         
     try:
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'launch', image, name]
+        cmd = _lxc_cmd(['launch', image, name], project=project)
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             return jsonify({'success': True})
@@ -6738,6 +6799,7 @@ def api_lxd_config():
     """Set LXD container resource limits (CPU, RAM, Storage)"""
     data = request.json
     name = data.get('name')
+    project = data.get('project') or 'default'
     ram = data.get('ram')
     cpu = data.get('cpu')
     storage = data.get('storage')
@@ -6748,19 +6810,19 @@ def api_lxd_config():
     try:
         # Set Memory
         if ram:
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'limits.memory', ram])
+            subprocess.run(_lxc_cmd(['config', 'set', name, 'limits.memory', ram], project=project))
         
         # Set CPU
         if cpu:
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'limits.cpu', str(cpu)])
+            subprocess.run(_lxc_cmd(['config', 'set', name, 'limits.cpu', str(cpu)], project=project))
             
         # Set Storage
         if storage:
             # Try setting device property directly first
-            res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'set', name, 'root', f'size={storage}'], capture_output=True)
+            res = subprocess.run(_lxc_cmd(['config', 'device', 'set', name, 'root', f'size={storage}'], project=project), capture_output=True)
             if res.returncode != 0:
                 # If it fails, device might not be overridden yet, so override it
-                subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'override', name, 'root', f'size={storage}'])
+                subprocess.run(_lxc_cmd(['config', 'device', 'override', name, 'root', f'size={storage}'], project=project))
 
         return jsonify({'success': True})
     except Exception as e:
@@ -6772,6 +6834,7 @@ def api_lxd_device_add():
     """Add a proxy device (Port Forwarding) to container"""
     data = request.json
     name = data.get('name')
+    project = data.get('project') or 'default'
     device_name = data.get('device_name')
     host_port = data.get('host_port')
     container_port = data.get('container_port')
@@ -6783,7 +6846,7 @@ def api_lxd_device_add():
     try:
         listen_str = f"{protocol}:0.0.0.0:{host_port}"
         connect_str = f"{protocol}:127.0.0.1:{container_port}"
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'add', name, device_name, 'proxy', f'listen={listen_str}', f'connect={connect_str}']
+        cmd = _lxc_cmd(['config', 'device', 'add', name, device_name, 'proxy', f'listen={listen_str}', f'connect={connect_str}'], project=project)
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             return jsonify({'success': True})
@@ -6798,13 +6861,14 @@ def api_lxd_device_remove():
     """Remove a device from container"""
     data = request.json
     name = data.get('name')
+    project = data.get('project') or 'default'
     device_name = data.get('device_name')
     
     if not name or not device_name:
         return jsonify({'success': False, 'error': 'Name and device_name are required'})
         
     try:
-        cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'remove', name, device_name]
+        cmd = _lxc_cmd(['config', 'device', 'remove', name, device_name], project=project)
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             return jsonify({'success': True})
@@ -6819,6 +6883,7 @@ def api_lxd_advanced():
     """Set advanced container settings (nesting, privileged, autostart)"""
     data = request.json
     name = data.get('name')
+    project = data.get('project') or 'default'
     nesting = data.get('nesting') # 'true' or 'false'
     privileged = data.get('privileged') # 'true' or 'false'
     autostart = data.get('autostart') # 'true' or 'false'
@@ -6828,11 +6893,11 @@ def api_lxd_advanced():
         
     try:
         if nesting is not None:
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.nesting', nesting])
+            subprocess.run(_lxc_cmd(['config', 'set', name, 'security.nesting', nesting], project=project))
         if privileged is not None:
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.privileged', privileged])
+            subprocess.run(_lxc_cmd(['config', 'set', name, 'security.privileged', privileged], project=project))
         if autostart is not None:
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'boot.autostart', autostart])
+            subprocess.run(_lxc_cmd(['config', 'set', name, 'boot.autostart', autostart], project=project))
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -6842,12 +6907,13 @@ def api_lxd_advanced():
 def api_lxd_tools_status():
     """Check if Tailscale and Wireguard are installed and get their running status inside the container"""
     name = request.args.get('name')
+    project = request.args.get('project') or 'default'
     if not name:
         return jsonify({'error': 'Container name is required'}), 400
         
     try:
         # Check if container is running first. If not running, tools status cannot be queried.
-        info_res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'info', name], capture_output=True, text=True)
+        info_res = subprocess.run(_lxc_cmd(['info', name], project=project), capture_output=True, text=True)
         if "Status: RUNNING" not in info_res.stdout:
             return jsonify({
                 'success': True,
@@ -6862,11 +6928,11 @@ def api_lxd_tools_status():
         ts_ip = ""
         
         # Test which tailscale
-        ts_check = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'which', 'tailscale'], capture_output=True, text=True)
+        ts_check = subprocess.run(_lxc_cmd(['exec', name, '--', 'which', 'tailscale'], project=project), capture_output=True, text=True)
         if ts_check.returncode == 0:
             ts_installed = True
             # Check tailscale status
-            ts_status_run = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'status'], capture_output=True, text=True)
+            ts_status_run = subprocess.run(_lxc_cmd(['exec', name, '--', 'tailscale', 'status'], project=project), capture_output=True, text=True)
             if "Logged out" in ts_status_run.stdout or "No link established" in ts_status_run.stdout:
                 ts_status = "Disconnected"
             elif "Authentication required" in ts_status_run.stdout:
@@ -6874,7 +6940,7 @@ def api_lxd_tools_status():
             elif ts_status_run.returncode == 0 and len(ts_status_run.stdout.strip()) > 0:
                 ts_status = "Connected"
                 # Try getting Tailscale IP
-                ts_ip_run = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'ip', '-4'], capture_output=True, text=True)
+                ts_ip_run = subprocess.run(_lxc_cmd(['exec', name, '--', 'tailscale', 'ip', '-4'], project=project), capture_output=True, text=True)
                 if ts_ip_run.returncode == 0:
                     ts_ip = ts_ip_run.stdout.strip()
             else:
@@ -6884,11 +6950,11 @@ def api_lxd_tools_status():
         wg_installed = False
         wg_status = "Not Installed"
         
-        wg_check = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'which', 'wg'], capture_output=True, text=True)
+        wg_check = subprocess.run(_lxc_cmd(['exec', name, '--', 'which', 'wg'], project=project), capture_output=True, text=True)
         if wg_check.returncode == 0:
             wg_installed = True
             # Check if wireguard module or configs exists / runs
-            wg_show = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'wg', 'show'], capture_output=True, text=True)
+            wg_show = subprocess.run(_lxc_cmd(['exec', name, '--', 'wg', 'show'], project=project), capture_output=True, text=True)
             if wg_show.returncode == 0 and len(wg_show.stdout.strip()) > 0:
                 wg_status = "Active"
             else:
@@ -6916,6 +6982,7 @@ def api_lxd_tools_install():
     """Install and configure Tailscale or Wireguard in the container"""
     data = request.json
     name = data.get('name')
+    project = data.get('project') or 'default'
     tool = data.get('tool') # 'tailscale' or 'wireguard'
     
     if not name or tool not in ['tailscale', 'wireguard']:
@@ -6923,23 +6990,23 @@ def api_lxd_tools_install():
         
     try:
         # 1. Enable Nesting and TUN device first (essential for VPNs)
-        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'set', name, 'security.nesting', 'true'])
-        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'config', 'device', 'add', name, 'tun', 'unix-char', 'path=/dev/net/tun'], capture_output=True)
+        subprocess.run(_lxc_cmd(['config', 'set', name, 'security.nesting', 'true'], project=project))
+        subprocess.run(_lxc_cmd(['config', 'device', 'add', name, 'tun', 'unix-char', 'path=/dev/net/tun'], project=project), capture_output=True)
         
         # 2. Check and install dependencies (curl)
-        subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'apt-get update && apt-get install -y curl || apk add curl || yum install -y curl'], capture_output=True)
+        subprocess.run(_lxc_cmd(['exec', name, '--', 'bash', '-c', 'apt-get update && apt-get install -y curl || apk add curl || yum install -y curl'], project=project), capture_output=True)
         
         if tool == 'tailscale':
-            install_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'curl -fsSL https://tailscale.com/install.sh | sh']
+            install_cmd = _lxc_cmd(['exec', name, '--', 'bash', '-c', 'curl -fsSL https://tailscale.com/install.sh | sh'], project=project)
             res = subprocess.run(install_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 return jsonify({'success': False, 'error': f'Failed to install Tailscale: {res.stderr}'})
                 
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'systemctl', 'enable', '--now', 'tailscaled'], capture_output=True)
-            subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'service', 'tailscaled', 'start'], capture_output=True)
+            subprocess.run(_lxc_cmd(['exec', name, '--', 'systemctl', 'enable', '--now', 'tailscaled'], project=project), capture_output=True)
+            subprocess.run(_lxc_cmd(['exec', name, '--', 'service', 'tailscaled', 'start'], project=project), capture_output=True)
             
             # Run tailscale up and capture login URL from stdout/stderr (using 15s timeout to not block)
-            up_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'tailscale', 'up', '--timeout=15s']
+            up_cmd = _lxc_cmd(['exec', name, '--', 'tailscale', 'up', '--timeout=15s'], project=project)
             try:
                 up_res = subprocess.run(up_cmd, capture_output=True, text=True, timeout=20)
                 output = up_res.stdout + "\n" + up_res.stderr
@@ -6959,14 +7026,13 @@ def api_lxd_tools_install():
                         break
                     
             return jsonify({
-                'success': True, 
-                'message': 'Tailscale installed successfully!', 
+                'success': True,
                 'login_url': login_url,
                 'output': output
             })
             
         elif tool == 'wireguard':
-            install_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'exec', name, '--', 'bash', '-c', 'apt-get install -y wireguard iptables || apk add wireguard-tools || yum install -y wireguard-tools']
+            install_cmd = _lxc_cmd(['exec', name, '--', 'bash', '-c', 'apt-get update && apt-get install -y wireguard wireguard-tools iptables || apk add wireguard-tools || yum install -y wireguard-tools'], project=project)
             res = subprocess.run(install_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 return jsonify({'success': False, 'error': f'Failed to install Wireguard: {res.stderr}'})

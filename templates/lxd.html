@@ -268,6 +268,7 @@
             <span style="font-size:0.8rem; font-family:monospace; color:#9198e5;" id="cfg-title-name"></span>
         </div>
         <input type="hidden" id="cfg-name">
+        <input type="hidden" id="cfg-project" value="default">
         
         <!-- Tab Navigation -->
         <div class="modal-tabs">
@@ -491,11 +492,14 @@ function switchTab(tabId) {
     }
 }
 
-function openConfigModal(name) {
-    const c = containersData[name];
+function openConfigModal(name, project = 'default') {
+    const key = `${project || 'default'}/${name}`;
+    const c = containersData[key] || containersData[name];
     if (!c) return;
+    const actualProject = c.project || project || 'default';
     document.getElementById('cfg-name').value = name;
-    document.getElementById('cfg-title-name').textContent = `[ ${name} ]`;
+    document.getElementById('cfg-project').value = actualProject;
+    document.getElementById('cfg-title-name').textContent = `[ ${actualProject} / ${name} ]`;
     document.getElementById('cfg-cpu').value = (c.expanded_config && c.expanded_config['limits.cpu']) || '';
     document.getElementById('cfg-ram').value = (c.expanded_config && c.expanded_config['limits.memory']) || '';
     document.getElementById('cfg-storage').value = (c.expanded_devices && c.expanded_devices.root && c.expanded_devices.root.size) || '';
@@ -549,6 +553,7 @@ function renderProxyList(container) {
 
 async function addProxyDevice() {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     const device_name = document.getElementById('net-device-name').value.trim();
     const protocol = document.getElementById('net-protocol').value;
     const host_port = document.getElementById('net-host-port').value.trim();
@@ -566,7 +571,7 @@ async function addProxyDevice() {
         const res = await fetch('/api/lxd/device/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, device_name, protocol, host_port, container_port })
+            body: JSON.stringify({ name, project, device_name, protocol, host_port, container_port })
         });
         const data = await res.json();
         if (data.success) {
@@ -577,7 +582,7 @@ async function addProxyDevice() {
             
             // Reload containers data and update modal view
             await fetchContainers();
-            openConfigModal(name);
+            openConfigModal(name, project);
             switchTab('tab-network');
         } else {
             showToast(`Error: ${data.error}`, 'error');
@@ -592,6 +597,7 @@ async function addProxyDevice() {
 
 async function removeProxyDevice(device_name) {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     if (!confirm(`Are you sure you want to remove proxy device "${device_name}"?`)) return;
     
     showToast(`Removing proxy ${device_name}...`, 'info');
@@ -599,13 +605,13 @@ async function removeProxyDevice(device_name) {
         const res = await fetch('/api/lxd/device/remove', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, device_name })
+            body: JSON.stringify({ name, project, device_name })
         });
         const data = await res.json();
         if (data.success) {
             showToast(`Proxy ${device_name} removed`, 'success');
             await fetchContainers();
-            openConfigModal(name);
+            openConfigModal(name, project);
             switchTab('tab-network');
         } else {
             showToast(`Error: ${data.error}`, 'error');
@@ -617,6 +623,7 @@ async function removeProxyDevice(device_name) {
 
 async function saveAdvancedConfig() {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     const autostart = document.getElementById('adv-autostart').value;
     const nesting = document.getElementById('adv-nesting').value;
     const privileged = document.getElementById('adv-privileged').value;
@@ -629,7 +636,7 @@ async function saveAdvancedConfig() {
         const res = await fetch('/api/lxd/advanced', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, autostart, nesting, privileged })
+            body: JSON.stringify({ name, project, autostart, nesting, privileged })
         });
         const data = await res.json();
         if (data.success) {
@@ -649,21 +656,22 @@ async function saveAdvancedConfig() {
 
 async function installTool(tool) {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     const btn = document.getElementById(`btn-install-${tool}`);
     const statusBox = document.getElementById(`${tool}-status`);
     
-    if (!confirm(`Are you sure you want to install ${tool} inside "${name}"? This requires downloading packages and may take up to a minute.`)) return;
+    if (!confirm(`Are you sure you want to install ${tool} inside "${name}" (${project})? This requires downloading packages and may take up to a minute.`)) return;
     
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Installing...';
     statusBox.style.display = 'block';
-    statusBox.innerHTML = `[System] Starting ${tool} installation workflow for ${name}...\n`;
+    statusBox.innerHTML = `[System] Starting ${tool} installation workflow for ${name} (${project})...\n`;
     
     try {
         const res = await fetch('/api/lxd/tools/install', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, tool })
+            body: JSON.stringify({ name, project, tool })
         });
         const data = await res.json();
         if (data.success) {
@@ -695,6 +703,7 @@ async function installTool(tool) {
 
 async function fetchToolsStatus() {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     const tsBadge = document.getElementById('ts-status-badge');
     const wgBadge = document.getElementById('wg-status-badge');
     const tsBtn = document.getElementById('btn-install-tailscale');
@@ -713,7 +722,7 @@ async function fetchToolsStatus() {
     wgBadge.textContent = 'Checking...';
     
     try {
-        const res = await fetch(`/api/lxd/tools/status?name=${encodeURIComponent(name)}`);
+        const res = await fetch(`/api/lxd/tools/status?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
         const data = await res.json();
         
         if (data.success) {
@@ -798,6 +807,7 @@ async function fetchToolsStatus() {
 
 async function saveConfig() {
     const name = document.getElementById('cfg-name').value;
+    const project = document.getElementById('cfg-project').value || 'default';
     const cpu = document.getElementById('cfg-cpu').value.trim();
     const ram = document.getElementById('cfg-ram').value.trim();
     const storage = document.getElementById('cfg-storage').value.trim();
@@ -810,7 +820,7 @@ async function saveConfig() {
         const res = await fetch('/api/lxd/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, cpu, ram, storage })
+            body: JSON.stringify({ name, project, cpu, ram, storage })
         });
         const data = await res.json();
         if (data.success) {
@@ -860,16 +870,16 @@ async function createContainer() {
     }
 }
 
-async function containerAction(name, action) {
+async function containerAction(name, action, project = 'default') {
     if (action === 'delete') {
-        if (!confirm(`Are you sure you want to delete container ${name}? This action cannot be undone.`)) return;
+        if (!confirm(`Are you sure you want to delete container ${name} (${project})? This action cannot be undone.`)) return;
     }
     showToast(`${action}ing ${name}...`, 'info');
     try {
         const res = await fetch('/api/lxd/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, action })
+            body: JSON.stringify({ name, action, project: project || 'default' })
         });
         const data = await res.json();
         if (data.success) {
@@ -903,6 +913,9 @@ async function fetchContainers() {
         let html = '';
         containersData = {};
         ctrs.forEach(c => {
+            const project = c.project || 'default';
+            const key = `${project}/${c.name}`;
+            containersData[key] = c;
             containersData[c.name] = c;
             const color = COLORS[c.status] || COLORS.default;
             const isRunning = c.status === 'Running';
@@ -910,6 +923,8 @@ async function fetchContainers() {
             if (c.status === 'Running') statusBadge = `<span class="badge badge-running"><span class="pulse"></span> Running</span>`;
             else if (c.status === 'Stopped') statusBadge = `<span class="badge badge-stopped">Stopped</span>`;
             else statusBadge = `<span class="badge badge-other">${c.status}</span>`;
+
+            const projectBadge = `<span class="badge" style="background:rgba(168,85,247,0.18); color:#c084fc; border:1px solid rgba(168,85,247,0.35); font-size:0.68rem;"><i class="fa-solid fa-folder-tree"></i> ${project}</span>`;
 
             let ips = [];
             if (c.state && c.state.network) {
@@ -933,29 +948,34 @@ async function fetchContainers() {
                 <div class="container-info">
                     <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:4px;">
                         <div class="container-name">${c.name}</div>
+                        ${projectBadge}
                         ${statusBadge}
                         ${ipTags}
                     </div>
                     <div class="container-image">Architecture: ${c.architecture} &nbsp;•&nbsp; Type: ${c.type}</div>
                 </div>
                 <div class="container-actions">
-                    <button class="ctrl-btn start" onclick="containerAction('${c.name}','start')" title="Start" ${isRunning ? 'disabled' : ''}>
+                    <button class="ctrl-btn start" onclick="containerAction('${c.name}','start','${project}')" title="Start" ${isRunning ? 'disabled' : ''}>
                         <i class="fa-solid fa-play"></i>
                     </button>
-                    <button class="ctrl-btn stop" onclick="containerAction('${c.name}','stop')" title="Stop" ${!isRunning ? 'disabled' : ''}>
+                    <button class="ctrl-btn stop" onclick="containerAction('${c.name}','stop','${project}')" title="Stop" ${!isRunning ? 'disabled' : ''}>
                         <i class="fa-solid fa-stop"></i>
                     </button>
-                    <button class="ctrl-btn restart" onclick="containerAction('${c.name}','restart')" title="Restart">
+                    <button class="ctrl-btn restart" onclick="containerAction('${c.name}','restart','${project}')" title="Restart">
                         <i class="fa-solid fa-rotate-right"></i>
                     </button>
-                    <button class="ctrl-btn terminal" onclick="window.location.href='/terminal?lxd=${c.name}&cmd=clear%20%26%26%20neofetch'" title="Terminal" ${!isRunning ? 'disabled' : ''}>
+                    <button class="ctrl-btn terminal" onclick="window.location.href='/terminal?lxd=${c.name}&lxd_project=${project}&cmd=clear%20%26%26%20neofetch'" title="Terminal" ${!isRunning ? 'disabled' : ''}>
                         <i class="fa-solid fa-terminal"></i>
                     </button>
-                    <button class="ctrl-btn config" onclick="openConfigModal('${c.name}')" title="Configure Resource Limits">
+                    <button class="ctrl-btn config" onclick="openConfigModal('${c.name}','${project}')" title="Configure Resource Limits">
                         <i class="fa-solid fa-gear"></i>
                     </button>
-                    <button class="ctrl-btn delete" onclick="containerAction('${c.name}','delete')" title="Delete">
+                    <button class="ctrl-btn delete" onclick="containerAction('${c.name}','delete','${project}')" title="Delete">
                         <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+        });
                     </button>
                 </div>
             </div>`;
