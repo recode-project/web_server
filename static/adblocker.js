@@ -12,8 +12,8 @@
     let currentConfig = null;
     let isFetchingStatus = false;
     let autoRefreshTimer = null;
-    let currentLanIp = '192.168.1.4';
-    let currentTailscaleIp = '100.87.49.14';
+    let currentLanIp = '';
+    let currentTailscaleIp = '';
 
     // DOM Elements
     const elements = {
@@ -455,7 +455,7 @@
         if (lowerName.includes('phone') || lowerName.includes('hp') || lowerName.includes('android') || lowerName.includes('iphone') || lowerName.includes('ipad') || lowerName.includes('mobile')) {
             return 'fa-solid fa-mobile-screen';
         }
-        if (lowerName.includes('server') || lowerName.includes('ekaharefa') || lowerName.includes('host') || lowerName.includes('lenovo')) {
+        if (lowerName.includes('server') || lowerName.includes('host') || lowerName.includes('node') || lowerName.includes('localhost')) {
             return 'fa-solid fa-server';
         }
         if (lowerName.includes('laptop') || lowerName.includes('pc') || lowerName.includes('desktop') || lowerName.includes('computer') || lowerName.includes('macbook')) {

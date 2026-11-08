@@ -1373,15 +1373,46 @@ def _can_use_nsenter():
         return False
 
 
+def _get_target_host_user():
+    """Deteksi user reguler utama host (UID 1000 atau user terdaftar)."""
+    env_user = os.environ.get('TERMINAL_USER') or os.environ.get('HOST_USER')
+    if env_user:
+        return env_user
+    # Prioritaskan user ekaharefa bila ada di host
+    try:
+        if subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'id', '-u', 'ekaharefa'],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2).returncode == 0:
+            return 'ekaharefa'
+    except Exception:
+        pass
+    # Cek user UID 1000 pada sistem host
+    try:
+        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'id', '-nu', '1000'],
+                             capture_output=True, text=True, timeout=2)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def _build_terminal_command(lxd_target=None, start_path=None):
-    """Susun perintah shell resmi user ekaharefa identik dengan login SSH asli."""
+    """Susun perintah shell resmi identik dengan login terminal/SSH host."""
     if _can_use_nsenter():
         prefix = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
         if lxd_target:
             return prefix + ['lxc', 'exec', lxd_target, '--', 'bash', '--login', '-i']
-        if start_path and start_path not in ['/root', '/', '/home/ekaharefa']:
-            return prefix + ['runuser', '-l', 'ekaharefa', '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
-        return prefix + ['runuser', '-l', 'ekaharefa']
+        
+        target_user = _get_target_host_user()
+        if target_user:
+            if start_path and start_path not in ['/root', '/', f'/home/{target_user}']:
+                return prefix + ['runuser', '-l', target_user, '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
+            return prefix + ['runuser', '-l', target_user]
+
+        # Fallback bila tidak ada user reguler (gunakan root host)
+        if start_path and start_path not in ['/root', '/']:
+            return prefix + ['bash', '--login', '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
+        return prefix + ['bash', '--login', '-i']
 
     # Fallback: shell lokal tanpa privilege host (dev / non-privileged deployment).
     if lxd_target:
@@ -6871,8 +6902,9 @@ ADBLOCKER_CONFIG_FILE = os.path.join(DATA_DIR, 'adblocker_config.json')
 
 def get_adblocker_config():
     """Mengambil konfigurasi AdGuard Home dari data/adblocker_config.json atau ENV"""
+    default_host = "host.docker.internal" if (os.path.exists('/.dockerenv') or os.path.exists('/host/proc')) else "127.0.0.1"
     cfg = {
-        "host": os.environ.get("ADGUARD_HOST", "127.0.0.1"),
+        "host": os.environ.get("ADGUARD_HOST", default_host),
         "port": int(os.environ.get("ADGUARD_PORT", "8053")),
         "username": os.environ.get("ADGUARD_USER", ""),
         "password": os.environ.get("ADGUARD_PASSWORD", ""),
@@ -7039,7 +7071,8 @@ def api_adblocker_status():
                     if ip == '192.168.1.1':
                         name = 'Router / Gateway'
                     elif ip == '192.168.64.1' or ip in lan_ip_values:
-                        name = 'Host Server (ekaharefa)'
+                        current_user = session.get('username') or os.environ.get('USER') or 'Local'
+                        name = f"Host Server ({current_user})"
                     elif ip.startswith('100.'):
                         name = 'Klien Tailscale'
                     else:
