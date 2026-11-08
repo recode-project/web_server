@@ -750,15 +750,18 @@
                 const info = installedApps[app.id];
                 const isInstalled = !!info;
                 const isRunning = info && info.running;
+                const isNative = info && info.is_native;
                 const isCustom = app.category === 'Custom';
 
                 // Determine buttons
                 let buttons = '';
                 if (isInstalled) {
-                    if (canManage) {
+                    if (canManage && !isNative) {
                         buttons += `<button class="btn" style="background:rgba(255,255,255,0.1)" onclick="manageApp('${app.id}')"><i class="fa-solid fa-gear"></i> Manage</button>`;
+                    } else if (isNative) {
+                        buttons += `<span class="badge" style="background:rgba(59, 130, 246, 0.18); color:#60a5fa; border:1px solid rgba(59, 130, 246, 0.35); padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:600; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-server"></i> Host Service</span>`;
                     }
-                    if (isRunning) {
+                    if (isRunning && info.ports && info.ports.length > 0) {
                         buttons += `<button class="btn btn-install" onclick="openApp('${app.id}')"><i class="fa-solid fa-external-link-alt"></i> Open</button>`;
                     }
                 } else {
@@ -769,7 +772,7 @@
 
                 return `
                 <div class="app-card" id="card-${app.id}">
-                    ${isInstalled ? `<div class="status-badge ${isRunning ? 'running' : 'stopped'}"><i class="fa-solid fa-circle" style="font-size:8px"></i> ${isRunning ? 'Running' : 'Stopped'}</div>` : ''}
+                    ${isInstalled ? `<div class="status-badge ${isRunning ? 'running' : 'stopped'}"><i class="fa-solid fa-circle" style="font-size:8px"></i> ${isRunning ? (isNative ? 'Running (Host)' : 'Running') : 'Stopped'}</div>` : ''}
                     
                     <div class="app-header">
                         <img src="${app.icon}" class="app-icon" onerror="this.src='/static/icon.png'">

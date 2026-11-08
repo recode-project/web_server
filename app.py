@@ -4423,6 +4423,60 @@ def get_app_catalog():
     except Exception as e:
         return jsonify({'error': str(e), 'catalog': []}), 500
 
+def _detect_native_host_app(app_id, catalog_ports=None):
+    """Mendeteksi apakah aplikasi katalog berjalan sebagai service/proses native di host."""
+    catalog_ports = catalog_ports or []
+    
+    # Pemetaan aplikasi katalog ke unit service / proses host yang valid
+    native_defs = {
+        'tailscale': {
+            'services': ['tailscaled', 'tailscale'],
+            'procs': ['tailscaled'],
+            'ports': []
+        },
+        'syncthing': {
+            'services': ['syncthing', 'syncthing@ekaharefa'],
+            'procs': ['syncthing'],
+            'ports': [{'host': '8384', 'container': '8384', 'protocol': 'tcp'}]
+        },
+        'wireguard': {
+            'services': ['wg-quick@wg0'],
+            'procs': [],
+            'ports': [{'host': '51820', 'container': '51820', 'protocol': 'udp'}]
+        }
+    }
+
+    cfg = native_defs.get(app_id)
+    if not cfg:
+        cfg = {
+            'services': [app_id, f"{app_id}d"],
+            'procs': [app_id],
+            'ports': []
+        }
+
+    # 1. Cek status active pada systemd service host
+    for s in cfg.get('services', []):
+        try:
+            res = run_host_command(['systemctl', 'is-active', s])
+            if res.returncode == 0 and res.stdout.strip() == 'active':
+                ports = cfg.get('ports') or [{'host': str(p.get('host')), 'container': str(p.get('container')), 'protocol': p.get('protocol', 'tcp')} for p in catalog_ports if p.get('host')]
+                return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
+        except Exception:
+            pass
+
+    # 2. Cek apakah ada proses aktif di host via pgrep
+    for p in cfg.get('procs', []):
+        try:
+            res = run_host_command(['pgrep', '-x', p])
+            if res.returncode == 0 and res.stdout.strip():
+                ports = cfg.get('ports') or [{'host': str(prt.get('host')), 'container': str(prt.get('container')), 'protocol': prt.get('protocol', 'tcp')} for prt in catalog_ports if prt.get('host')]
+                return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
+        except Exception:
+            pass
+
+    return None
+
+
 @app.route('/api/store/installed')
 @login_required
 def get_installed_apps():
@@ -4495,11 +4549,16 @@ def get_installed_apps():
             container_name = f"eka_{app_id}"
             info = container_map.get(container_name) or container_map.get(app_id)
             
+            # Jika tidak berjalan di Docker, periksa layanan native di host
+            if not info:
+                info = _detect_native_host_app(app_id, app.get('ports', []))
+
             if info:
                 installed.append({
                     'id': app_id,
                     'running': info['running'],
-                    'ports': info['ports']
+                    'ports': info['ports'],
+                    'is_native': info.get('is_native', False)
                 })
                 
         return jsonify({'installed': installed})
