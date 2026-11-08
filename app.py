@@ -102,8 +102,40 @@ except ImportError:
 mqtt_client = None
 HOME_DEVICES_STATE = {}
 
+def _get_persistent_secret_key():
+    """Memuat atau mengenerate SECRET_KEY persisten agar sesi tidak ter-reset tiap restart."""
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+    cfg_file = os.path.join(DATA_DIR, 'config.json')
+    if os.path.exists(cfg_file):
+        try:
+            with open(cfg_file, 'r') as f:
+                saved = json.load(f)
+                if isinstance(saved, dict) and saved.get('secret_key'):
+                    return saved['secret_key']
+        except Exception:
+            pass
+    key = os.urandom(24).hex()
+    try:
+        saved = {}
+        if os.path.exists(cfg_file):
+            try:
+                with open(cfg_file, 'r') as f:
+                    saved = json.load(f)
+            except Exception:
+                saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+        saved['secret_key'] = key
+        with open(cfg_file, 'w') as f:
+            json.dump(saved, f, indent=2)
+    except Exception:
+        pass
+    return key
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+app.config['SECRET_KEY'] = _get_persistent_secret_key()
 app.config['UPLOAD_FOLDER'] = DATA_DIR
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB Limit
 
@@ -511,10 +543,6 @@ def login_required(f):
             session['role'] = 'admin'
             return f(*args, **kwargs)
 
-        # 2. Mobile App Bypass (Fix SameSite Cookie Issues)
-        if request.headers.get('X-Mobile-Key') == 'EkaBackupSync_2024_Secret':
-            return f(*args, **kwargs)
-            
         # 2. Check Session
         if session.get('logged_in'):
             # Check timeout
@@ -524,10 +552,8 @@ def login_required(f):
                 session.clear()
                 audit_log('SESSION_EXPIRED', f"User session expired after {timeout}s")
                 if request.is_json:
-                     return jsonify({'error': 'Session expired'}), 401
+                    return jsonify({'error': 'Session expired'}), 401
                 return redirect(url_for('login_page'))
-            
-            session['last_active'] = time.time()
             
             session['last_active'] = time.time()
             return f(*args, **kwargs)
