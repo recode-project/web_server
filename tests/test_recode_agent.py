@@ -80,11 +80,11 @@ class TestRecodeEffectiveMode(unittest.TestCase):
         self.assertEqual(dashboard._recode_effective_mode(base_cfg(mode='auto')), 'local')
 
     def test_auto_uses_ssh_when_host_set(self):
-        cfg = base_cfg(mode='auto', ssh={'host': '100.87.49.14'})
+        cfg = base_cfg(mode='auto', ssh={'host': '192.0.2.10'})
         self.assertEqual(dashboard._recode_effective_mode(cfg), 'ssh')
 
     def test_explicit_mode_wins(self):
-        cfg = base_cfg(mode='local', ssh={'host': '100.87.49.14'})
+        cfg = base_cfg(mode='local', ssh={'host': '192.0.2.10'})
         self.assertEqual(dashboard._recode_effective_mode(cfg), 'local')
 
 
@@ -141,24 +141,24 @@ class TestRecodeArgv(unittest.TestCase):
         self.assertTrue(any('--task' in part for part in argv))
 
     def test_ssh_argv_uses_batchmode_and_no_password(self):
-        cfg = base_cfg(mode='ssh', ssh={'host': '100.87.49.14', 'user': 'ekaharefa'})
+        cfg = base_cfg(mode='ssh', ssh={'host': '192.0.2.10', 'user': 'admin'})
         argv = dashboard._recode_argv(cfg, task='cek')
         self.assertEqual(argv[0], 'ssh')
         self.assertIn('-tt', argv)
         self.assertIn('BatchMode=yes', argv)
-        self.assertIn('ekaharefa@100.87.49.14', argv)
+        self.assertIn('admin@192.0.2.10', argv)
         self.assertTrue(argv[-1].startswith('bash -lc '))
 
     def test_version_probe_skips_tty_allocation(self):
         # `ssh -tt` pada probe non-interaktif mengotori stderr dengan
         # "Connection to host closed." dan bisa mengacaukan parsing versi.
-        cfg = base_cfg(mode='ssh', ssh={'host': '100.87.49.14'})
+        cfg = base_cfg(mode='ssh', ssh={'host': '192.0.2.10'})
         argv = dashboard._recode_argv(cfg, version_only=True)
         self.assertNotIn('-tt', argv)
 
     def test_ssh_argv_includes_port_and_identity(self):
         cfg = base_cfg(mode='ssh', ssh={
-            'host': 'lenovo.local', 'user': 'eka',
+            'host': 'server.local', 'user': 'ops',
             'port': 2222, 'identity_file': '/root/.ssh/id_ed25519'
         })
         argv = dashboard._recode_argv(cfg)
@@ -168,11 +168,11 @@ class TestRecodeArgv(unittest.TestCase):
         self.assertIn('/root/.ssh/id_ed25519', argv)
 
     def test_ssh_argv_omits_default_port(self):
-        cfg = base_cfg(mode='ssh', ssh={'host': 'lenovo.local'})
+        cfg = base_cfg(mode='ssh', ssh={'host': 'server.local'})
         argv = dashboard._recode_argv(cfg)
         self.assertNotIn('-p', argv)
         # Tanpa user, target hanya host.
-        self.assertIn('lenovo.local', argv)
+        self.assertIn('server.local', argv)
 
 
 class TestRecodePermissions(unittest.TestCase):
@@ -247,14 +247,14 @@ class TestRecodeConfigPersistence(unittest.TestCase):
     def test_save_then_load_roundtrip(self):
         cfg = dashboard.load_recode_config()
         cfg['mode'] = 'ssh'
-        cfg['ssh']['host'] = '100.87.49.14'
-        cfg['ssh']['user'] = 'ekaharefa'
+        cfg['ssh']['host'] = '192.0.2.10'
+        cfg['ssh']['user'] = 'admin'
         dashboard.save_recode_config(cfg)
 
         loaded = dashboard.load_recode_config()
         self.assertEqual(loaded['mode'], 'ssh')
-        self.assertEqual(loaded['ssh']['host'], '100.87.49.14')
-        self.assertEqual(loaded['ssh']['user'], 'ekaharefa')
+        self.assertEqual(loaded['ssh']['host'], '192.0.2.10')
+        self.assertEqual(loaded['ssh']['user'], 'admin')
         # Kunci yang tidak disimpan tetap memakai default.
         self.assertEqual(loaded['ssh']['port'], 22)
 

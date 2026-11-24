@@ -4,577 +4,876 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Berbagi File - Eka Dashboard</title>
+    <title>Berbagi File (SMB / Samba) — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
     <style>
-        .sharing-container {
-            padding: 1rem;
-            max-width: 1200px;
+        :root {
+            --glass-bg: rgba(30, 30, 40, 0.65);
+            --glass-card-hover: rgba(38, 38, 52, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-border-hover: rgba(255, 255, 255, 0.22);
+            --text-main: #ffffff;
+            --text-dim: #a0a0b0;
+
+            --accent-blue: #58a6ff;
+            --cpu-color: #ff6b6b;
+            --ram-color: #4ecdc4;
+            --disk-color: #ffe66d;
+            --net-color: #23a6d5;
+
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background: #0f0c29;
+            user-select: none;
+        }
+
+        /* Ambient Dynamic Animated Wallpaper */
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: -1;
+            filter: brightness(0.48);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1400px;
             margin: 0 auto;
+            padding: 2rem 2.5rem 4rem 2.5rem;
         }
 
-        .sharing-header {
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        /* Header Bar */
+        .page-header {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
             flex-wrap: wrap;
+            gap: 1.2rem;
         }
 
-        .btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: all 0.2s;
-        }
-
-        .btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .btn.primary {
-            background: #238636;
-            border-color: #238636;
-        }
-
-        .btn.primary:hover {
-            background: #2ea043;
-        }
-
-        .btn.danger {
-            background: #da3633;
-            border-color: #da3633;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .status-banner {
-            padding: 1rem;
-            border-radius: 10px;
-            margin-bottom: 1rem;
+        .header-left {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 1.2rem;
         }
 
-        .status-banner.running {
-            background: rgba(63, 185, 80, 0.15);
-            border: 1px solid rgba(63, 185, 80, 0.3);
-        }
-
-        .status-banner.stopped {
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-        }
-
-        .status-banner.not-installed {
-            background: rgba(139, 148, 158, 0.15);
-            border: 1px solid rgba(139, 148, 158, 0.3);
-        }
-
-        .status-icon {
-            width: 50px;
-            height: 50px;
+        .btn-home {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            width: 44px;
+            height: 44px;
             border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5rem;
+            font-size: 1.15rem;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            text-decoration: none;
+        }
+
+        .btn-home:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .page-title {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 0.6rem 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            text-decoration: none;
+            user-select: none;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #238636, #2ea043);
+            border: none;
+        }
+
+        .btn.primary:hover {
+            box-shadow: 0 4px 16px rgba(46, 160, 67, 0.4);
+        }
+
+        .btn.warning {
+            background: rgba(210, 153, 34, 0.2);
+            border-color: rgba(210, 153, 34, 0.4);
+            color: #d29922;
+        }
+
+        .btn.danger {
+            background: rgba(248, 81, 73, 0.2);
+            border-color: rgba(248, 81, 73, 0.4);
+            color: #f85149;
+        }
+
+        .btn-icon {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            color: var(--text-dim);
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .btn-icon.danger:hover {
+            color: var(--danger);
+            border-color: rgba(248, 81, 73, 0.4);
+            background: rgba(248, 81, 73, 0.15);
+        }
+
+        /* Toast Message */
+        .msg-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 9999;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: none;
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .msg-toast.show {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .msg-toast.success {
+            background: rgba(35, 134, 54, 0.9);
+            color: #ffffff;
+        }
+
+        .msg-toast.error {
+            background: rgba(218, 54, 51, 0.9);
+            color: #ffffff;
+        }
+
+        .msg-toast.info {
+            background: rgba(88, 166, 255, 0.9);
+            color: #ffffff;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Status Banner */
+        .status-banner {
+            padding: 1.4rem 1.8rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .status-banner-left {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+        }
+
+        .status-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            flex-shrink: 0;
         }
 
         .status-banner.running .status-icon {
             background: rgba(63, 185, 80, 0.2);
             color: #3fb950;
+            border: 1px solid rgba(63, 185, 80, 0.35);
         }
 
         .status-banner.stopped .status-icon {
-            background: rgba(248, 81, 73, 0.2);
-            color: #f85149;
+            background: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+            border: 1px solid rgba(210, 153, 34, 0.35);
         }
 
         .status-banner.not-installed .status-icon {
-            background: rgba(139, 148, 158, 0.2);
-            color: #8b949e;
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
+            border: 1px solid rgba(248, 81, 73, 0.35);
         }
 
-        .cards-grid {
+        .status-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-desc {
+            font-size: 0.88rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        /* Server IP Pills */
+        .ip-pills-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .ip-pill {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ip-pill strong {
+            color: #fff;
+            font-family: monospace;
+            font-size: 0.82rem;
+        }
+
+        /* Tab Navigation */
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            background: rgba(20, 20, 28, 0.6);
+            padding: 6px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--glass-border);
+            margin-bottom: 2rem;
+            width: fit-content;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 0.65rem 1.3rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .tab-badge {
+            background: rgba(255, 255, 255, 0.12);
+            padding: 2px 7px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+
+        /* Shares Grid / List */
+        .shares-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            gap: 1.5rem;
         }
 
-        @media (max-width: 500px) {
-            .cards-grid {
+        @media (max-width: 600px) {
+            .shares-grid {
                 grid-template-columns: 1fr;
             }
         }
 
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        .share-card {
+            padding: 1.5rem;
+            border-radius: var(--radius-md);
             display: flex;
-            align-items: center;
-            gap: 0.8rem;
+            flex-direction: column;
+            gap: 1.1rem;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        .card-header i {
-            font-size: 1.2rem;
-            color: #58a6ff;
+        .share-card:hover {
+            background: var(--glass-card-hover);
+            border-color: var(--glass-border-hover);
+            transform: translateY(-2px);
         }
 
-        .card-header h3 {
-            font-weight: 500;
-            font-size: 1rem;
-        }
-
-        .card-body {
-            padding: 1rem;
-        }
-
-        .card-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .share-list {
-            max-height: 350px;
-            overflow-y: auto;
-        }
-
-        .share-item {
-            padding: 0.8rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        .share-header-row {
             display: flex;
-            align-items: center;
+            justify-content: space-between;
+            align-items: flex-start;
             gap: 1rem;
         }
 
-        .share-item:hover {
-            background: rgba(255, 255, 255, 0.03);
+        .share-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        .share-icon {
-            width: 40px;
-            height: 40px;
-            background: rgba(88, 166, 255, 0.15);
-            border-radius: 10px;
+        .share-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(78, 205, 196, 0.15);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+            color: var(--ram-color);
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .share-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .share-comment {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .share-badges {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge.ro {
+            background: rgba(210, 153, 34, 0.15);
+            border: 1px solid rgba(210, 153, 34, 0.35);
+            color: #d29922;
+        }
+
+        .badge.rw {
+            background: rgba(63, 185, 80, 0.15);
+            border: 1px solid rgba(63, 185, 80, 0.35);
+            color: #3fb950;
+        }
+
+        .badge.public {
+            background: rgba(88, 166, 255, 0.15);
+            border: 1px solid rgba(88, 166, 255, 0.35);
             color: #58a6ff;
         }
 
-        .share-info {
+        .badge.auth {
+            background: rgba(255, 107, 107, 0.15);
+            border: 1px solid rgba(255, 107, 107, 0.35);
+            color: var(--cpu-color);
+        }
+
+        .share-meta-row {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .meta-label {
+            color: var(--text-dim);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .meta-val.path-val {
+            font-family: monospace;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .share-connect-row {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .connect-box {
+            background: rgba(0, 0, 0, 0.32);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 6px 10px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.8rem;
+        }
+
+        .connect-label {
+            color: var(--text-dim);
+            font-weight: 600;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 110px;
+        }
+
+        .connect-code {
+            font-family: monospace;
+            color: var(--ram-color);
+            background: transparent;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
             flex: 1;
         }
 
-        .share-name {
-            font-weight: 500;
+        .btn-copy {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            white-space: nowrap;
         }
 
-        .share-path {
-            font-size: 0.8rem;
-            color: #8b949e;
-            font-family: monospace;
+        .btn-copy:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .btn-copy.copied {
+            background: rgba(63, 185, 80, 0.25);
+            border-color: rgba(63, 185, 80, 0.4);
+            color: var(--ram-color);
+        }
+
+        /* Filter & Search Bar */
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            position: relative;
+            flex: 1;
+            max-width: 400px;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .search-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.65rem 1rem 0.65rem 2.4rem;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--ram-color);
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Form Styling */
+        .form-card {
+            max-width: 720px;
+            padding: 2rem;
+            border-radius: var(--radius-lg);
         }
 
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: 1.4rem;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
-            color: #8b949e;
             font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
         }
 
-        .form-group input {
+        .form-group input[type="text"] {
             width: 100%;
-            padding: 0.6rem 0.8rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
             color: #fff;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            font-size: 0.92rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .form-group input[type="text"]:focus {
+            border-color: var(--ram-color);
+            background: rgba(0, 0, 0, 0.45);
         }
 
         .checkbox-item {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .msg {
-            padding: 0.8rem 1rem;
-            border-radius: 6px;
+            gap: 10px;
             margin-bottom: 1rem;
-            display: none;
+            cursor: pointer;
+            font-size: 0.88rem;
+            user-select: none;
         }
 
-        .msg.success {
-            display: block;
-            background: rgba(63, 185, 80, 0.15);
-            border: 1px solid rgba(63, 185, 80, 0.3);
-            color: #3fb950;
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--ram-color);
+            cursor: pointer;
         }
 
-        .msg.error {
-            display: block;
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            color: #f85149;
+        /* Session Table */
+        .session-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .session-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text-dim);
+            font-weight: 700;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .session-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .session-table tr:hover {
+            background: rgba(255, 255, 255, 0.03);
         }
 
         .empty-state {
             text-align: center;
-            padding: 2rem;
-            color: #8b949e;
-        }
-
-        .access-info {
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.2);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-
-        .access-info h4 {
-            margin-bottom: 0.5rem;
-            color: #58a6ff;
-        }
-
-        .access-info code {
-            display: block;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 0.5rem;
-            border-radius: 4px;
-            margin-top: 0.5rem;
-            font-size: 0.9rem;
+            padding: 3.5rem 1rem;
+            color: var(--text-dim);
         }
     </style>
 </head>
 
 <body>
+    <!-- Ambient Dynamic Wallpaper -->
     <div class="wallpaper"></div>
 
-    <div class="app-container sharing-container">
-        <!-- Header -->
-        <div class="sharing-header">
-            <button class="btn" onclick="window.location.href='/dashboard'"><i class="fa-solid fa-home"></i></button>
-            <h2 style="margin:0; font-weight:400; font-size:1.2rem">
-                <i class="fa-solid fa-share-nodes" style="color:#58a6ff"></i> Berbagi File (SMB/Samba)
-            </h2>
-            <div style="margin-left:auto; display:flex; gap:0.5rem">
-                <button class="btn" onclick="loadStatus()"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
-            </div>
-        </div>
+    <!-- Toast Notification -->
+    <div id="msg-box" class="msg-toast"></div>
 
-        <div id="msg-box" class="msg"></div>
-
-        <!-- Status Banner -->
-        <div class="status-banner not-installed" id="status-banner">
-            <div class="status-icon">
-                <i class="fa-solid fa-circle-question"></i>
-            </div>
-            <div style="flex:1">
-                <div style="font-weight:600" id="status-title">Memeriksa status...</div>
-                <div style="font-size:0.85rem; color:#8b949e" id="status-desc">Mohon tunggu</div>
-            </div>
-            <div id="status-actions"></div>
-        </div>
-
-        <div class="cards-grid">
-            <!-- Add New Share -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-folder-plus" style="color:#3fb950"></i>
-                    <h3>Tambah Share Baru</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>Nama Share</label>
-                        <input type="text" id="share-name" placeholder="Contoh: Documents">
+    <div class="container">
+        <!-- Page Header -->
+        <header class="page-header">
+            <div class="header-left">
+                <a href="/dashboard" class="btn-home" title="Kembali ke Dashboard Utama">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </a>
+                <div>
+                    <h1 class="page-title">
+                        <i class="fa-solid fa-share-nodes" style="color:var(--ram-color)"></i>
+                        Berbagi File (SMB / Samba)
+                    </h1>
+                    <div style="font-size:0.85rem; color:var(--text-dim); margin-top:2px">
+                        Kelola folder bersama di jaringan lokal (LAN) &amp; Tailscale untuk Windows, macOS, dan Linux
                     </div>
-                    <div class="form-group">
-                        <label>Path Folder</label>
-                        <input type="text" id="share-path" placeholder="/home/user/shared">
-                    </div>
-                    <div class="form-group">
-                        <label>Deskripsi (opsional)</label>
-                        <input type="text" id="share-desc" placeholder="Folder dokumen bersama">
-                    </div>
-                    <label class="checkbox-item">
-                        <input type="checkbox" id="share-public" checked>
-                        <span>Akses publik (tanpa password)</span>
-                    </label>
-                    <label class="checkbox-item">
-                        <input type="checkbox" id="share-writable" checked>
-                        <span>Bisa tulis (read-write)</span>
-                    </label>
-                </div>
-                <div class="card-footer">
-                    <button class="btn primary" onclick="addShare()" id="btn-add" {% if session.get('role') not in
-                        ['owner', 'admin' ] %}disabled{% endif %}>
-                        <i class="fa-solid fa-plus"></i> Tambah Share
-                    </button>
                 </div>
             </div>
 
-            <!-- Share List -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-folder-tree"></i>
-                    <h3>Daftar Share Aktif</h3>
+            <div class="header-actions">
+                <button class="btn" onclick="loadStatus(); loadShares();" title="Refresh Status dan Daftar Share">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Status & IP Banner -->
+        <section class="status-banner glass running" id="status-banner">
+            <div class="status-banner-left">
+                <div class="status-icon">
+                    <i class="fa-solid fa-circle-question"></i>
                 </div>
-                <div class="card-body">
-                    <div class="share-list" id="share-list">
-                        <div class="empty-state">
-                            <i class="fa-solid fa-spinner fa-spin"></i>
-                            <div>Memuat...</div>
+                <div>
+                    <div class="status-title" id="status-title">Memeriksa status Samba...</div>
+                    <div class="status-desc" id="status-desc">Mohon tunggu sementara sistem memeriksa daemon SMB di host.</div>
+                    
+                    <!-- IP Pills -->
+                    <div class="ip-pills-row" id="server-ip-pills" style="display:none">
+                        <div class="ip-pill">
+                            <i class="fa-solid fa-network-wired" style="color:var(--ram-color)"></i> LAN IP: <strong id="pill-lan-ip">-</strong>
+                        </div>
+                        <div class="ip-pill">
+                            <i class="fa-solid fa-circle-nodes" style="color:var(--accent-blue)"></i> Tailscale IP: <strong id="pill-ts-ip">-</strong>
+                        </div>
+                        <div class="ip-pill">
+                            <i class="fa-solid fa-server" style="color:var(--disk-color)"></i> Hostname: <strong id="pill-hostname">-</strong>
                         </div>
                     </div>
-
-                    <div class="access-info" id="access-info" style="display:none">
-                        <h4><i class="fa-solid fa-laptop"></i> Cara Akses dari Windows:</h4>
-                        <code id="access-path">\\server-ip\sharename</code>
-                    </div>
                 </div>
             </div>
-        </div>
+
+            <div id="status-actions" style="display:flex; gap:8px; align-items:center;"></div>
+        </section>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-bar">
+            <button class="tab-btn active" data-tab="shares" onclick="switchTab('shares')">
+                <i class="fa-solid fa-folder-tree"></i> Daftar Share Aktif
+                <span class="tab-badge" id="share-count-badge">0</span>
+            </button>
+            <button class="tab-btn" data-tab="add" onclick="switchTab('add')">
+                <i class="fa-solid fa-folder-plus"></i> Tambah Share Baru
+            </button>
+            <button class="tab-btn" data-tab="sessions" onclick="switchTab('sessions')">
+                <i class="fa-solid fa-users"></i> Sesi Klien Aktif
+                <span class="tab-badge" id="session-count-badge">0</span>
+            </button>
+        </nav>
+
+        <!-- TAB 1: SHARES LIST -->
+        <section id="section-shares" class="tab-section">
+            <div class="filter-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="share-search-input" class="search-input" placeholder="Cari nama share atau path..." oninput="filterShares()">
+                </div>
+                <div style="font-size:0.85rem; color:var(--text-dim)">
+                    Tip: Klik tombol <strong>Salin</strong> pada kartu untuk mem-paste path langsung ke Windows Explorer (<kbd>Win+R</kbd>) atau Finder macOS (<kbd>Cmd+K</kbd>).
+                </div>
+            </div>
+
+            <div class="shares-grid" id="share-list">
+                <div class="empty-state">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem; opacity:0.5"></i>
+                    <div style="margin-top:0.6rem">Memuat daftar share...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: ADD NEW SHARE -->
+        <section id="section-add" class="tab-section" style="display:none">
+            <div class="form-card glass">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:1.5rem">
+                    <div class="share-icon-box">
+                        <i class="fa-solid fa-folder-plus"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:1.25rem; font-weight:700">Buat Share Folder Baru</h3>
+                        <p style="font-size:0.85rem; color:var(--text-dim)">Bagikan direktori host ke jaringan lokal melalui protokol SMB</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Nama Share (Hanya huruf, angka, dash, underscore)</label>
+                    <input type="text" id="share-name" placeholder="Contoh: SharedData, BackupDocs">
+                </div>
+
+                <div class="form-group">
+                    <label>Path Direktori Host (Path absolut sistem server)</label>
+                    <input type="text" id="share-path" placeholder="Contoh: /mnt/data/shared atau /home/user/dokumen">
+                </div>
+
+                <div class="form-group">
+                    <label>Keterangan / Deskripsi (Opsional)</label>
+                    <input type="text" id="share-desc" placeholder="Contoh: Dokumen bersama tim">
+                </div>
+
+                <label class="checkbox-item">
+                    <input type="checkbox" id="share-public" checked>
+                    <span><strong>Akses Publik (Guest OK):</strong> Klien dapat mengakses tanpa dimintai password akun Linux</span>
+                </label>
+
+                <label class="checkbox-item">
+                    <input type="checkbox" id="share-writable" checked>
+                    <span><strong>Bisa Menulis (Read &amp; Write):</strong> Izinkan klien membuat, mengubah, dan menghapus berkas</span>
+                </label>
+
+                <div style="margin-top:2rem; display:flex; gap:10px">
+                    <button class="btn primary" onclick="addShare()" id="btn-add-share" {% if session.get('role') not in ['owner', 'admin'] %}disabled{% endif %}>
+                        <i class="fa-solid fa-plus"></i> Tambah Share
+                    </button>
+                    <button class="btn" onclick="switchTab('shares')">Batal</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: ACTIVE CLIENT SESSIONS -->
+        <section id="section-sessions" class="tab-section" style="display:none">
+            <div class="glass" style="padding:1.5rem">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem; flex-wrap:wrap; gap:1rem">
+                    <div>
+                        <h3 style="font-size:1.15rem; font-weight:700">Koneksi Sesi Klien SMB Aktif</h3>
+                        <p style="font-size:0.85rem; color:var(--text-dim)">Daftar komputer/klien yang saat ini sedang membuka koneksi share di server</p>
+                    </div>
+                    <button class="btn" onclick="loadSessions()">
+                        <i class="fa-solid fa-arrows-rotate"></i> Pindai Ulang
+                    </button>
+                </div>
+
+                <div id="session-list"></div>
+            </div>
+        </section>
     </div>
 
+    <!-- Scripts -->
     <script>
-        let serverIP = '';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadStatus();
-        });
-
-        function showMsg(msg, type) {
-            const el = document.getElementById('msg-box');
-            el.textContent = msg;
-            el.className = 'msg ' + type;
-            setTimeout(() => { el.className = 'msg'; }, 5000);
-        }
-
-        function loadStatus() {
-            fetch('/api/smb/status')
-                .then(r => r.json())
-                .then(data => {
-                    serverIP = data.server_ip || 'server-ip';
-                    updateStatusBanner(data);
-                    loadShares();
-                })
-                .catch(err => {
-                    updateStatusBanner({ installed: false });
-                });
-        }
-
-        function updateStatusBanner(data) {
-            const banner = document.getElementById('status-banner');
-            const title = document.getElementById('status-title');
-            const desc = document.getElementById('status-desc');
-            const actions = document.getElementById('status-actions');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (!data.installed) {
-                banner.className = 'status-banner not-installed';
-                banner.querySelector('.status-icon').innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
-                title.textContent = 'Samba Belum Terinstall';
-                desc.innerHTML = `
-                    <div>Install Samba secara manual di server host dengan perintah:</div>
-                    <code style="display:block; background:rgba(0,0,0,0.3); padding:0.5rem; border-radius:4px; margin-top:0.5rem; font-size:0.85rem">
-                        sudo apt-get update && sudo apt-get install -y samba
-                    </code>
-                    <div style="margin-top:0.5rem; font-size:0.8rem">Setelah diinstall, refresh halaman ini.</div>
-                `;
-                actions.innerHTML = '';
-            } else if (data.running) {
-                banner.className = 'status-banner running';
-                banner.querySelector('.status-icon').innerHTML = '<i class="fa-solid fa-circle-check"></i>';
-                title.textContent = 'Samba Berjalan';
-                desc.textContent = 'File sharing aktif dan siap digunakan';
-                actions.innerHTML = canManage ? '<button class="btn danger" onclick="controlSamba(\'stop\')"><i class="fa-solid fa-stop"></i> Stop</button>' : '';
-
-                // Show access info
-                document.getElementById('access-info').style.display = 'block';
-                document.getElementById('access-path').textContent = `\\\\${serverIP}\\sharename`;
-            } else {
-                banner.className = 'status-banner stopped';
-                banner.querySelector('.status-icon').innerHTML = '<i class="fa-solid fa-circle-pause"></i>';
-                title.textContent = 'Samba Tidak Aktif';
-                desc.textContent = 'Service Samba dihentikan';
-                actions.innerHTML = canManage ? '<button class="btn primary" onclick="controlSamba(\'start\')"><i class="fa-solid fa-play"></i> Start</button>' : '';
-            }
-        }
-
-        function loadShares() {
-            fetch('/api/smb/shares')
-                .then(r => r.json())
-                .then(data => {
-                    renderShares(data.shares || []);
-                })
-                .catch(err => {
-                    document.getElementById('share-list').innerHTML = '<div class="empty-state">Gagal memuat daftar share</div>';
-                });
-        }
-
-        function renderShares(shares) {
-            const container = document.getElementById('share-list');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (shares.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fa-solid fa-folder-open" style="font-size:2rem; opacity:0.5"></i>
-                        <div style="margin-top:0.5rem">Belum ada folder yang di-share</div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = shares.map(s => `
-                <div class="share-item">
-                    <div class="share-icon">
-                        <i class="fa-solid fa-folder"></i>
-                    </div>
-                    <div class="share-info">
-                        <div class="share-name">${s.name}</div>
-                        <div class="share-path">${s.path}</div>
-                    </div>
-                    ${canManage ? `
-                        <button class="btn danger" onclick="removeShare('${s.name}')" style="padding:0.3rem 0.6rem">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        function addShare() {
-            const name = document.getElementById('share-name').value.trim();
-            const path = document.getElementById('share-path').value.trim();
-            const desc = document.getElementById('share-desc').value.trim();
-            const isPublic = document.getElementById('share-public').checked;
-            const writable = document.getElementById('share-writable').checked;
-
-            if (!name || !path) {
-                showMsg('Nama dan path share harus diisi', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-add');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menambahkan...';
-
-            fetch('/api/smb/share/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, path, description: desc, public: isPublic, writable })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Tambah Share';
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Share berhasil ditambahkan!', 'success');
-                        document.getElementById('share-name').value = '';
-                        document.getElementById('share-path').value = '';
-                        document.getElementById('share-desc').value = '';
-                        loadShares();
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Tambah Share';
-                    showMsg('Gagal menambahkan share', 'error');
-                });
-        }
-
-        function removeShare(name) {
-            if (!confirm(`Yakin ingin menghapus share "${name}"?`)) return;
-
-            fetch('/api/smb/share/remove', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Share berhasil dihapus', 'success');
-                        loadShares();
-                    }
-                })
-                .catch(err => showMsg('Gagal menghapus share', 'error'));
-        }
-
-        function controlSamba(action) {
-            fetch('/api/smb/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg(`Samba berhasil di-${action}`, 'success');
-                        loadStatus();
-                    }
-                })
-                .catch(err => showMsg('Gagal mengontrol Samba', 'error'));
-        }
-
-        function installSamba() {
-            if (!confirm('Install Samba? Ini akan mengunduh dan menginstall paket samba.')) return;
-            showMsg('Menginstall Samba... (mungkin butuh beberapa menit)', 'success');
-
-            fetch('/api/smb/install', { method: 'POST' })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Samba berhasil diinstall!', 'success');
-                        loadStatus();
-                    }
-                })
-                .catch(err => showMsg('Gagal menginstall Samba', 'error'));
-        }
+        window.userRole = "{{ session.get('role', 'readonly') }}";
     </script>
+    <script src="{{ url_for('static', filename='sharing.js') }}?v=1"></script>
 </body>
 
 </html>

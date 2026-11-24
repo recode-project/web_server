@@ -4,56 +4,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VPN Manager - Eka Dashboard</title>
+    <title>VPN Manager — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
     <style>
-        .vpn-container {
-            padding: 1rem;
-            max-width: 1200px;
-            margin: 0 auto;
+        :root {
+            --glass-bg: rgba(30, 30, 40, 0.65);
+            --glass-card-hover: rgba(38, 38, 52, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-border-hover: rgba(255, 255, 255, 0.22);
+            --text-main: #ffffff;
+            --text-dim: #a0a0b0;
+
+            --accent-blue: #58a6ff;
+            --cpu-color: #ff6b6b;
+            --ram-color: #4ecdc4;
+            --disk-color: #ffe66d;
+            --net-color: #23a6d5;
+
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
         }
 
-        .vpn-header {
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background: #0f0c29;
+            user-select: none;
+        }
+
+        /* Ambient Dynamic Animated Wallpaper */
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: -1;
+            filter: brightness(0.48);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 2rem 2.5rem 4rem 2.5rem;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        /* Header Bar */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateX(-3px);
+        }
+
+        .page-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .page-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-dim);
         }
 
         .btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
+            font-weight: 500;
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            transition: all 0.2s;
+            gap: 8px;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
 
         .btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.16);
+            border-color: var(--glass-border-hover);
         }
 
         .btn.primary {
-            background: #238636;
-            border-color: #238636;
+            background: rgba(78, 205, 196, 0.25);
+            border-color: rgba(78, 205, 196, 0.5);
+            color: #ffffff;
+        }
+
+        .btn.primary:hover {
+            background: rgba(78, 205, 196, 0.4);
+            border-color: var(--ram-color);
         }
 
         .btn.danger {
-            background: #da3633;
-            border-color: #da3633;
+            background: rgba(248, 81, 73, 0.2);
+            border-color: rgba(248, 81, 73, 0.4);
+            color: #ff7b72;
+        }
+
+        .btn.danger:hover {
+            background: rgba(248, 81, 73, 0.35);
+            color: #ffffff;
         }
 
         .btn:disabled {
@@ -61,813 +187,805 @@
             cursor: not-allowed;
         }
 
-        .status-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
+        /* Tab Navigation Bar */
+        .tabs-nav-bar {
             display: flex;
-            align-items: center;
-            gap: 1.5rem;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 6px;
+            border-radius: var(--radius-md);
+            margin-bottom: 2rem;
+            width: fit-content;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            flex-wrap: wrap;
         }
 
-        .status-icon {
-            width: 70px;
-            height: 70px;
-            border-radius: 16px;
-            display: flex;
+        .tab-nav-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 10px 22px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            font-size: 2rem;
+            gap: 8px;
+            font-family: inherit;
         }
 
-        .status-icon.active {
-            background: rgba(63, 185, 80, 0.2);
+        .tab-nav-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .tab-nav-btn.active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .tab-count-pill {
+            background: rgba(78, 205, 196, 0.25);
+            color: var(--ram-color);
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Global Notification Box */
+        .msg {
+            padding: 0.9rem 1.2rem;
+            border-radius: var(--radius-sm);
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .msg.success {
+            background: rgba(63, 185, 80, 0.18);
+            border: 1px solid rgba(63, 185, 80, 0.4);
             color: #3fb950;
         }
 
-        .status-icon.inactive {
-            background: rgba(139, 148, 158, 0.2);
-            color: #8b949e;
-        }
-
-        .status-icon.not-installed {
-            background: rgba(248, 81, 73, 0.2);
+        .msg.error {
+            background: rgba(248, 81, 73, 0.18);
+            border: 1px solid rgba(248, 81, 73, 0.4);
             color: #f85149;
         }
 
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        /* Tailscale Self Node Card */
+        .self-node-card {
+            padding: 1.8rem;
+            margin-bottom: 1.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .self-node-left {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+        }
+
+        .self-node-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            background: rgba(78, 205, 196, 0.15);
+            color: var(--ram-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            flex-shrink: 0;
+        }
+
+        .self-node-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .self-node-meta {
+            font-size: 0.88rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .self-node-stats {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .stat-block {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            text-align: right;
+        }
+
+        .stat-block .lbl { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600; }
+        .stat-block .val { font-size: 1.35rem; font-weight: 700; color: #ffffff; font-family: monospace; }
+
+        /* Filter Controls */
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.4rem;
+            flex-wrap: wrap;
             gap: 1rem;
         }
 
-        @media (max-width: 400px) {
-            .cards-grid {
-                grid-template-columns: 1fr;
-            }
+        .search-box {
+            position: relative;
+            min-width: 280px;
+            flex: 1;
+            max-width: 450px;
         }
 
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            overflow: hidden;
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 0.85rem;
         }
 
-        .card-header {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        .search-input {
+            width: 100%;
+            padding: 9px 12px 9px 36px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: #ffffff;
+            font-size: 0.88rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--ram-color);
+        }
+
+        .filter-radio-group {
+            display: flex;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+        }
+
+        .filter-label {
+            padding: 6px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: var(--text-dim);
+        }
+
+        .filter-label input { display: none; }
+        .filter-label:has(input:checked) {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+        }
+
+        /* Peer Cards Grid */
+        .peers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.4rem;
+        }
+
+        .peer-card {
+            padding: 1.4rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .peer-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--glass-border-hover);
+            background: var(--glass-card-hover);
+        }
+
+        .peer-card.peer-active {
+            border-color: rgba(78, 205, 196, 0.4);
+            box-shadow: 0 0 20px rgba(78, 205, 196, 0.1);
+        }
+
+        .peer-top {
             display: flex;
             align-items: center;
-            gap: 0.8rem;
+            gap: 12px;
         }
 
-        .card-header i {
-            font-size: 1.2rem;
+        .peer-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .peer-icon-box.linux { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
+        .peer-icon-box.android { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+        .peer-icon-box.windows { background: rgba(88, 166, 255, 0.15); color: #58a6ff; }
+        .peer-icon-box.apple { background: rgba(240, 136, 62, 0.15); color: #f0883e; }
+
+        .peer-title-wrap {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .peer-name {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .status-pill.up {
+            background: rgba(63, 185, 80, 0.18);
+            border: 1px solid rgba(63, 185, 80, 0.4);
+            color: #3fb950;
+        }
+
+        .status-pill.active {
+            background: rgba(78, 205, 196, 0.22);
+            border: 1px solid rgba(78, 205, 196, 0.5);
+            color: var(--ram-color);
+        }
+
+        .status-pill.relay {
+            background: rgba(88, 166, 255, 0.18);
+            border: 1px solid rgba(88, 166, 255, 0.4);
             color: #58a6ff;
         }
 
-        .card-header h3 {
-            font-weight: 500;
-            font-size: 1rem;
+        .status-pill.down {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            color: var(--text-dim);
         }
 
-        .card-body {
-            padding: 1rem;
+        .peer-meta-box {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.8rem 1rem;
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
-        .card-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        .peer-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
         }
+
+        .peer-field .lbl { color: var(--text-dim); }
+        .peer-field .val { font-weight: 600; font-family: monospace; color: #ffffff; }
+        .peer-field .val.ip { color: var(--ram-color); }
+
+        .conn-pill {
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .conn-pill.direct {
+            background: rgba(78, 205, 196, 0.15);
+            color: var(--ram-color);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        }
+
+        .conn-pill.relay {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-dim);
+        }
+
+        .peer-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 4px;
+        }
+
+        .peer-traffic {
+            display: flex;
+            gap: 12px;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            font-family: monospace;
+        }
+
+        .btn-peer-ping {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-peer-ping:hover {
+            background: rgba(78, 205, 196, 0.3);
+            border-color: var(--ram-color);
+            color: #ffffff;
+        }
+
+        .terminal-mini {
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.8rem;
+            border-radius: var(--radius-sm);
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            margin-top: 6px;
+        }
+
+        /* WireGuard & ZeroTier Cards */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            padding: 1.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .status-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .status-icon.active { background: rgba(63, 185, 80, 0.18); color: #3fb950; }
+        .status-icon.inactive { background: rgba(210, 153, 34, 0.18); color: #d29922; }
+        .status-icon.not-installed { background: rgba(248, 81, 73, 0.18); color: #f85149; }
 
         .client-list {
-            max-height: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 380px;
             overflow-y: auto;
         }
 
         .client-item {
-            padding: 0.8rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
-            gap: 0.8rem;
+            gap: 12px;
         }
 
         .client-icon {
             width: 36px;
             height: 36px;
-            background: rgba(88, 166, 255, 0.15);
             border-radius: 8px;
+            background: rgba(255, 255, 255, 0.06);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #58a6ff;
+            color: var(--accent-blue);
         }
 
         .client-info {
             flex: 1;
         }
 
-        .client-name {
-            font-weight: 500;
-        }
-
-        .client-meta {
-            font-size: 0.75rem;
-            color: #8b949e;
-        }
+        .client-name { font-weight: 600; font-size: 0.95rem; color: #fff; }
+        .client-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
 
         .form-group {
-            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
         .form-group label {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+
+        .form-group input {
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .form-group input:focus {
+            border-color: var(--ram-color);
+        }
+
+        .code-box {
             display: block;
-            margin-bottom: 0.5rem;
-            color: #8b949e;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 0.7rem 1rem;
+            border-radius: 6px;
+            margin-top: 0.6rem;
             font-size: 0.85rem;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 0.6rem 0.8rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            color: #fff;
-        }
-
-        .msg {
-            padding: 0.8rem 1rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;
-            display: none;
-        }
-
-        .msg.success {
-            display: block;
-            background: rgba(63, 185, 80, 0.15);
-            border: 1px solid rgba(63, 185, 80, 0.3);
-            color: #3fb950;
-        }
-
-        .msg.error {
-            display: block;
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            color: #f85149;
-        }
-
-        .msg.info {
-            display: block;
-            background: rgba(88, 166, 255, 0.15);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-            color: #58a6ff;
+            font-family: monospace;
+            color: var(--ram-color);
         }
 
         .empty-state {
             text-align: center;
-            padding: 2rem;
-            color: #8b949e;
+            padding: 2.5rem;
+            color: var(--text-dim);
         }
 
-        .qr-container {
-            background: #fff;
-            padding: 1rem;
-            border-radius: 8px;
-            display: inline-block;
-            margin-top: 1rem;
+        /* Config Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-card {
+            max-width: 500px;
+            width: 90%;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
         }
 
         .config-box {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
             padding: 1rem;
             font-family: monospace;
             font-size: 0.8rem;
-            max-height: 200px;
+            max-height: 180px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
+            color: #c9d1d9;
+        }
+
+        .qr-container img {
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        @media (max-width: 900px) {
+            .container { padding: 1.5rem 1rem 3rem 1rem; }
+            .cards-grid { grid-template-columns: 1fr; }
+            .peers-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 
 <body>
+    <!-- Eka Dashboard Ambient Animated Wallpaper -->
     <div class="wallpaper"></div>
 
-    <div class="app-container vpn-container">
-        <!-- Header -->
-        <div class="vpn-header">
-            <button class="btn" onclick="window.location.href='/dashboard'"><i class="fa-solid fa-home"></i></button>
-            <h2 style="margin:0; font-weight:400; font-size:1.2rem">
-                <i class="fa-solid fa-shield-halved" style="color:#58a6ff"></i> VPN Manager
-            </h2>
-            <div style="margin-left:auto; display:flex; gap:0.5rem">
-                <button class="btn" onclick="loadAll()"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+    <div class="container">
+        <!-- Header Bar -->
+        <header class="page-header">
+            <div class="header-left">
+                <a href="/dashboard" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> Dashboard
+                </a>
+                <div class="page-title">
+                    <i class="fa-solid fa-shield-halved" style="color:var(--ram-color)"></i> VPN Manager
+                </div>
+                <div class="page-subtitle">Tailscale Mesh Network, WireGuard Hub &amp; Multi-Tunnel Orchestrator</div>
             </div>
-        </div>
-
-        <!-- Tab Switcher -->
-        <div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
-            <button class="btn" id="tab-wg" onclick="switchTab('wireguard')" style="flex:1; justify-content:center;">
-                <i class="fa-solid fa-shield-halved"></i> WireGuard
-            </button>
-            <button class="btn" id="tab-zt" onclick="switchTab('zerotier')" style="flex:1; justify-content:center;">
-                <i class="fa-solid fa-globe"></i> ZeroTier
-            </button>
-            <button class="btn" id="tab-scan" onclick="switchTab('smartscan')" style="flex:1; justify-content:center;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Smart Scan
-            </button>
-        </div>
+            <div style="display:flex; gap:0.6rem; align-items:center;">
+                <button class="btn" onclick="loadTailscaleStatus(); loadWireGuardStatus(); loadZerotierStatus();">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+            </div>
+        </header>
 
         <div id="msg-box" class="msg"></div>
 
-        <!-- WireGuard Section -->
-        <div id="section-wireguard">
-            <!-- Status Card -->
-            <div class="status-card">
-                <div class="status-icon not-installed" id="wg-status-icon">
-                    <i class="fa-solid fa-shield-halved"></i>
+        <!-- Navigation Tabs Bar -->
+        <nav class="tabs-nav-bar">
+            <button class="tab-nav-btn active" data-tab="tailscale" onclick="switchTab('tailscale')">
+                <i class="fa-solid fa-circle-nodes"></i> Tailscale Mesh Network
+                <span class="tab-count-pill" id="tab-ts-count">0/0</span>
+            </button>
+            <button class="tab-nav-btn" data-tab="wireguard" onclick="switchTab('wireguard')">
+                <i class="fa-solid fa-shield-halved"></i> WireGuard Hub
+            </button>
+            <button class="tab-nav-btn" data-tab="zerotier" onclick="switchTab('zerotier')">
+                <i class="fa-solid fa-globe"></i> ZeroTier &amp; Multi-Scan
+            </button>
+        </nav>
+
+        <!-- ==================== TAB 1: TAILSCALE MESH ==================== -->
+        <section id="section-tailscale" class="tab-section">
+            <!-- Node Lokal Host Summary Card -->
+            <div class="self-node-card glass">
+                <div class="self-node-left">
+                    <div class="self-node-icon">
+                        <i class="fa-solid fa-circle-nodes"></i>
+                    </div>
+                    <div>
+                        <div class="self-node-title">
+                            <span id="ts-self-hostname">Host Node</span>
+                            <span id="ts-self-status-badge">
+                                <span class="status-pill up"><i class="fa-solid fa-circle-check"></i> Connected</span>
+                            </span>
+                        </div>
+                        <div class="self-node-meta">
+                            <span><i class="fa-solid fa-network-wired" style="color:var(--ram-color)"></i> Tailscale IP: <strong id="ts-self-ip" style="color:#ffffff">-</strong></span>
+                            <span><i class="fa-solid fa-globe" style="color:var(--accent-blue)"></i> MagicDNS: <span id="ts-self-dns">-</span></span>
+                            <span><i class="fa-solid fa-tower-broadcast" style="color:var(--disk-color)"></i> Mode: <span id="ts-self-derp">Direct</span></span>
+                        </div>
+                    </div>
                 </div>
-                <div style="flex:1">
-                    <div style="font-size:1.3rem; font-weight:600" id="wg-status-title">Memeriksa...</div>
-                    <div style="color:#8b949e" id="wg-status-desc">Mohon tunggu</div>
+                <div class="self-node-stats">
+                    <div class="stat-block">
+                        <span class="lbl">Peer Online</span>
+                        <span class="val" style="color:var(--ram-color)" id="ts-online-peers">0</span>
+                    </div>
+                    <div class="stat-block">
+                        <span class="lbl">Total Peer</span>
+                        <span class="val" id="ts-total-peers">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ping Result Box -->
+            <div id="ts-ping-result-box" class="glass" style="padding:1.2rem; margin-bottom:1.4rem; display:none;"></div>
+
+            <!-- Filter Bar -->
+            <div class="filter-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="ts-search-input" class="search-input" placeholder="Cari perangkat (misal: laptop, server, mobile, 100.x)...">
+                </div>
+
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                    <div class="filter-radio-group">
+                        <label class="filter-label">
+                            <input type="radio" name="ts-filter" value="ALL" checked onchange="filterTailscalePeers()"> Semua Perangkat
+                        </label>
+                        <label class="filter-label">
+                            <input type="radio" name="ts-filter" value="ONLINE" onchange="filterTailscalePeers()"> Online
+                        </label>
+                        <label class="filter-label">
+                            <input type="radio" name="ts-filter" value="ACTIVE" onchange="filterTailscalePeers()"> Active Direct
+                        </label>
+                    </div>
+                    <button class="btn" onclick="loadTailscaleStatus()">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh Mesh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Peer Devices Grid -->
+            <div class="peers-grid" id="ts-peer-list">
+                <!-- Injected dynamically by vpn.js -->
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: WIREGUARD ==================== -->
+        <section id="section-wireguard" class="tab-section" style="display:none">
+            <!-- Status Card -->
+            <div class="self-node-card glass" style="margin-bottom:1.8rem">
+                <div style="display:flex; align-items:center; gap:1.2rem">
+                    <div class="status-icon not-installed" id="wg-status-icon">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:1.25rem; font-weight:700" id="wg-status-title">Memeriksa status WireGuard...</div>
+                        <div style="color:var(--text-dim); font-size:0.88rem; margin-top:4px" id="wg-status-desc">Mohon tunggu</div>
+                    </div>
                 </div>
                 <div id="wg-status-actions"></div>
             </div>
 
             <div class="cards-grid">
                 <!-- Add New Client -->
-                <div class="card">
+                <div class="card glass">
                     <div class="card-header">
-                        <i class="fa-solid fa-user-plus" style="color:#3fb950"></i>
-                        <h3>Tambah Client Baru</h3>
+                        <i class="fa-solid fa-user-plus" style="color:var(--ram-color)"></i>
+                        <h3>Tambah Client WireGuard Baru</h3>
                     </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label>Nama Client</label>
-                            <input type="text" id="client-name" placeholder="Contoh: Laptop-Kantor">
-                        </div>
+                    <p style="font-size:0.85rem; color:var(--text-dim)">Buat konfigurasi kunci publik/privat baru untuk laptop atau smartphone.</p>
+                    <div class="form-group">
+                        <label>Nama Client (Perangkat)</label>
+                        <input type="text" id="client-name" placeholder="Contoh: Laptop-Work, Phone-User">
                     </div>
-                    <div class="card-footer">
-                        <button class="btn primary" onclick="addClient()" id="btn-add" {% if session.get('role') not in
-                            ['owner', 'admin' ] %}disabled{% endif %}>
-                            <i class="fa-solid fa-plus"></i> Buat Client
+                    <div>
+                        <button class="btn primary" onclick="addClient()" id="btn-add" {% if session.get('role') not in ['owner', 'admin'] %}disabled{% endif %}>
+                            <i class="fa-solid fa-plus"></i> Buat Client Baru
                         </button>
                     </div>
                 </div>
 
                 <!-- Client List -->
-                <div class="card">
+                <div class="card glass">
                     <div class="card-header">
-                        <i class="fa-solid fa-users"></i>
-                        <h3>Daftar Client VPN</h3>
+                        <i class="fa-solid fa-users" style="color:var(--accent-blue)"></i>
+                        <h3>Daftar Client Terdaftar</h3>
                     </div>
-                    <div class="card-body">
-                        <div class="client-list" id="client-list">
-                            <div class="empty-state">
-                                <i class="fa-solid fa-spinner fa-spin"></i>
-                                <div>Memuat...</div>
-                            </div>
+                    <div class="client-list" id="client-list">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-spinner fa-spin"></i>
+                            <div>Memuat client...</div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- ZeroTier Section -->
-        <div id="section-zerotier" style="display:none;">
-            <!-- Status Card -->
-            <div class="status-card">
-                <div class="status-icon not-installed" id="zt-status-icon">
-                    <i class="fa-solid fa-globe"></i>
-                </div>
-                <div style="flex:1">
-                    <div style="font-size:1.3rem; font-weight:600" id="zt-status-title">Memeriksa...</div>
-                    <div style="color:#8b949e" id="zt-status-desc">Mohon tunggu</div>
+        <!-- ==================== TAB 3: ZEROTIER & SMART SCAN ==================== -->
+        <section id="section-zerotier" class="tab-section" style="display:none">
+            <div class="self-node-card glass" style="margin-bottom:1.8rem">
+                <div style="display:flex; align-items:center; gap:1.2rem">
+                    <div class="status-icon not-installed" id="zt-status-icon">
+                        <i class="fa-solid fa-globe"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:1.25rem; font-weight:700" id="zt-status-title">Memeriksa ZeroTier...</div>
+                        <div style="color:var(--text-dim); font-size:0.88rem; margin-top:4px" id="zt-status-desc">Mohon tunggu</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="cards-grid">
+            <div class="cards-grid" style="margin-bottom:2rem">
                 <!-- Join Network -->
-                <div class="card">
+                <div class="card glass">
                     <div class="card-header">
-                        <i class="fa-solid fa-plus-circle" style="color:#3fb950"></i>
-                        <h3>Gabung Network</h3>
+                        <i class="fa-solid fa-plus-circle" style="color:var(--ram-color)"></i>
+                        <h3>Gabung Network ZeroTier</h3>
                     </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label>Network ID (16 karakter)</label>
-                            <input type="text" id="zt-network-id" placeholder="Contoh: 8056c2e21c000001" maxlength="16">
-                        </div>
+                    <div class="form-group">
+                        <label>Network ID (16 karakter heksadesimal)</label>
+                        <input type="text" id="zt-network-id" placeholder="Contoh: 8056c2e21c000001" maxlength="16">
                     </div>
-                    <div class="card-footer">
-                        <button class="btn primary" onclick="joinZerotier()" id="btn-join" {% if session.get('role') not
-                            in ['owner', 'admin' ] %}disabled{% endif %}>
+                    <div>
+                        <button class="btn primary" onclick="joinZerotier()" id="btn-join" {% if session.get('role') not in ['owner', 'admin'] %}disabled{% endif %}>
                             <i class="fa-solid fa-link"></i> Gabung Network
                         </button>
                     </div>
                 </div>
 
                 <!-- Network List -->
-                <div class="card">
+                <div class="card glass">
                     <div class="card-header">
-                        <i class="fa-solid fa-network-wired"></i>
-                        <h3>Network Terhubung</h3>
+                        <i class="fa-solid fa-network-wired" style="color:var(--net-color)"></i>
+                        <h3>Network ZeroTier Terhubung</h3>
                     </div>
-                    <div class="card-body">
-                        <div class="client-list" id="zt-network-list">
-                            <div class="empty-state">
-                                <i class="fa-solid fa-spinner fa-spin"></i>
-                                <div>Memuat...</div>
-                            </div>
+                    <div class="client-list" id="zt-network-list">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-spinner fa-spin"></i>
+                            <div>Memuat...</div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Smart Scan Section -->
-        <div id="section-smartscan" style="display:none;">
-            <div class="status-card">
-                <div class="status-icon active" style="background: rgba(88, 166, 255, 0.2); color: #58a6ff;">
-                    <i class="fa-solid fa-magnifying-glass-chart"></i>
+            <!-- Smart Tunnel Scanner -->
+            <div class="glass" style="padding:1.6rem">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.4rem; flex-wrap:wrap; gap:1rem">
+                    <div>
+                        <h3 style="font-size:1.15rem; font-weight:700; color:#fff"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--disk-color)"></i> Multi-Tunnel Scanner</h3>
+                        <p style="font-size:0.85rem; color:var(--text-dim)">Pindai seluruh antarmuka virtual tunnel dan daemon VPN aktif di host</p>
+                    </div>
+                    <button class="btn primary" onclick="runSmartScan()">
+                        <i class="fa-solid fa-bolt"></i> Pindai Sekarang
+                    </button>
                 </div>
-                <div style="flex:1">
-                    <div style="font-size:1.3rem; font-weight:600">Smart VPN Scanner</div>
-                    <div style="color:#8b949e">Mendeteksi otomatis layanan jaringan di server host</div>
-                </div>
-                <button class="btn primary" onclick="runSmartScan()">
-                    <i class="fa-solid fa-bolt"></i> Scan Sekarang
-                </button>
+                <div class="cards-grid" id="smart-scan-results"></div>
             </div>
+        </section>
+    </div>
 
-            <div class="cards-grid" id="smart-scan-results">
-                <!-- Hasil scan akan muncul di sini -->
-                <div class="empty-state" style="grid-column: 1 / -1;">
-                    <i class="fa-solid fa-satellite-dish" style="font-size:3rem; opacity:0.3; margin-bottom:1rem"></i>
-                    <div>Klik "Scan Sekarang" untuk mencari layanan VPN</div>
-                </div>
+    <!-- WireGuard QR & Config Modal -->
+    <div id="config-modal" class="modal-overlay">
+        <div class="modal-card glass">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+                <h3 style="font-weight:700; font-size:1.15rem"><i class="fa-solid fa-file-code" style="color:var(--ram-color)"></i> Config: <span id="modal-client-name"></span></h3>
+                <button class="btn" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-        </div>
-        <div id="config-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; 
-            background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
-            <div class="card" style="max-width:500px; margin:1rem;">
-                <div class="card-header">
-                    <i class="fa-solid fa-file-code"></i>
-                    <h3>Konfigurasi Client: <span id="modal-client-name"></span></h3>
-                </div>
-                <div class="card-body">
-                    <p style="color:#8b949e; margin-bottom:1rem">Scan QR code atau copy konfigurasi di bawah:</p>
-                    <div id="qr-code" style="text-align:center"></div>
-                    <div class="config-box" id="config-text"></div>
-                </div>
-                <div class="card-footer" style="display:flex; gap:0.5rem">
-                    <button class="btn" onclick="copyConfig()"><i class="fa-solid fa-copy"></i> Copy</button>
-                    <button class="btn" onclick="downloadConfig()"><i class="fa-solid fa-download"></i>
-                        Download</button>
-                    <button class="btn" onclick="closeModal()" style="margin-left:auto">Tutup</button>
-                </div>
+            <p style="color:var(--text-dim); font-size:0.85rem">Scan QR code dengan aplikasi WireGuard di HP atau salin teks konfigurasi di bawah:</p>
+            <div id="qr-code" style="text-align:center"></div>
+            <pre class="config-box" id="config-text"></pre>
+            <div style="display:flex; gap:0.6rem">
+                <button class="btn" onclick="copyConfig()"><i class="fa-solid fa-copy"></i> Salin</button>
+                <button class="btn" onclick="downloadConfig()"><i class="fa-solid fa-download"></i> Unduh .conf</button>
+                <button class="btn" onclick="closeModal()" style="margin-left:auto">Tutup</button>
             </div>
         </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script>
-        let currentConfig = '';
-        let currentClientName = '';
-        let currentTab = 'wireguard';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadAll();
-            switchTab('wireguard');
-        });
-
-        function switchTab(tab) {
-            currentTab = tab;
-            document.getElementById('section-wireguard').style.display = tab === 'wireguard' ? 'block' : 'none';
-            document.getElementById('section-zerotier').style.display = tab === 'zerotier' ? 'block' : 'none';
-            document.getElementById('section-smartscan').style.display = tab === 'smartscan' ? 'block' : 'none';
-
-            document.getElementById('tab-wg').style.background = tab === 'wireguard' ? '#238636' : '';
-            document.getElementById('tab-zt').style.background = tab === 'zerotier' ? '#58a6ff' : '';
-            document.getElementById('tab-scan').style.background = tab === 'smartscan' ? '#bc8cf2' : '';
-            
-            if (tab === 'smartscan') runSmartScan();
-        }
-
-        function loadAll() {
-            loadWireGuardStatus();
-            loadZerotierStatus();
-            runSmartScan();
-        }
-
-        function showMsg(msg, type) {
-            const el = document.getElementById('msg-box');
-            el.textContent = msg;
-            el.className = 'msg ' + type;
-            setTimeout(() => { el.className = 'msg'; }, 5000);
-        }
-
-        // ===== WireGuard Functions =====
-        function loadWireGuardStatus() {
-            fetch('/api/vpn/status')
-                .then(r => r.json())
-                .then(data => {
-                    updateWireGuardStatus(data);
-                    loadClients();
-                })
-                .catch(err => {
-                    updateWireGuardStatus({ installed: false });
-                });
-        }
-
-        function updateWireGuardStatus(data) {
-            const icon = document.getElementById('wg-status-icon');
-            const title = document.getElementById('wg-status-title');
-            const desc = document.getElementById('wg-status-desc');
-            const actions = document.getElementById('wg-status-actions');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (!data.installed) {
-                icon.className = 'status-icon not-installed';
-                title.textContent = 'WireGuard Belum Terinstall';
-                desc.innerHTML = `
-                    <div>Install WireGuard secara manual di server host dengan perintah:</div>
-                    <code style="display:block; background:rgba(0,0,0,0.3); padding:0.5rem; border-radius:4px; margin-top:0.5rem; font-size:0.85rem">
-                        sudo apt-get update && sudo apt-get install -y wireguard
-                    </code>
-                    <div style="margin-top:0.5rem; font-size:0.8rem">Setelah diinstall, refresh halaman ini.</div>
-                `;
-                actions.innerHTML = '';
-            } else if (data.running) {
-                icon.className = 'status-icon active';
-                title.textContent = 'WireGuard Aktif';
-                desc.innerHTML = `Server: <strong>${data.server_ip || 'N/A'}</strong> | Port: <strong>${data.port || '51820'}</strong> | Clients: <strong>${data.client_count || 0}</strong>`;
-                actions.innerHTML = canManage ? '<button class="btn danger" onclick="controlVPN(\'stop\')"><i class="fa-solid fa-stop"></i> Stop</button>' : '';
-            } else {
-                icon.className = 'status-icon inactive';
-                title.textContent = 'WireGuard Tidak Aktif';
-                desc.textContent = 'WireGuard terinstall tapi tidak berjalan';
-                actions.innerHTML = canManage ? '<button class="btn primary" onclick="controlVPN(\'start\')"><i class="fa-solid fa-play"></i> Start</button>' : '';
-            }
-        }
-
-        function loadClients() {
-            fetch('/api/vpn/clients')
-                .then(r => r.json())
-                .then(data => {
-                    renderClients(data.clients || []);
-                })
-                .catch(err => {
-                    document.getElementById('client-list').innerHTML = '<div class="empty-state">Gagal memuat daftar client</div>';
-                });
-        }
-
-        function renderClients(clients) {
-            const container = document.getElementById('client-list');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (clients.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fa-solid fa-user-slash" style="font-size:2rem; opacity:0.5"></i>
-                        <div style="margin-top:0.5rem">Belum ada client VPN</div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = clients.map(c => `
-                <div class="client-item">
-                    <div class="client-icon">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-                    <div class="client-info">
-                        <div class="client-name">${c.name}</div>
-                        <div class="client-meta">IP: ${c.ip || 'N/A'}</div>
-                    </div>
-                    <button class="btn" onclick="showConfig('${c.name}')" style="padding:0.3rem 0.6rem">
-                        <i class="fa-solid fa-qrcode"></i>
-                    </button>
-                    ${canManage ? `
-                        <button class="btn danger" onclick="removeClient('${c.name}')" style="padding:0.3rem 0.6rem">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        function addClient() {
-            const name = document.getElementById('client-name').value.trim();
-            if (!name) {
-                showMsg('Nama client harus diisi', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-add');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Membuat...';
-
-            fetch('/api/vpn/client/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Buat Client';
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Client berhasil dibuat!', 'success');
-                        document.getElementById('client-name').value = '';
-                        loadClients();
-                        if (data.config) {
-                            showConfigModal(name, data.config);
-                        }
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Buat Client';
-                    showMsg('Gagal membuat client', 'error');
-                });
-        }
-
-        function showConfig(name) {
-            fetch(`/api/vpn/client/${name}/config`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showConfigModal(name, data.config);
-                    }
-                })
-                .catch(err => showMsg('Gagal mengambil konfigurasi', 'error'));
-        }
-
-        function showConfigModal(name, config) {
-            currentConfig = config;
-            currentClientName = name;
-            document.getElementById('modal-client-name').textContent = name;
-            document.getElementById('config-text').textContent = config;
-
-            // Generate QR Code
-            const qr = qrcode(0, 'M');
-            qr.addData(config);
-            qr.make();
-            document.getElementById('qr-code').innerHTML = '<div class="qr-container">' + qr.createImgTag(4) + '</div>';
-
-            document.getElementById('config-modal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('config-modal').style.display = 'none';
-        }
-
-        function copyConfig() {
-            navigator.clipboard.writeText(currentConfig);
-            showMsg('Konfigurasi disalin!', 'success');
-        }
-
-        function downloadConfig() {
-            const blob = new Blob([currentConfig], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentClientName}.conf`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function removeClient(name) {
-            if (!confirm(`Yakin ingin menghapus client "${name}"?`)) return;
-
-            fetch('/api/vpn/client/remove', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Client berhasil dihapus', 'success');
-                        loadClients();
-                    }
-                })
-                .catch(err => showMsg('Gagal menghapus client', 'error'));
-        }
-
-        function controlVPN(action) {
-            fetch('/api/vpn/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg(`VPN berhasil di-${action}`, 'success');
-                        loadWireGuardStatus();
-                    }
-                })
-                .catch(err => showMsg('Gagal mengontrol VPN', 'error'));
-        }
-
-        // ===== ZeroTier Functions =====
-        function loadZerotierStatus() {
-            fetch('/api/zerotier/status')
-                .then(r => r.json())
-                .then(data => {
-                    updateZerotierStatus(data);
-                })
-                .catch(err => {
-                    updateZerotierStatus({ installed: false });
-                });
-        }
-
-        function updateZerotierStatus(data) {
-            const icon = document.getElementById('zt-status-icon');
-            const title = document.getElementById('zt-status-title');
-            const desc = document.getElementById('zt-status-desc');
-
-            if (!data.installed) {
-                icon.className = 'status-icon not-installed';
-                title.textContent = 'ZeroTier Belum Terinstall';
-                desc.innerHTML = `
-                    <div>Install ZeroTier secara manual dengan perintah:</div>
-                    <code style="display:block; background:rgba(0,0,0,0.3); padding:0.5rem; border-radius:4px; margin-top:0.5rem; font-size:0.85rem">
-                        curl -s https://install.zerotier.com | sudo bash
-                    </code>
-                    <div style="margin-top:0.5rem; font-size:0.8rem">Setelah diinstall, refresh halaman ini.</div>
-                `;
-            } else if (data.running) {
-                icon.className = 'status-icon active';
-                title.textContent = 'ZeroTier Online';
-                desc.innerHTML = `Node ID: <strong>${data.node_id || 'N/A'}</strong> | Networks: <strong>${(data.networks || []).length}</strong>`;
-                renderZerotierNetworks(data.networks || []);
-            } else {
-                icon.className = 'status-icon inactive';
-                title.textContent = 'ZeroTier Offline';
-                desc.textContent = 'Service ZeroTier tidak berjalan. Coba: sudo systemctl start zerotier-one';
-            }
-        }
-
-        function renderZerotierNetworks(networks) {
-            const container = document.getElementById('zt-network-list');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (networks.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fa-solid fa-globe" style="font-size:2rem; opacity:0.5"></i>
-                        <div style="margin-top:0.5rem">Belum terhubung ke network</div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = networks.map(n => `
-                <div class="client-item">
-                    <div class="client-icon">
-                        <i class="fa-solid fa-globe"></i>
-                    </div>
-                    <div class="client-info">
-                        <div class="client-name">${n.network_id}</div>
-                        <div class="client-meta">IP: ${n.ip || 'Pending'} | Status: ${n.status || 'N/A'}</div>
-                    </div>
-                    ${canManage ? `
-                        <button class="btn danger" onclick="leaveZerotier('${n.network_id}')" style="padding:0.3rem 0.6rem">
-                            <i class="fa-solid fa-unlink"></i>
-                        </button>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        function joinZerotier() {
-            const networkId = document.getElementById('zt-network-id').value.trim();
-            if (!networkId) {
-                showMsg('Network ID harus diisi', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-join');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menghubungkan...';
-
-            fetch('/api/zerotier/join', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ network_id: networkId })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-link"></i> Gabung Network';
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Berhasil terhubung ke network!', 'success');
-                        document.getElementById('zt-network-id').value = '';
-                        loadZerotierStatus();
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-link"></i> Gabung Network';
-                    showMsg('Gagal menghubungkan ke network', 'error');
-                });
-        }
-
-        function leaveZerotier(networkId) {
-            if (!confirm(`Yakin ingin keluar dari network "${networkId}"?`)) return;
-
-            fetch('/api/zerotier/leave', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ network_id: networkId })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Berhasil keluar dari network', 'success');
-                        loadZerotierStatus();
-                    }
-                })
-                .catch(err => showMsg('Gagal keluar dari network', 'error'));
-        }
-
-        function runSmartScan() {
-            const container = document.getElementById('smart-scan-results');
-            container.innerHTML = `
-                <div class="empty-state" style="grid-column: 1 / -1;">
-                    <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem"></i>
-                    <div style="margin-top:1rem">Sedang memindai sistem host...</div>
-                </div>
-            `;
-
-            fetch('/api/vpn/scan')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        container.innerHTML = `<div class="msg error">${data.error}</div>`;
-                        return;
-                    }
-                    renderScanResults(data.services || []);
-                })
-                .catch(err => {
-                    container.innerHTML = `<div class="msg error">Gagal memindai sistem</div>`;
-                });
-        }
-
-        function renderScanResults(services) {
-            const container = document.getElementById('smart-scan-results');
-            if (services.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state" style="grid-column: 1 / -1;">
-                        <i class="fa-solid fa-face-frown" style="font-size:3rem; opacity:0.3"></i>
-                        <div style="margin-top:1rem">Tidak ada layanan VPN lain yang terdeteksi aktif di host</div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = services.map(s => `
-                <div class="card">
-                    <div class="card-body" style="display:flex; align-items:center; gap:1rem; padding:1.5rem">
-                        <div style="width:50px; height:50px; background:rgba(255,255,255,0.05); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:${s.color}">
-                            <i class="${s.icon}"></i>
-                        </div>
-                        <div style="flex:1">
-                            <div style="font-weight:600; font-size:1.1rem">${s.name}</div>
-                            <div style="color:#8b949e; font-size:0.85rem">Status: <span style="color:${s.status === 'Online' || s.status === 'Running' || s.status === 'Active' ? '#3fb950' : '#f85149'}">${s.status}</span></div>
-                        </div>
-                        <div style="text-align:right">
-                            <div style="font-family:monospace; font-size:0.9rem; color:#58a6ff">${s.ip}</div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
+        window.userRole = "{{ session.get('role', 'readonly') }}";
     </script>
+    <script src="{{ url_for('static', filename='vpn.js') }}?v=2"></script>
 </body>
 
 </html>

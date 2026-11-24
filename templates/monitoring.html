@@ -4,463 +4,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Monitoring - Wallboard</title>
+    <title>Server Monitoring - Wallboard NOC</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --bg-primary: #0d1117;
-            --bg-card: #161b22;
-            --bg-card-hover: #1c2128;
-            --border: rgba(255, 255, 255, 0.08);
-            --text-primary: #f0f6fc;
-            --text-muted: #8b949e;
-            --good: #3fb950;
-            --warning: #d29922;
-            --danger: #f85149;
-            --info: #58a6ff;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            min-height: 100vh;
-            color: var(--text-primary);
-            overflow-x: hidden;
-        }
-
-        /* Header - Top Right */
-        .header {
-            position: fixed;
-            top: 0;
-            right: 0;
-            padding: 1.2rem 1.5rem;
-            z-index: 100;
-            text-align: right;
-        }
-
-        .login-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--border);
-            color: var(--text-muted);
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-
-        .login-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-primary);
-        }
-
-        .header-label {
-            margin-top: 0.6rem;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            font-weight: 600;
-        }
-
-        /* Main Container */
-        .container {
-            padding: 1rem 1.5rem;
-            padding-top: 4.5rem;
-            max-width: 1920px;
-            margin: 0 auto;
-        }
-
-        /* Status Bar */
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.2rem;
-            padding: 0 0.3rem;
-        }
-
-        .server-name {
-            font-size: 1.6rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
-        }
-
-        .server-name .dot {
-            width: 10px;
-            height: 10px;
-            background: var(--good);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--good);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-                box-shadow: 0 0 10px var(--good);
-            }
-
-            50% {
-                opacity: 0.6;
-                box-shadow: 0 0 5px var(--good);
-            }
-        }
-
-        .status-info {
-            display: flex;
-            gap: 2rem;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .status-info span {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .status-info strong {
-            color: var(--text-primary);
-        }
-
-        /* Resource Cards Grid */
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-            gap: 0.8rem;
-            margin-bottom: 1.2rem;
-        }
-
-        /* Removed fixed media queries to allow auto-fit to work its magic */
-
-        /* Metric Card with Donut */
-        .metric-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            /* Kurangi padding */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            position: relative;
-            transition: all 0.2s;
-        }
-
-        .metric-card:hover {
-            background: var(--bg-card-hover);
-        }
-
-        .card-title {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            margin-bottom: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .card-title i {
-            font-size: 1rem;
-        }
-
-        /* Donut Container */
-        .donut-container {
-            position: relative;
-            width: 90px;
-            height: 90px;
-            margin-bottom: 0.5rem;
-        }
-
-        .donut-center {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-        }
-
-        .donut-value {
-            font-size: 1.3rem;
-            font-weight: 700;
-            line-height: 1.1;
-        }
-
-        .donut-unit {
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--text-muted);
-        }
-
-        .card-subtext {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-align: center;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 0.2rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 0.5rem;
-        }
-
-        .status-badge.good {
-            background: rgba(63, 185, 80, 0.15);
-            color: var(--good);
-        }
-
-        .status-badge.warning {
-            background: rgba(210, 153, 34, 0.15);
-            color: var(--warning);
-        }
-
-        .status-badge.danger {
-            background: rgba(248, 81, 73, 0.15);
-            color: var(--danger);
-        }
-
-        /* Docker Card - Special Layout */
-        .docker-card .donut-container {
-            width: 90px;
-            height: 90px;
-        }
-
-        .docker-stats {
-            display: flex;
-            gap: 0.8rem;
-            margin-top: 0.5rem;
-        }
-
-        .docker-stat {
-            text-align: center;
-        }
-
-        .docker-stat .count {
-            font-size: 1.8rem;
-            font-weight: 700;
-        }
-
-        .docker-stat.running .count {
-            color: var(--good);
-        }
-
-        .docker-stat.stopped .count {
-            color: var(--danger);
-        }
-
-        .docker-stat .label {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-        }
-
-        /* Charts Section */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-        }
-
-        @media (max-width: 1024px) {
-            .charts-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .chart-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.2rem;
-        }
-
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .chart-title {
-            font-size: 0.95rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .chart-legend {
-            display: flex;
-            gap: 1.2rem;
-            font-size: 0.8rem;
-        }
-
-        .chart-legend span {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: var(--text-muted);
-        }
-
-        .chart-legend .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
-        .chart-container {
-            height: 160px;
-            position: relative;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 1.5rem;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-        }
-
-        /* Access Denied Modal */
-        .ad-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(8px);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 2100;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.3s ease;
-        }
-
-        .ad-overlay.active {
-            opacity: 1;
-            pointer-events: all;
-        }
-
-        .ad-card {
-            background: linear-gradient(145deg, rgba(40, 40, 50, 0.95), rgba(20, 20, 30, 0.95));
-            border: 1px solid rgba(255, 107, 107, 0.3);
-            box-shadow: 0 0 50px rgba(255, 107, 107, 0.2);
-            border-radius: 20px;
-            padding: 2.5rem;
-            text-align: center;
-            width: 380px;
-            transform: scale(0.8);
-            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        .ad-overlay.active .ad-card {
-            transform: scale(1);
-        }
-
-        .ad-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 107, 107, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1.5rem auto;
-            color: #ff6b6b;
-            font-size: 2.5rem;
-            animation: pulse-red 2s infinite;
-        }
-
-        @keyframes pulse-red {
-            0% {
-                box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4);
-            }
-
-            70% {
-                box-shadow: 0 0 0 15px rgba(255, 107, 107, 0);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(255, 107, 107, 0);
-            }
-        }
-
-        .ad-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #fff;
-            margin-bottom: 0.5rem;
-        }
-
-        .ad-msg {
-            font-size: 1rem;
-            color: #ccc;
-            margin-bottom: 2rem;
-            line-height: 1.5;
-        }
-
-        .ad-btn {
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            padding: 0.8rem 2rem;
-            font-size: 1rem;
-            font-weight: 600;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
-            transition: all 0.3s;
-            width: 100%;
-        }
-
-        .ad-btn:hover {
-            background: #ff5252;
-            transform: translateY(-3px);
-            box-shadow: 0 15px 25px rgba(255, 107, 107, 0.4);
-        }
-    </style>
+    <link rel="stylesheet" href="/static/monitoring.css">
 </head>
 
 <body>
-    <!-- Header - Top Right -->
+    <!-- Signature Animated Gradient Wallpaper (DESIGN_SYSTEM.md) -->
+    <div class="wallpaper"></div>
+
+    <!-- Header - Top Right Navigation -->
     <div class="header">
         <a href="/login" class="login-btn">
             <i class="fa-solid fa-lock"></i> Login
         </a>
-        <div class="header-label">Monitoring</div>
+        <div class="header-label">NOC Wallboard</div>
     </div>
 
+    <!-- Main Content Container -->
     <div class="container">
         <!-- Status Bar -->
         <div class="status-bar">
@@ -470,12 +35,12 @@
             </div>
             <div class="status-info">
                 <span><i class="fa-solid fa-clock"></i> Uptime: <strong id="uptime">--</strong></span>
-                <span><i class="fa-solid fa-thermometer-half"></i> <strong id="temp">--</strong></span>
-                <span><i class="fa-solid fa-rotate"></i> Auto-refresh: 2s</span>
+                <span><i class="fa-solid fa-temperature-half"></i> <strong id="temp">--</strong></span>
+                <span><i class="fa-solid fa-rotate"></i> Realtime: 2s</span>
             </div>
         </div>
 
-        <!-- Resource Cards with Donut Charts -->
+        <!-- Row 1: Core Resource Donut Cards -->
         <div class="cards-grid">
             <!-- CPU Card -->
             <div class="metric-card" id="card-cpu">
@@ -487,8 +52,7 @@
                         <div class="donut-unit">%</div>
                     </div>
                 </div>
-                <div class="card-subtext">Load: <span id="cpu-load">0.00</span> | <span id="cpu-cores">0</span> cores
-                </div>
+                <div class="card-subtext">Load: <span id="cpu-load">0.00</span> | <span id="cpu-cores">0</span> cores</div>
                 <span class="status-badge good" id="cpu-status">Normal</span>
             </div>
 
@@ -526,7 +90,7 @@
                 <div class="donut-container">
                     <canvas id="donut-network"></canvas>
                     <div class="donut-center">
-                        <div class="donut-value" id="net-speed" style="font-size:1.5rem">0</div>
+                        <div class="donut-value" id="net-speed">0</div>
                         <div class="donut-unit" id="net-unit">KB/s</div>
                     </div>
                 </div>
@@ -537,13 +101,13 @@
             <!-- Energy Card -->
             <div class="metric-card" id="card-energy">
                 <div class="card-title"><i class="fa-solid fa-bolt"></i> Energy</div>
-                <div
-                    style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%">
-                    <div style="font-size:1.8rem; font-weight:bold" id="energy-kwh">0.0000</div>
-                    <div style="font-size:0.8rem; color:#8b949e">kWh used</div>
-                    <div style="font-size:0.9rem; color:#d29922; margin-top:0.5rem">
-                        Est. <span id="energy-cost">Rp 0</span>
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:92px;">
+                    <div style="font-size:1.6rem; font-weight:700; color:#f0f6fc;" id="energy-kwh">0.0000</div>
+                    <div style="font-size:0.75rem; color:#94a3b8;">kWh consumed</div>
+                    <div style="font-size:0.85rem; color:#d29922; margin-top:0.4rem; font-weight:600;">
+                        Est. <span id="energy-cost">--</span>
                     </div>
+                    <div style="font-size:0.75rem; color:#38bdf8; margin-top:0.35rem; font-weight:600;" id="energy-watts">-- W</div>
                 </div>
             </div>
 
@@ -569,452 +133,137 @@
                 </div>
             </div>
 
-            <!-- Home Status Card -->
+            <!-- Home MQTT Status Card (Optional) -->
             <div class="metric-card" id="card-home" style="display:none">
                 <div class="card-title"><i class="fa-solid fa-house"></i> Home</div>
-                <div class="donut-container" style="width:100px; height:100px; margin-bottom:0.5rem">
+                <div class="donut-container" style="width:92px; height:92px; margin-bottom:0.5rem">
                     <div class="donut-center">
-                        <i class="fa-solid fa-temperature-half" style="font-size:2.5rem; color:#58a6ff"></i>
+                        <i class="fa-solid fa-temperature-half" style="font-size:2.2rem; color:#58a6ff"></i>
                     </div>
                 </div>
-                <div class="card-subtext" id="home-stats-list" style="display:flex; flex-direction:column; gap:0.3rem">
-                    <span>Loading...</span>
+                <div class="card-subtext" id="home-stats-list" style="display:flex; flex-direction:column; gap:0.3rem; width:100%;">
+                    <span>Memuat...</span>
                 </div>
+            </div>
+        </div>
+
+        <!-- Row 2: Realtime Time-Series Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="fa-solid fa-chart-area"></i> CPU & Memory History</span>
+                    <div class="chart-legend">
+                        <span><span class="dot" style="background:#58a6ff"></span> CPU</span>
+                        <span><span class="dot" style="background:#3fb950"></span> RAM</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-cpu-ram"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title"><i class="fa-solid fa-signal"></i> Network I/O Throughput</span>
+                    <div class="chart-legend">
+                        <span><span class="dot" style="background:#f85149"></span> Upload</span>
+                        <span><span class="dot" style="background:#a371f7"></span> Download</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-network"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 3: Bare-Metal Fleet & Infrastructure Telemetry Strip -->
+        <div class="fleet-grid">
+            <!-- Drive S.M.A.R.T. Health -->
+            <div class="fleet-card" id="card-telemetry-smart">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-hard-drive"></i> Drive Health (S.M.A.R.T.)</span>
+                    <span class="status-badge good" id="telemetry-smart-badge">PASSED</span>
+                </div>
+                <div class="fleet-value" id="telemetry-smart-status">All Drives Healthy</div>
+                <div class="fleet-subtext" id="telemetry-smart-sub">NVMe/SATA • Max: <span id="telemetry-smart-temp">--</span>°C</div>
+            </div>
+
+            <!-- Host Firewall & Web Shield -->
+            <div class="fleet-card" id="card-telemetry-firewall">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-shield-halved"></i> Host Firewall & Shield</span>
+                    <span class="status-badge good" id="telemetry-firewall-badge">ACTIVE</span>
+                </div>
+                <div class="fleet-value" id="telemetry-firewall-status">Firewall Active</div>
+                <div class="fleet-subtext" id="telemetry-firewall-sub"><span id="telemetry-firewall-rules">--</span> Rules Active • SSH Guard</div>
+            </div>
+
+            <!-- Systemd Core Daemons -->
+            <div class="fleet-card" id="card-telemetry-services">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-server"></i> System Services</span>
+                    <span class="status-badge good" id="telemetry-services-badge">HEALTHY</span>
+                </div>
+                <div class="fleet-value" id="telemetry-services-status">Running Normal</div>
+                <div class="fleet-subtext" id="telemetry-services-sub">State: running • Failed: <span id="telemetry-services-failed">0</span></div>
+            </div>
+
+            <!-- OS & Kernel Security Patches -->
+            <div class="fleet-card" id="card-telemetry-packages">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-screwdriver-wrench"></i> OS & Security Patches</span>
+                    <span class="status-badge good" id="telemetry-packages-badge">UP TO DATE</span>
+                </div>
+                <div class="fleet-value" id="telemetry-packages-status">0 Pending</div>
+                <div class="fleet-subtext" id="telemetry-packages-sub">Kernel: <span id="telemetry-packages-kernel">--</span></div>
+            </div>
+
+            <!-- Disaster Recovery & Offsite Backup -->
+            <div class="fleet-card" id="card-telemetry-backup">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-floppy-disk"></i> Disaster Recovery</span>
+                    <span class="status-badge good" id="telemetry-backup-badge">READY</span>
+                </div>
+                <div class="fleet-value" id="telemetry-backup-status">Local Ready</div>
+                <div class="fleet-subtext" id="telemetry-backup-sub">Latest: <span id="telemetry-backup-latest">--</span></div>
+            </div>
+
+            <!-- WAN Connectivity & Gateway Latency -->
+            <div class="fleet-card" id="card-telemetry-conn">
+                <div class="fleet-header">
+                    <span class="fleet-title"><i class="fa-solid fa-globe"></i> WAN Connectivity</span>
+                    <span class="status-badge good" id="telemetry-conn-badge">ONLINE</span>
+                </div>
+                <div class="fleet-value" id="telemetry-conn-status">Connected</div>
+                <div class="fleet-subtext" id="telemetry-conn-sub">Gateway Latency: <span id="telemetry-conn-ping">--</span>ms</div>
+            </div>
+        </div>
+
+        <!-- Modernized Footer -->
+        <div class="footer">
+            <div>Eka Dashboard &copy; 2026 &bull; Bare-Metal Control Center</div>
+            <div class="footer-pills">
+                <span class="footer-pill"><i class="fa-solid fa-shield-heart"></i> Enterprise Defense Active</span>
+                <span class="footer-pill"><i class="fa-solid fa-bolt"></i> Low-Power Optimization</span>
+                <span class="footer-pill"><i class="fa-solid fa-satellite-dish"></i> Realtime Telemetry Feed</span>
             </div>
         </div>
     </div>
 
-    <!-- Time-Series Charts -->
-    <div class="charts-grid">
-        <div class="chart-card">
-            <div class="chart-header">
-                <span class="chart-title"><i class="fa-solid fa-chart-area"></i> CPU & Memory History</span>
-                <div class="chart-legend">
-                    <span><span class="dot" style="background:#58a6ff"></span> CPU</span>
-                    <span><span class="dot" style="background:#3fb950"></span> RAM</span>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="chart-cpu-ram"></canvas>
-            </div>
-        </div>
-
-        <div class="chart-card">
-            <div class="chart-header">
-                <span class="chart-title"><i class="fa-solid fa-signal"></i> Network I/O History</span>
-                <div class="chart-legend">
-                    <span><span class="dot" style="background:#f85149"></span> Upload</span>
-                    <span><span class="dot" style="background:#a371f7"></span> Download</span>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="chart-network"></canvas>
-            </div>
-        </div>
-    </div>
-    </div>
-
-    <div class="footer">
-        Server Dashboard &copy; 2024 | Ekaharefa
-    </div>
-
-    <script>
-        // Color Constants
-        const COLORS = {
-            good: '#3fb950',
-            warning: '#d29922',
-            danger: '#f85149',
-            info: '#58a6ff',
-            muted: '#21262d'
-        };
-
-        // Data history
-        let cpuHistory = [];
-        let ramHistory = [];
-        let netUpHistory = [];
-        let netDownHistory = [];
-        const MAX_POINTS = 60;
-
-        let lastNetData = null;
-
-        // Charts
-        let donutCPU, donutRAM, donutDisk, donutNetwork, donutDocker;
-        let cpuRamChart, networkChart;
-
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            initDonutCharts();
-            initLineCharts();
-            loadMetrics();
-            setInterval(loadMetrics, 2000);
-        });
-
-        function initDonutCharts() {
-            const donutOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '75%',
-                plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                animation: { duration: 300 }
-            };
-
-            donutCPU = new Chart(document.getElementById('donut-cpu'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [0, 100],
-                        backgroundColor: [COLORS.good, COLORS.muted],
-                        borderWidth: 0
-                    }]
-                },
-                options: donutOptions
-            });
-
-            donutRAM = new Chart(document.getElementById('donut-ram'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [0, 100],
-                        backgroundColor: [COLORS.good, COLORS.muted],
-                        borderWidth: 0
-                    }]
-                },
-                options: donutOptions
-            });
-
-            donutDisk = new Chart(document.getElementById('donut-disk'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [0, 100],
-                        backgroundColor: [COLORS.good, COLORS.muted],
-                        borderWidth: 0
-                    }]
-                },
-                options: donutOptions
-            });
-
-            donutNetwork = new Chart(document.getElementById('donut-network'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [50, 50],
-                        backgroundColor: [COLORS.danger, COLORS.info],
-                        borderWidth: 0
-                    }]
-                },
-                options: donutOptions
-            });
-
-            donutDocker = new Chart(document.getElementById('donut-docker'), {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [0, 0],
-                        backgroundColor: [COLORS.good, COLORS.danger],
-                        borderWidth: 0
-                    }]
-                },
-                options: donutOptions
-            });
-        }
-
-        function initLineCharts() {
-            const lineOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 0 },
-                interaction: { intersect: false, mode: 'index' },
-                scales: {
-                    x: { display: false },
-                    y: {
-                        min: 0,
-                        max: 100,
-                        grid: { color: 'rgba(255,255,255,0.03)' },
-                        ticks: { color: '#8b949e', font: { size: 10 } }
-                    }
-                },
-                plugins: { legend: { display: false } },
-                elements: {
-                    point: { radius: 0 },
-                    line: { tension: 0.4, borderWidth: 2 }
-                }
-            };
-
-            cpuRamChart = new Chart(document.getElementById('chart-cpu-ram'), {
-                type: 'line',
-                data: {
-                    labels: Array(MAX_POINTS).fill(''),
-                    datasets: [
-                        { data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', fill: true },
-                        { data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.1)', fill: true }
-                    ]
-                },
-                options: lineOptions
-            });
-
-            networkChart = new Chart(document.getElementById('chart-network'), {
-                type: 'line',
-                data: {
-                    labels: Array(MAX_POINTS).fill(''),
-                    datasets: [
-                        { data: [], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', fill: true },
-                        { data: [], borderColor: '#a371f7', backgroundColor: 'rgba(163,113,247,0.1)', fill: true }
-                    ]
-                },
-                options: { ...lineOptions, scales: { ...lineOptions.scales, y: { ...lineOptions.scales.y, max: undefined } } }
-            });
-        }
-
-        function loadMetrics() {
-            fetch('/api/metrics')
-                .then(r => r.json())
-                .then(data => {
-                    updateDonutCharts(data);
-                    updateLineCharts(data);
-
-                    // Energy Update
-                    if (data.power) {
-                        const elKwh = document.getElementById('energy-kwh');
-                        const elCost = document.getElementById('energy-cost');
-                        if (elKwh) elKwh.textContent = data.power.kwh;
-                        if (elCost) {
-                            const kwh = parseFloat(data.power.kwh);
-                            const cost = kwh * 1352;
-                            let costStr = cost < 1 && cost > 0 ? "< 1" : Math.floor(cost).toLocaleString('id-ID');
-                            elCost.textContent = "Rp " + costStr;
-                        }
-                    }
-                })
-                .catch(err => console.error(err));
-        }
-
-        function updateDonutCharts(data) {
-            // CPU
-            const cpu = Math.round(data.cpu.percent);
-            document.getElementById('cpu-value').textContent = cpu;
-            document.getElementById('cpu-load').textContent = data.cpu.load_1.toFixed(2);
-            document.getElementById('cpu-cores').textContent = data.cpu.cores;
-            updateDonut(donutCPU, cpu, 'cpu-status');
-
-            // RAM
-            const ram = Math.round(data.memory.percent);
-            document.getElementById('ram-value').textContent = ram;
-            document.getElementById('ram-used').textContent = formatBytes(data.memory.used);
-            document.getElementById('ram-total').textContent = formatBytes(data.memory.total);
-            updateDonut(donutRAM, ram, 'ram-status');
-
-            // Disk
-            const disk = data.disk.partitions.find(p => p.mountpoint === '/') || data.disk.partitions[0];
-            if (disk) {
-                const diskPct = Math.round(disk.percent);
-                document.getElementById('disk-value').textContent = diskPct;
-                document.getElementById('disk-free').textContent = formatBytes(disk.free);
-                updateDonut(donutDisk, diskPct, 'disk-status');
-            }
-
-            // Network
-            let totalSent = 0, totalRecv = 0;
-            data.network.interfaces.forEach(i => {
-                totalSent += i.bytes_sent;
-                totalRecv += i.bytes_recv;
-            });
-
-            if (lastNetData) {
-                const elapsed = (data.timestamp - lastNetData.timestamp) / 1000;
-                if (elapsed > 0) {
-                    const upSpeed = (totalSent - lastNetData.sent) / elapsed;
-                    const downSpeed = (totalRecv - lastNetData.recv) / elapsed;
-
-                    const [val, unit] = formatSpeed(upSpeed + downSpeed);
-                    document.getElementById('net-speed').textContent = val;
-                    document.getElementById('net-unit').textContent = unit;
-                    document.getElementById('net-up').textContent = formatSpeedSimple(upSpeed);
-                    document.getElementById('net-down').textContent = formatSpeedSimple(downSpeed);
-
-                    // Update network donut (upload vs download ratio)
-                    const total = upSpeed + downSpeed;
-                    if (total > 0) {
-                        donutNetwork.data.datasets[0].data = [upSpeed, downSpeed];
-                        donutNetwork.update('none');
-                    }
-
-                    // Network status based on speed
-                    const totalKB = total / 1024;
-                    let netStatus = 'Idle';
-                    let netClass = 'good';
-                    if (totalKB > 1000) { netStatus = 'High'; netClass = 'warning'; }
-                    else if (totalKB > 100) { netStatus = 'Active'; netClass = 'good'; }
-                    updateStatus('net-status', netStatus, netClass);
-
-                    // History
-                    netUpHistory.push(upSpeed / 1024);
-                    netDownHistory.push(downSpeed / 1024);
-                    if (netUpHistory.length > MAX_POINTS) netUpHistory.shift();
-                    if (netDownHistory.length > MAX_POINTS) netDownHistory.shift();
-                }
-            }
-            lastNetData = { sent: totalSent, recv: totalRecv, timestamp: data.timestamp };
-
-            // Docker
-            const running = data.docker.running;
-            const stopped = data.docker.stopped;
-            const total = running + stopped;
-            document.getElementById('docker-total').textContent = total;
-            document.getElementById('docker-running').textContent = running;
-            document.getElementById('docker-stopped').textContent = stopped;
-            donutDocker.data.datasets[0].data = [running, stopped];
-            donutDocker.update('none');
-
-            // Status bar
-            document.getElementById('uptime').textContent = formatUptime(data.uptime);
-            document.getElementById('temp').textContent = data.cpu.temp > 0 ? data.cpu.temp.toFixed(0) + '°C' : '--';
-
-            // Line chart history
-            cpuHistory.push(data.cpu.percent);
-            ramHistory.push(data.memory.percent);
-            if (cpuHistory.length > MAX_POINTS) cpuHistory.shift();
-            if (ramHistory.length > MAX_POINTS) ramHistory.shift();
-        }
-
-        function updateDonut(chart, value, statusId) {
-            const color = value > 90 ? COLORS.danger : value > 70 ? COLORS.warning : COLORS.good;
-            chart.data.datasets[0].data = [value, 100 - value];
-            chart.data.datasets[0].backgroundColor = [color, COLORS.muted];
-            chart.update('none');
-
-            const status = value > 90 ? 'Critical' : value > 70 ? 'Warning' : 'Normal';
-            const statusClass = value > 90 ? 'danger' : value > 70 ? 'warning' : 'good';
-            updateStatus(statusId, status, statusClass);
-        }
-
-        function updateStatus(id, text, className) {
-            const el = document.getElementById(id);
-            el.textContent = text;
-            el.className = 'status-badge ' + className;
-        }
-
-        function updateLineCharts(data) {
-            cpuRamChart.data.datasets[0].data = [...cpuHistory];
-            cpuRamChart.data.datasets[1].data = [...ramHistory];
-            cpuRamChart.update('none');
-
-            networkChart.data.datasets[0].data = [...netUpHistory];
-            networkChart.data.datasets[1].data = [...netDownHistory];
-            networkChart.update('none');
-        }
-
-        // Utilities
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
-        function formatSpeed(bytes) {
-            if (bytes < 1024) return [bytes.toFixed(0), 'B/s'];
-            if (bytes < 1024 * 1024) return [(bytes / 1024).toFixed(1), 'KB/s'];
-            return [(bytes / 1024 / 1024).toFixed(1), 'MB/s'];
-        }
-
-        function formatSpeedSimple(bytes) {
-            if (bytes < 1024) return bytes.toFixed(0) + ' B/s';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB/s';
-            return (bytes / 1024 / 1024).toFixed(1) + ' MB/s';
-        }
-
-        function formatUptime(seconds) {
-            const d = Math.floor(seconds / 86400);
-            const h = Math.floor((seconds % 86400) / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = Math.floor(seconds % 60);
-            if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
-            if (h > 0) return `${h}h ${m}m ${s}s`;
-            return `${m}m ${s}s`;
-        }
-
-        // Home Automation Monitor
-        function initHomeMonitor() {
-            fetch('/api/monitoring/config')
-                .then(r => r.json())
-                .then(s => {
-                    if (s.mqtt && s.mqtt.enabled && s.mqtt.devices) {
-                        const devices = s.mqtt.devices;
-                        const card = document.getElementById('card-home');
-                        if (card) {
-                            card.style.display = 'flex';
-
-                            // Initial fetch
-                            fetchHomeStatus(devices);
-                            // Interval
-                            setInterval(() => fetchHomeStatus(devices), 3000);
-                        }
-                    }
-                });
-        }
-
-        function fetchHomeStatus(devices) {
-            fetch('/api/home/status').then(r => r.json()).then(data => {
-                const list = document.getElementById('home-stats-list');
-                list.innerHTML = devices.map(d => {
-                    const val = data[d.id] ? data[d.id].value : '--';
-                    if (d.type === 'sensor') return `<span style="display:flex; justify-content:space-between; width:100%"><span style="color:#8b949e">${d.name}</span> <strong style="color:#f0f6fc">${val} ${d.unit || ''}</strong></span>`;
-
-                    const isOn = val === (d.payload_on || 'ON');
-                    const color = isOn ? '#3fb950' : '#8b949e'; // Green if ON
-                    return `<span style="display:flex; justify-content:space-between; width:100%"><span style="color:#8b949e">${d.name}</span> <strong style="color:${color}">${val}</strong></span>`;
-                }).join('');
-            });
-        }
-
-        function showAdModal(feature) {
-            const m = document.getElementById('ad-modal');
-            const msg = document.getElementById('ad-message');
-            msg.textContent = "Anda tidak memiliki akses untuk menu: " + feature + ". Silakan hubungi Administrator.";
-            m.classList.add('active');
-        }
-
-        function closeAdModal() {
-            const m = document.getElementById('ad-modal');
-            m.classList.remove('active');
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initHomeMonitor();
-
-            // Auto-fill server name from backend device auto-detection
-            fetch('/api/monitoring/config')
-                .then(r => r.json())
-                .then(s => {
-                    const el = document.getElementById('server-name-text');
-                    if (el && s.server_name) el.textContent = s.server_name;
-                })
-                .catch(() => {});
-
-            // Handle Access Denied Redirects (e.g. from Terminal access attempt)
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('error') === 'access_denied') {
-                const feature = urlParams.get('feature') || 'Restricted Area';
-                setTimeout(() => {
-                    showAdModal(feature);
-                }, 100);
-            }
-        });
-    </script>
-    <!-- Access Denied Modal -->
+    <!-- Access Denied Modal (Zero Inline JS, Handled in monitoring.js) -->
     <div class="ad-overlay" id="ad-modal">
         <div class="ad-card">
             <div class="ad-icon"><i class="fa-solid fa-lock"></i></div>
             <div class="ad-title">Access Denied</div>
             <div class="ad-msg" id="ad-message">
-                Anda tidak memiliki izin untuk mengakses fitur ini.
+                Akses terbatas: Anda tidak memiliki otorisasi untuk mengakses fitur ini.
             </div>
             <button class="ad-btn" onclick="closeAdModal()">Mengerti</button>
         </div>
     </div>
+
+    <!-- External Modular JavaScript -->
+    <script src="/static/monitoring.js"></script>
 </body>
 
 </html>

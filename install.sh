@@ -1,216 +1,242 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Warna untuk output cantik
+# ==============================================================================
+# EKA DASHBOARD — UNIVERSAL LINUX INSTALLER (CROSS-DISTRO & NON-DESTRUCTIVE)
+# Mendukung: Debian/Ubuntu (apt), Fedora/RHEL/Rocky (dnf/yum),
+#            Arch/Garuda/Manjaro (pacman), openSUSE (zypper), Alpine (apk)
+#
+# Opsi Environment / Flag:
+#   DASHBOARD_PORT=80           Port host untuk Eka Dashboard (default: 80)
+#   INSTALL_DIR=/opt/eka_dashboard  Direktori target instalasi
+#   --port <PORT>               Set port host (misal: --port 8080)
+#   --dir <PATH>                Set direktori instalasi
+#   --reset-admin               Hapus data/security_config.json untuk ulang Setup Wizard
+#   --shift-casaos              Pindahkan port CasaOS dari 80 ke 9999 bila terdeteksi
+# ==============================================================================
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${BLUE}=================================================${NC}"
-echo -e "${BLUE}   EKA DASHBOARD - INSTALLER OTOMATIS            ${NC}"
-echo -e "${BLUE}=================================================${NC}"
-echo ""
-
-# Cek apakah dijalankan sebagai root (Sudo)
-if [ "$EUID" -ne 0 ]; then 
-  echo -e "${RED}[ERROR] Mohon jalankan script ini dengan sudo!${NC}"
-  echo "Usage: sudo bash install.sh"
-  exit 1
-fi
-
-# --- CONFIGURATION ---
-INSTALL_DIR="/root/eka_dashboard"
-CURRENT_DIR=$(pwd)
-
-# --- STEP 0: Cek Mode Update ---
-# Jika kita tidak berada di INSTALL_DIR, asumsikan ini adalah folder update hasil ekstraksi ZIP
-if [ "$CURRENT_DIR" != "$INSTALL_DIR" ]; then
-    echo -e "${BLUE}[INFO] Mendeteksi Mode Update/Instalasi Baru...${NC}"
-    echo -e "Sumber: $CURRENT_DIR"
-    echo -e "Tujuan: $INSTALL_DIR"
-    
-    # Konfirmasi (Auto-yes jika ada flag -y, tapi sementara manual dulu atau langsung gas)
-    echo -e "${YELLOW}Akan mengupdate file sistem di $INSTALL_DIR...${NC}"
-    
-    # 1. Buat folder tujuan jika belum ada
-    if [ ! -d "$INSTALL_DIR" ]; then
-        echo -e "Membuat folder instalasi baru..."
-        mkdir -p "$INSTALL_DIR"
-    fi
-    
-    # 2. Copy file (kecuali data/ config user)
-    echo -e "Menyalin file update..."
-    # Copy semua file dari current dir ke install dir
-    # Kita pakai rsync atau cp -r. Hati-hati jangan overwrite data jika ada di source (tapi source dari zip update biasanya bersih dari data)
-    
-    # Exclude data folder dari copy agar tidak menimpa data user (meskipun di zip kosong)
-    # Gunakan cp -rf untuk overwrite code
-    cp -rf "$CURRENT_DIR/"* "$INSTALL_DIR/" 2>/dev/null
-    
-    # 3. Pindah ke folder instalasi
-    echo -e "Pindah ke $INSTALL_DIR untuk melanjutkan instalasi..."
-    cd "$INSTALL_DIR"
-    
-    # Pastikan executables
-    chmod +x install.sh
-fi
-
-CASA_PORT_MOVED=0
-
-# --- STEP 1: Deteksi CasaOS & Geser Port ---
-if [ -f "/etc/casaos/gateway.ini" ]; then
-    echo -e "${YELLOW}[INFO] CasaOS Terdeteksi! Memeriksa konfigurasi port...${NC}"
-    
-    # Ambil port saat ini
-    CURRENT_PORT=$(grep -oP 'port\s*=\s*\K\d+' /etc/casaos/gateway.ini)
-    
-    if [ "$CURRENT_PORT" == "80" ]; then
-        echo -e "${YELLOW}[ACTION] CasaOS menggunakan Port 80. Menggeser ke Port 9999...${NC}"
-        
-        # Backup config
-        cp /etc/casaos/gateway.ini /etc/casaos/gateway.ini.bak
-        
-        # Ganti Port 80 jadi 9999 pakai sed
-        sed -i 's/port = 80/port = 9999/g' /etc/casaos/gateway.ini
-        # Kadang formatnya "port=80" tanpa spasi, handle juga
-        sed -i 's/port=80/port=9999/g' /etc/casaos/gateway.ini
-        
-        echo -e "${GREEN}[OK] Config CasaOS diperbarui.${NC}"
-        
-        # Restart CasaOS Gateway
-        echo -e "${YELLOW}[ACTION] Merestart service CasaOS...${NC}"
-        systemctl restart casaos-gateway
-        
-        CASA_PORT_MOVED=1
-        sleep 5
-    else
-        echo -e "${GREEN}[OK] CasaOS aman (Sudah berjalan di Port $CURRENT_PORT).${NC}"
-    fi
+DASHBOARD_PORT="${DASHBOARD_PORT:-80}"
+CURRENT_DIR="$(pwd)"
+if [ -f "$CURRENT_DIR/docker-compose.yml" ] && [ -f "$CURRENT_DIR/app.py" ]; then
+    INSTALL_DIR="${INSTALL_DIR:-$CURRENT_DIR}"
 else
-    echo -e "${BLUE}[INFO] CasaOS tidak terdeteksi. Melanjutkan instalasi normal.${NC}"
+    INSTALL_DIR="${INSTALL_DIR:-/opt/eka_dashboard}"
 fi
+RESET_ADMIN=0
+SHIFT_CASAOS=0
 
-# --- STEP 2: Cek & Bersihkan Port 80 ---
-echo -e "${YELLOW}[INFO] Memastikan Port 80 tersedia...${NC}"
-
-# Loop checking (Max 5 attempts)
-for i in {1..5}; do
-    if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
-        PID=$(lsof -Pi :80 -sTCP:LISTEN -t)
-        PROCESS_NAME=$(ps -p $PID -o comm=)
-        
-        # Skip check if it's our own docker-proxy (re-run scenario)
-        if [ "$PROCESS_NAME" == "docker-proxy" ]; then
-             echo -e "${BLUE}[INFO] Port 80 sedang digunakan oleh Docker (Mungkin instalasi sebelumnya). Akan direstart.${NC}"
-             break
-        fi
-
-        echo -e "${RED}[WARNING] Port 80 masih digunakan oleh: $PROCESS_NAME ($PID) (Percobaan $i/5)${NC}"
-        
-        if [ "$PROCESS_NAME" == "casaos-gateway" ]; then
-             echo -e "${YELLOW}[ACTION] Memaksa restart CasaOS lagi...${NC}"
-             systemctl restart casaos-gateway
-        elif [ "$PROCESS_NAME" == "apache2" ] || [ "$PROCESS_NAME" == "nginx" ] || [ "$PROCESS_NAME" == "httpd" ]; then
-             echo -e "${YELLOW}[ACTION] Menghentikan web server bawaan ($PROCESS_NAME)...${NC}"
-             systemctl stop $PROCESS_NAME
-             systemctl disable $PROCESS_NAME
-        else
-             echo -e "${RED}[ACTION] Mematikan paksa proses $PID...${NC}"
-             kill -9 $PID
-        fi
-        
-        sleep 3
-    else
-        echo -e "${GREEN}[OK] Port 80 Kosong & Siap digunakan.${NC}"
-        break
-    fi
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --port)
+            DASHBOARD_PORT="${2:-80}"
+            shift 2
+            ;;
+        --dir)
+            INSTALL_DIR="${2:-$INSTALL_DIR}"
+            shift 2
+            ;;
+        --reset-admin)
+            RESET_ADMIN=1
+            shift
+            ;;
+        --shift-casaos)
+            SHIFT_CASAOS=1
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: sudo bash install.sh [--port 8080] [--dir /opt/eka_dashboard] [--reset-admin] [--shift-casaos]"
+            exit 0
+            ;;
+        *)
+            echo -e "${YELLOW}[WARN] Opsi tidak dikenal diabaikan: $1${NC}"
+            shift
+            ;;
+    esac
 done
 
-# Final Check
-if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
-    PID=$(lsof -Pi :80 -sTCP:LISTEN -t)
-    PROCESS_NAME=$(ps -p $PID -o comm=)
-    if [ "$PROCESS_NAME" != "docker-proxy" ]; then
-        echo -e "${RED}[CRITICAL ERROR] Port 80 MASIH digunakan oleh $PROCESS_NAME. Instalasi tidak bisa lanjut.${NC}"
-        echo "Mohon matikan proses tersebut manual: kill -9 $PID"
-        exit 1
-    fi
+echo -e "${BLUE}=================================================${NC}"
+echo -e "${BLUE}   EKA DASHBOARD - UNIVERSAL LINUX INSTALLER     ${NC}"
+echo -e "${BLUE}=================================================${NC}"
+
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    echo -e "${RED}[ERROR] Jalankan skrip ini dengan hak root/sudo.${NC}"
+    echo "Usage: sudo bash install.sh [--port 8080]"
+    exit 1
 fi
 
-# --- STEP 3: Persiapan Docker & Deployment ---
-echo -e "${BLUE}[INFO] Memeriksa instalasi Docker...${NC}"
+# --- Deteksi Distro & Package Manager ---
+detect_pkg_manager() {
+    for pm in apt-get dnf yum pacman zypper apk; do
+        if command -v "$pm" >/dev/null 2>&1; then
+            echo "$pm"
+            return 0
+        fi
+    done
+    echo "unknown"
+}
 
-# Cek Docker, Install otomatis jika belum ada
-if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}[WARNING] Docker belum terinstall. Memulai instalasi otomatis Docker...${NC}"
-    curl -fsSL https://get.docker.com | sh
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}[CRITICAL ERROR] Gagal menginstall Docker secara otomatis. Silakan cek koneksi internet atau install manual.${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}[OK] Docker berhasil diinstall.${NC}"
-else
-    echo -e "${GREEN}[OK] Docker sudah terinstall.${NC}"
-fi
+install_pkg() {
+    local pm="$1"
+    shift
+    case "$pm" in
+        apt-get) DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" ;;
+        dnf)     dnf install -y "$@" ;;
+        yum)     yum install -y "$@" ;;
+        pacman)  pacman -Sy --noconfirm "$@" ;;
+        zypper)  zypper --non-interactive install "$@" ;;
+        apk)     apk add --no-cache "$@" ;;
+        *)       return 1 ;;
+    esac
+}
 
-# Determine Docker Compose command, Install jika belum ada
-if command -v docker-compose &> /dev/null; then
-    COMPOSE_CMD="docker-compose"
-elif docker compose version &> /dev/null; then
-    COMPOSE_CMD="docker compose"
-else
-    echo -e "${YELLOW}[WARNING] Docker Compose tidak ditemukan. Menginstall Docker Compose Plugin...${NC}"
-    apt-get update && apt-get install -y docker-compose-plugin
-    if docker compose version &> /dev/null; then
-        COMPOSE_CMD="docker compose"
-        echo -e "${GREEN}[OK] Docker Compose berhasil diinstall.${NC}"
+PKG_MGR="$(detect_pkg_manager)"
+echo -e "${BLUE}[INFO] Package manager terdeteksi: ${PKG_MGR}${NC}"
+echo -e "${BLUE}[INFO] Direktori instalasi       : ${INSTALL_DIR}${NC}"
+echo -e "${BLUE}[INFO] Port host target          : ${DASHBOARD_PORT}${NC}"
+
+# --- STEP 1: Sinkronisasi direktori instalasi tanpa menimpa ./data ---
+if [ "$CURRENT_DIR" != "$INSTALL_DIR" ]; then
+    mkdir -p "$INSTALL_DIR"
+    echo -e "${BLUE}[INFO] Menyalin berkas proyek ke ${INSTALL_DIR} (mempertahankan data/)...${NC}"
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --exclude 'data/' --exclude '.git/' "$CURRENT_DIR/" "$INSTALL_DIR/"
     else
-        echo -e "${RED}[ERROR] Gagal menginstall Docker Compose otomatis. Mohon install manual.${NC}"
+        (cd "$CURRENT_DIR" && tar --exclude='./data' --exclude='./.git' -cf - .) | (cd "$INSTALL_DIR" && tar -xf -)
+    fi
+    cd "$INSTALL_DIR"
+    chmod +x install.sh 2>/dev/null || true
+fi
+
+# --- STEP 2: Penanganan opsional CasaOS (hanya bila diminta) ---
+CASA_PORT_MOVED=0
+if [ "$SHIFT_CASAOS" -eq 1 ] && [ "$DASHBOARD_PORT" = "80" ] && [ -f "/etc/casaos/gateway.ini" ]; then
+    CURRENT_CASA_PORT=$(grep -oE 'port[[:space:]]*=[[:space:]]*[0-9]+' /etc/casaos/gateway.ini | grep -oE '[0-9]+' | head -n1 || true)
+    if [ "$CURRENT_CASA_PORT" = "80" ]; then
+        echo -e "${YELLOW}[ACTION] Memindahkan port CasaOS dari 80 ke 9999...${NC}"
+        cp /etc/casaos/gateway.ini /etc/casaos/gateway.ini.bak
+        sed -i -E 's/port[[:space:]]*=[[:space:]]*80/port = 9999/g' /etc/casaos/gateway.ini
+        systemctl restart casaos-gateway 2>/dev/null || true
+        CASA_PORT_MOVED=1
+        sleep 3
+    fi
+fi
+
+# --- STEP 3: Pemeriksaan Port Host Secara Aman (Non-Destructive) ---
+port_in_use() {
+    local p="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -tlnH "sport = :$p" 2>/dev/null | grep -q .
+    elif command -v lsof >/dev/null 2>&1; then
+        lsof -Pi ":$p" -sTCP:LISTEN -t >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+is_own_dashboard_port() {
+    docker ps --filter "name=^/eka_dashboard$" --format '{{.Ports}}' 2>/dev/null | grep -q ":${DASHBOARD_PORT}->"
+}
+
+if port_in_use "$DASHBOARD_PORT" && ! is_own_dashboard_port; then
+    echo -e "${YELLOW}[WARNING] Port ${DASHBOARD_PORT} sedang digunakan oleh layanan lain di host!${NC}"
+    echo -e "${YELLOW}[INFO] Installer tidak akan mematikan web server host (Nginx/Apache/dll.) secara sepihak.${NC}"
+    if [ -t 0 ]; then
+        read -r -p "Masukkan port alternatif untuk Eka Dashboard (misal 8080, kosong untuk batal): " ALT_PORT
+        if [ -n "$ALT_PORT" ] && [[ "$ALT_PORT" =~ ^[0-9]+$ ]]; then
+            DASHBOARD_PORT="$ALT_PORT"
+            echo -e "${GREEN}[OK] Menggunakan port alternatif: ${DASHBOARD_PORT}${NC}"
+        else
+            echo -e "${RED}[ABORT] Instalasi dibatalkan. Jalankan ulang dengan: sudo bash install.sh --port 8080${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}[ERROR] Jalankan ulang dengan port bebas: sudo bash install.sh --port 8080${NC}"
         exit 1
     fi
 fi
 
-echo -e "${BLUE}[INFO] Membangun dan Menjalankan Dashboard...${NC}"
-
-# Hapus paksa container lama jika ada konflik nama yang tidak terdeteksi docker-compose down
-docker rm -f eka_dashboard 2>/dev/null || true
-
-$COMPOSE_CMD down 2>/dev/null
-
-# Hapus security_config.json lama (dimiliki root) agar setup wizard muncul pada fresh install
-# File lain di data/ (catalog, dll) dibiarkan agar tidak perlu download ulang
-if [ -f "./data/security_config.json" ]; then
-    echo -e "${YELLOW}[INFO] Menghapus konfigurasi lama agar Setup Wizard aktif...${NC}"
-    rm -f ./data/security_config.json 2>/dev/null || true
+# --- STEP 4: Deteksi & Instalasi Docker + Docker Compose (Lintas Distro) ---
+if ! command -v docker >/dev/null 2>&1; then
+    echo -e "${YELLOW}[INFO] Docker belum terpasang. Memasang Docker...${NC}"
+    if [ "$PKG_MGR" = "pacman" ]; then
+        install_pkg pacman docker docker-compose
+        systemctl enable --now docker 2>/dev/null || true
+    elif [ "$PKG_MGR" = "apk" ]; then
+        install_pkg apk docker docker-cli-compose
+        rc-update add docker default 2>/dev/null || true
+        service docker start 2>/dev/null || true
+    else
+        curl -fsSL https://get.docker.com | sh
+        systemctl enable --now docker 2>/dev/null || true
+    fi
 fi
 
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+else
+    echo -e "${YELLOW}[INFO] Memasang plugin Docker Compose via ${PKG_MGR}...${NC}"
+    case "$PKG_MGR" in
+        apt-get|dnf|yum) install_pkg "$PKG_MGR" docker-compose-plugin || install_pkg "$PKG_MGR" docker-compose ;;
+        pacman)          install_pkg pacman docker-compose ;;
+        zypper)          install_pkg zypper docker-compose ;;
+        apk)             install_pkg apk docker-cli-compose ;;
+        *)
+            echo -e "${RED}[ERROR] Docker Compose tidak ditemukan dan package manager tidak dikenali.${NC}"
+            exit 1
+            ;;
+    esac
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE_CMD="docker-compose"
+    else
+        echo -e "${RED}[ERROR] Gagal memasang Docker Compose.${NC}"
+        exit 1
+    fi
+fi
+
+# --- STEP 5: Konfigurasi Port Dinamis & Deploy Container ---
+mkdir -p ./data
+
+if [ "$DASHBOARD_PORT" != "80" ]; then
+    cat > docker-compose.override.yml <<EOF
+services:
+  dashboard:
+    ports: !override
+      - "${DASHBOARD_PORT}:5000"
+EOF
+    echo -e "${BLUE}[INFO] Port override ditulis ke docker-compose.override.yml (${DASHBOARD_PORT}:5000).${NC}"
+else
+    rm -f docker-compose.override.yml 2>/dev/null || true
+fi
+
+if [ "$RESET_ADMIN" -eq 1 ] && [ -f "./data/security_config.json" ]; then
+    echo -e "${YELLOW}[INFO] Flag --reset-admin aktif: menghapus security_config.json untuk Setup Wizard ulang...${NC}"
+    rm -f ./data/security_config.json
+fi
+
+echo -e "${BLUE}[INFO] Membangun dan menjalankan Eka Dashboard...${NC}"
+$COMPOSE_CMD down 2>/dev/null || true
 $COMPOSE_CMD up --build -d
 
-if [ $? -eq 0 ]; then
-    echo ""
-    echo -e "${GREEN}=================================================${NC}"
-    echo -e "${GREEN}      INSTALASI SUKSES!             ${NC}"
-    echo -e "${GREEN}=================================================${NC}"
-    echo ""
-    
-    # Ambil IP (Coba ambil IP non-lokal pertama)
-    IP_ADDR=$(hostname -I | awk '{print $1}')
-    
-    echo -e "Silakan akses Dashboard Admin di:"
-    echo -e "${BLUE}   http://$IP_ADDR  (Port 80) ${NC}"
-    echo ""
-    
-    if [ "$CASA_PORT_MOVED" -eq 1 ]; then
-        echo -e "${YELLOW}PERHATIAN PENTING:${NC}"
-        echo -e "Web Interface CasaOS telah dipindahkan ke:"
-        echo -e "${YELLOW}   http://$IP_ADDR:9999 ${NC}"
-        echo -e "(Bookmark link ini agar tidak lupa!)"
-    fi
-    
-    echo ""
-    echo -e "Terima kasih telah menggunakan produk ini."
+IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1 || echo "127.0.0.1")
+echo ""
+echo -e "${GREEN}=================================================${NC}"
+echo -e "${GREEN}   EKA DASHBOARD BERHASIL DIPASANG & BERJALAN    ${NC}"
+echo -e "${GREEN}=================================================${NC}"
+if [ "$DASHBOARD_PORT" = "80" ]; then
+    echo -e "URL Akses: ${BLUE}http://${IP_ADDR}/${NC}"
 else
-    echo -e "${RED}[ERROR] Gagal menjalankan Docker Container.${NC}"
-    exit 1
+    echo -e "URL Akses: ${BLUE}http://${IP_ADDR}:${DASHBOARD_PORT}/${NC}"
+fi
+if [ "$CASA_PORT_MOVED" -eq 1 ]; then
+    echo -e "${YELLOW}CasaOS dipindahkan ke: http://${IP_ADDR}:9999${NC}"
 fi

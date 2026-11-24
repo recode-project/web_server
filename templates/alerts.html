@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerting & Notification Engine — Eka Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=14">
+    <style>
+        html {
+            background: #0f0c29 !important;
+        }
+        body {
+            font-family: 'Inter', sans-serif !important;
+            color: var(--text-main) !important;
+            background: transparent !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            position: relative !important;
+            user-select: auto !important;
+        }
+        .wallpaper {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: 0 !important;
+            filter: brightness(0.55);
+            pointer-events: none !important;
+        }
+        .main-content {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+
+        /* Glassmorphism Buttons */
+        .btn {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            color: #fff !important;
+            padding: 8px 16px !important;
+            border-radius: 12px !important;
+            cursor: pointer !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            transition: all 0.2s ease !important;
+            text-decoration: none !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            outline: none !important;
+            font-family: inherit !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        }
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.18) !important;
+            transform: translateY(-2px) !important;
+            border-color: rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) !important;
+        }
+        .btn:active {
+            transform: translateY(0) !important;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            color: #e2e8f0 !important;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.18) !important;
+            color: #fff !important;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #fa709a, #fee140) !important;
+            color: #000 !important;
+            font-weight: 700 !important;
+            border: none !important;
+            box-shadow: 0 4px 16px rgba(250, 112, 154, 0.35) !important;
+        }
+        .btn-primary:hover {
+            opacity: 0.94 !important;
+            box-shadow: 0 6px 20px rgba(250, 112, 154, 0.5) !important;
+        }
+        .top-bar-scheduler {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .top-bar-scheduler .left-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .top-bar-scheduler .btn-home {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .top-bar-scheduler .btn-home:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+        .top-bar-scheduler .title-group .main-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .top-bar-scheduler .title-group .sub-title {
+            font-size: 13px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 2px;
+        }
+        .top-bar-scheduler .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stats-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card-glass {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s ease;
+        }
+        .stat-card-glass:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+        .stat-info .stat-label {
+            font-size: 13px;
+            color: var(--text-muted, #94a3b8);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stat-info .stat-val {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .stat-info .stat-sub {
+            font-size: 12px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 4px;
+        }
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .tabs-header {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
+        }
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-muted, #94a3b8);
+            padding: 10px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        .tab-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(250, 112, 154, 0.25), rgba(254, 225, 64, 0.25));
+            border-color: #fa709a;
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(250, 112, 154, 0.2);
+        }
+
+        .tab-pane {
+            display: none;
+        }
+        .tab-pane.active {
+            display: block;
+        }
+
+        .card-container {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Channel Selector */
+        .channel-selector-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .channel-option {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+        .channel-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .channel-option.selected {
+            background: rgba(250, 112, 154, 0.15);
+            border-color: #fa709a;
+            box-shadow: 0 4px 16px rgba(250, 112, 154, 0.25);
+        }
+        .channel-option i {
+            font-size: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus {
+            border-color: #fa709a;
+        }
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+        .input-group .form-control {
+            flex: 1;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: .3s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #38ef7d;
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .rule-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .rule-row:last-child {
+            border-bottom: none;
+        }
+        .rule-info .rule-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .rule-info .rule-desc {
+            font-size: 12px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 2px;
+        }
+        .rule-control {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted, #94a3b8);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: #e2e8f0;
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-telegram {
+            background: rgba(36, 161, 222, 0.15);
+            color: #24A1DE;
+            border: 1px solid rgba(36, 161, 222, 0.3);
+        }
+        .badge-whatsapp {
+            background: rgba(37, 211, 102, 0.15);
+            color: #25D366;
+            border: 1px solid rgba(37, 211, 102, 0.3);
+        }
+        .badge-webhook {
+            background: rgba(168, 85, 247, 0.15);
+            color: #a855f7;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        .badge-both {
+            background: rgba(250, 112, 154, 0.15);
+            color: #fa709a;
+            border: 1px solid rgba(250, 112, 154, 0.3);
+        }
+        .badge-success {
+            background: rgba(56, 239, 125, 0.15);
+            color: #38ef7d;
+            border: 1px solid rgba(56, 239, 125, 0.3);
+        }
+        .badge-failed {
+            background: rgba(255, 87, 87, 0.15);
+            color: #ff5757;
+            border: 1px solid rgba(255, 87, 87, 0.3);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            align-items: center; justify-content: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            width: 90%; max-width: 560px;
+            padding: 24px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px;
+        }
+        .modal-header h3 { margin: 0; font-size: 18px; font-weight: 700; color: #fff; }
+        .modal-close {
+            background: none; border: none; color: var(--text-muted, #94a3b8);
+            font-size: 20px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="wallpaper"></div>
+
+    <div class="main-content" style="max-width: 1400px; margin: 0 auto; padding: 24px 24px 100px 24px;">
+        <!-- Top Bar -->
+        <div class="top-bar-scheduler">
+            <div class="left-group">
+                <a href="/dashboard" class="btn-home" title="Kembali ke Dashboard">
+                    <i class="fa-solid fa-home"></i>
+                </a>
+                <div class="title-group">
+                    <div class="main-title">
+                        <i class="fa-solid fa-bell" style="color: #fa709a;"></i>
+                        <span>Alerting & Notification Engine</span>
+                    </div>
+                    <div class="sub-title">Pusat Pengiriman Notifikasi & Peringatan Insiden Server (Universal Multi-Channel)</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="btn-check-system" class="btn btn-secondary">
+                    <i class="fa-solid fa-heart-pulse"></i> Cek Ambang Batas
+                </button>
+                <button id="btn-quick-test" class="btn btn-secondary">
+                    <i class="fa-solid fa-paper-plane"></i> Test Notifikasi
+                </button>
+                <button id="btn-save-config" class="btn btn-primary" style="background: linear-gradient(135deg, #fa709a, #fee140); color: #000; font-weight: 700;">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan
+                </button>
+            </div>
+        </div>
+
+        <!-- 4 Stat Cards -->
+        <div class="stats-grid-4">
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Kanal Notifikasi Aktif</div>
+                    <div class="stat-val" id="stat-active-channel">-</div>
+                    <div class="stat-sub" id="stat-channel-sub">Memuat konfigurasi...</div>
+                </div>
+                <div class="stat-icon" id="stat-channel-icon" style="background: rgba(250, 112, 154, 0.15); color: #fa709a;">
+                    <i class="fa-solid fa-tower-broadcast"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Total Alert Terkirim</div>
+                    <div class="stat-val" id="stat-total-alerts">0</div>
+                    <div class="stat-sub" id="stat-alerts-breakdown">0 Sukses, 0 Gagal</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(79, 172, 254, 0.15); color: #4facfe;">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Tingkat Keberhasilan</div>
+                    <div class="stat-val" id="stat-success-rate">100%</div>
+                    <div class="stat-sub">Rasio pengiriman valid</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(56, 239, 125, 0.15); color: #38ef7d;">
+                    <i class="fa-solid fa-chart-pie"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Peringatan Terakhir</div>
+                    <div class="stat-val" id="stat-last-time" style="font-size: 16px;">Belum ada</div>
+                    <div class="stat-sub" id="stat-last-channel">-</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(245, 175, 25, 0.15); color: #f5af19;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs-header">
+            <button class="tab-btn active" data-tab="tab-channels">
+                <i class="fa-solid fa-sliders"></i> Kanal Notifikasi (Telegram / WA)
+            </button>
+            <button class="tab-btn" data-tab="tab-rules">
+                <i class="fa-solid fa-shield-virus"></i> Aturan Ambang Batas Insiden
+            </button>
+            <button class="tab-btn" data-tab="tab-history">
+                <i class="fa-solid fa-list-check"></i> Riwayat Pengiriman Alert (<span id="badge-history-count">0</span>)
+            </button>
+        </div>
+
+        <!-- Tab 1: Channels Configuration -->
+        <div id="tab-channels" class="tab-pane active">
+            <div class="card-container">
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #fff;">
+                    Pilih Kanal Pengiriman Utama (*Universal Mode Selector*)
+                </h3>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+                    Tentukan saluran komunikasi default untuk menerima notifikasi sistem otomatis dan peringatan darurat.
+                </p>
+
+                <div class="channel-selector-grid">
+                    <div class="channel-option selected" data-channel="telegram">
+                        <i class="fa-brands fa-telegram" style="color: #24A1DE;"></i>
+                        <div>
+                            <div style="font-weight: 600; color: #fff;">Telegram Bot</div>
+                            <div style="font-size: 12px; color: var(--text-muted);">Notifikasi via Bot API</div>
+                        </div>
+                    </div>
+
+                    <div class="channel-option" data-channel="whatsapp">
+                        <i class="fa-brands fa-whatsapp" style="color: #25D366;"></i>
+                        <div>
+                            <div style="font-weight: 600; color: #fff;">WhatsApp Gateway</div>
+                            <div style="font-size: 12px; color: var(--text-muted);">Notifikasi via WA Bridge API</div>
+                        </div>
+                    </div>
+
+                    <div class="channel-option" data-channel="both">
+                        <i class="fa-solid fa-arrows-split-up-and-left" style="color: #fa709a;"></i>
+                        <div>
+                            <div style="font-weight: 600; color: #fff;">Keduanya (Telegram & WA)</div>
+                            <div style="font-size: 12px; color: var(--text-muted);">Kirim ganda secara paralel</div>
+                        </div>
+                    </div>
+
+                    <div class="channel-option" data-channel="webhook">
+                        <i class="fa-solid fa-globe" style="color: #a855f7;"></i>
+                        <div>
+                            <div style="font-weight: 600; color: #fff;">Generic Webhook</div>
+                            <div style="font-size: 12px; color: var(--text-muted);">Discord / Slack / Custom HTTP</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Telegram Config Card -->
+                <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(36, 161, 222, 0.2); border-radius: 14px; padding: 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fa-brands fa-telegram" style="font-size: 20px; color: #24A1DE;"></i>
+                            <span style="font-size: 15px; font-weight: 700; color: #fff;">Konfigurasi Telegram Bot</span>
+                        </div>
+                        <button id="btn-test-telegram" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                            <i class="fa-solid fa-paper-plane"></i> Test Kirim Telegram
+                        </button>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Telegram Bot Token</label>
+                        <div class="input-group">
+                            <input type="password" id="input-tg-token" class="form-control" placeholder="Contoh: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+                            <button id="btn-toggle-token" class="btn btn-secondary" style="padding: 0 16px;" title="Tampilkan/Sembunyikan Token">
+                                <i class="fa-solid fa-eye" id="icon-eye-token"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Telegram Chat ID (Tujuan Notifikasi)</label>
+                        <input type="text" id="input-tg-chatid" class="form-control" placeholder="Contoh: 123456789">
+                    </div>
+                </div>
+
+                <!-- WhatsApp Config Card -->
+                <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(37, 211, 102, 0.2); border-radius: 14px; padding: 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fa-brands fa-whatsapp" style="font-size: 20px; color: #25D366;"></i>
+                            <span style="font-size: 15px; font-weight: 700; color: #fff;">Konfigurasi WhatsApp Gateway</span>
+                            <span id="badge-wa-status" class="badge" style="background: rgba(255, 255, 255, 0.08); color: #94a3b8; font-size: 11px;">
+                                <i class="fa-solid fa-spinner fa-spin"></i> Memeriksa Gateway...
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btn-check-wa" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" title="Cek status koneksi bridge WhatsApp">
+                                <i class="fa-solid fa-signal"></i> Cek Gateway
+                            </button>
+                            <button id="btn-test-whatsapp" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                                <i class="fa-solid fa-paper-plane"></i> Test Kirim WhatsApp
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">API Gateway URL</label>
+                        <input type="text" id="input-wa-url" class="form-control" placeholder="http://127.0.0.1:3000/send" value="http://127.0.0.1:3000/send">
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                            Endpoint API pengirim WhatsApp (Bridge port 3000 atau gateway HTTP pihak ketiga). Jika server belum memiliki bridge lokal, disarankan menggunakan <b>Telegram Bot</b> atau Webhook.
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Nomor WhatsApp Tujuan</label>
+                        <input type="text" id="input-wa-phone" class="form-control" placeholder="Contoh: 6281234567890">
+                    </div>
+                </div>
+
+                <!-- Webhook Config Card -->
+                <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 14px; padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fa-solid fa-globe" style="font-size: 20px; color: #a855f7;"></i>
+                            <span style="font-size: 15px; font-weight: 700; color: #fff;">Generic Webhook URL</span>
+                        </div>
+                        <button id="btn-test-webhook" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                            <i class="fa-solid fa-paper-plane"></i> Test Kirim Webhook
+                        </button>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Endpoint URL (Discord / Slack / HTTP POST)</label>
+                        <input type="text" id="input-webhook-url" class="form-control" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Alert Rules & Thresholds -->
+        <div id="tab-rules" class="tab-pane">
+            <div class="card-container">
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #fff;">
+                    Aturan Pemicu Insiden Otomatis
+                </h3>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+                    Notifikasi akan otomatis dikirimkan ke kanal aktif ketika ambang batas metrik berikut terlewati.
+                </p>
+
+                <div class="rule-row">
+                    <div class="rule-info">
+                        <div class="rule-title">Ambang Batas Beban CPU (CPU Usage)</div>
+                        <div class="rule-desc">Memicu alert saat konsumsi prosesor host melampaui persentase yang ditentukan.</div>
+                    </div>
+                    <div class="rule-control">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="rule-cpu-threshold" class="form-control" style="width: 80px; padding: 6px 10px;" min="50" max="100" value="90">
+                            <span style="color: var(--text-muted); font-size: 13px;">%</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rule-cpu-enabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="rule-row">
+                    <div class="rule-info">
+                        <div class="rule-title">Ambang Batas Penggunaan Memori (RAM Usage)</div>
+                        <div class="rule-desc">Memicu alert saat kapasitas RAM host terserap melebihi batas toleransi.</div>
+                    </div>
+                    <div class="rule-control">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="rule-ram-threshold" class="form-control" style="width: 80px; padding: 6px 10px;" min="50" max="100" value="85">
+                            <span style="color: var(--text-muted); font-size: 13px;">%</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rule-ram-enabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="rule-row">
+                    <div class="rule-info">
+                        <div class="rule-title">Ambang Batas Partisi Root Storage (Disk Usage)</div>
+                        <div class="rule-desc">Memicu peringatan jika ruang penyimpanan utama host hampir habis.</div>
+                    </div>
+                    <div class="rule-control">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="rule-disk-threshold" class="form-control" style="width: 80px; padding: 6px 10px;" min="50" max="100" value="90">
+                            <span style="color: var(--text-muted); font-size: 13px;">%</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rule-disk-enabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="rule-row">
+                    <div class="rule-info">
+                        <div class="rule-title">Deteksi Anomali S.M.A.R.T. Drive Fisik</div>
+                        <div class="rule-desc">Memicu alert darurat jika ada drive yang mengalami pending sectors, bad sector, atau penurunan wear level kritis.</div>
+                    </div>
+                    <div class="rule-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rule-smart-enabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="rule-row">
+                    <div class="rule-info">
+                        <div class="rule-title">Pemberitahuan Reboot Kernel / OS Diperlukan</div>
+                        <div class="rule-desc">Mengirimkan notifikasi jika pembaruan APT mendeteksi kebutuhan restart sistem (`/var/run/reboot-required`).</div>
+                    </div>
+                    <div class="rule-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rule-reboot-enabled" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Alert History -->
+        <div id="tab-history" class="tab-pane">
+            <div class="card-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Log Riwayat Pengiriman Notifikasi</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Menyimpan hingga 100 log pengiriman alert terakhir.</p>
+                    </div>
+                    <button id="btn-clear-history" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;">
+                        <i class="fa-solid fa-trash"></i> Bersihkan Log
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Waktu Eksekusi</th>
+                                <th>Saluran Kanal</th>
+                                <th>Status Pengiriman</th>
+                                <th>Cuplikan Pesan</th>
+                                <th>Detail Hasil</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr>
+                                <td colspan="5">
+                                    <div class="empty-state">
+                                        <i class="fa-solid fa-spinner fa-spin"></i>
+                                        <p>Memuat riwayat pengiriman notifikasi...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Alert Modal -->
+    <div id="test-alert-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Uji Kirim Pesan Notifikasi (*Test Alert*)</h3>
+                <button class="modal-close" id="modal-test-close">&times;</button>
+            </div>
+            <div class="modal-body" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="form-label">Pilih Kanal Target Pengujian</label>
+                    <select id="modal-test-channel" class="form-control">
+                        <option value="telegram">Telegram Bot</option>
+                        <option value="whatsapp">WhatsApp Gateway</option>
+                        <option value="both">Keduanya (Telegram & WA)</option>
+                        <option value="webhook">Generic Webhook</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Pesan Pengujian</label>
+                    <textarea id="modal-test-message" class="form-control" rows="4" style="resize: vertical;">🔔 [TEST ALERT] Pengujian notifikasi dari Eka Dashboard server lokal.</textarea>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="modal-test-cancel" class="btn btn-secondary">Batal</button>
+                <button id="modal-test-send" class="btn btn-primary" style="background: linear-gradient(135deg, #fa709a, #fee140); color: #000; font-weight: 700;">
+                    <i class="fa-solid fa-paper-plane"></i> Kirim Sekarang
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- External JavaScript: 100% Zero Inline JS -->
+    <script src="{{ url_for('static', filename='alerts.js') }}?v=1"></script>
+</body>
+</html>
+

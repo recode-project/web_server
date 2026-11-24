@@ -4,83 +4,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hyper Metrics - Server Dashboard</title>
+    <title>Metrics — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <style>
         :root {
-            --bg-body: #0a0b10;
-            --bg-card: rgba(255, 255, 255, 0.03);
-            --bg-card-hover: rgba(255, 255, 255, 0.06);
-            --border: rgba(255, 255, 255, 0.08);
-            --text-main: #e1e7ef;
-            --text-dim: #8b949e;
-            --accent-blue: #58a6ff;
-            --accent-green: #3fb950;
-            --accent-purple: #bc8cf2;
-            --accent-orange: #f0883e;
-            --accent-red: #ff7b72;
+            --glass-bg: rgba(30, 30, 40, 0.65);
+            --glass-card-hover: rgba(38, 38, 52, 0.75);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-border-hover: rgba(255, 255, 255, 0.2);
+            --text-main: #ffffff;
+            --text-dim: #a0a0b0;
+
+            --cpu-color: #ff6b6b;
+            --cpu-bg: rgba(255, 107, 107, 0.12);
+            --ram-color: #4ecdc4;
+            --ram-bg: rgba(78, 205, 196, 0.12);
+            --disk-color: #ffe66d;
+            --disk-bg: rgba(255, 230, 109, 0.12);
+            --net-color: #23a6d5;
+            --net-bg: rgba(35, 166, 213, 0.12);
+
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg-body);
-            background-image: 
-                radial-gradient(circle at 0% 0%, rgba(88, 166, 255, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(188, 140, 242, 0.05) 0%, transparent 50%);
+            font-family: 'Inter', sans-serif;
             color: var(--text-main);
             min-height: 100vh;
-            padding: 2rem;
             overflow-x: hidden;
+            background: #0f0c29;
+            user-select: none;
         }
 
-        .container { max-width: 1400px; margin: 0 auto; }
+        /* Dynamic Animated Wallpaper - Synchronized with Eka Dashboard */
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: -1;
+            filter: brightness(0.48);
+        }
 
-        /* Header */
-        .header {
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 2rem 2.5rem 4rem 2.5rem;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        /* Header Bar */
+        .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1.2rem;
         }
 
-        .header h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateX(-3px);
+        }
+
+        .page-title {
+            font-size: 1.75rem;
+            font-weight: 700;
             letter-spacing: -0.5px;
             display: flex;
             align-items: center;
             gap: 12px;
         }
 
-        .back-btn {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            color: var(--text-main);
-            padding: 10px 18px;
-            border-radius: 12px;
-            cursor: pointer;
-            text-decoration: none;
+        .page-subtitle {
             font-size: 0.9rem;
-            font-weight: 500;
-            transition: all 0.3s;
+            color: var(--text-dim);
+        }
+
+        .header-meta {
             display: flex;
             align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
             gap: 8px;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 500;
         }
 
-        .back-btn:hover {
-            background: var(--bg-card-hover);
-            transform: translateX(-5px);
-            border-color: var(--accent-blue);
+        .live-badge {
+            background: rgba(78, 205, 196, 0.12);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+            color: var(--ram-color);
         }
 
-        /* Stats Grid (Top row) */
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--ram-color);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px var(--ram-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 205, 196, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(78, 205, 196, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 205, 196, 0); }
+        }
+
+        .uptime-pill {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+        }
+
+        /* Overview Stat Cards */
         .stats-overview {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -89,81 +194,114 @@
         }
 
         .stat-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 1.5rem;
+            padding: 1.4rem;
             display: flex;
             align-items: center;
             gap: 1.2rem;
-            transition: transform 0.3s, border-color 0.3s;
+            transition: transform 0.3s ease, border-color 0.3s ease;
         }
 
         .stat-card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-4px);
+            border-color: var(--glass-border-hover);
+            background: var(--glass-card-hover);
         }
 
         .stat-icon {
-            width: 54px;
-            height: 54px;
-            border-radius: 14px;
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.4rem;
+            font-size: 1.5rem;
+            flex-shrink: 0;
         }
 
-        .stat-info .label { font-size: 0.85rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-        .stat-info .value { font-size: 1.6rem; font-weight: 700; color: #fff; }
-        .stat-info .sub { font-size: 0.8rem; color: var(--text-dim); }
+        .stat-icon.cpu { background: var(--cpu-bg); color: var(--cpu-color); }
+        .stat-icon.ram { background: var(--ram-bg); color: var(--ram-color); }
+        .stat-icon.disk { background: var(--disk-bg); color: var(--disk-color); }
+        .stat-icon.net { background: var(--net-bg); color: var(--net-color); }
 
-        /* Color variants for stats */
-        .blue { background: rgba(88, 166, 255, 0.1); color: var(--accent-blue); }
-        .green { background: rgba(63, 185, 80, 0.1); color: var(--accent-green); }
-        .purple { background: rgba(188, 140, 242, 0.1); color: var(--accent-purple); }
-        .orange { background: rgba(240, 136, 62, 0.1); color: var(--accent-orange); }
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
 
-        /* Main Dashboard Grid */
+        .stat-info .label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+
+        .stat-info .value {
+            font-size: 1.65rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.2;
+        }
+
+        .stat-info .sub {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+        }
+
+        /* Main Dashboard Charts Grid */
         .dashboard-grid {
             display: grid;
             grid-template-columns: 2fr 1fr;
             gap: 1.5rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 1.8rem;
-            height: 100%;
+            padding: 1.6rem;
+            display: flex;
+            flex-direction: column;
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.2rem;
         }
 
-        .card-title { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-        .card-title i { color: var(--accent-blue); opacity: 0.8; }
+        .card-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
-        /* Chart container */
-        .chart-wrap { position: relative; height: 300px; width: 100%; }
+        .chart-wrap {
+            position: relative;
+            height: 310px;
+            width: 100%;
+        }
 
-        /* Tabs Style */
+        /* Details Tabs Section */
+        .tabs-container {
+            padding: 1.6rem;
+        }
+
         .tabs {
             display: flex;
             gap: 8px;
-            background: rgba(0,0,0,0.2);
+            background: rgba(0, 0, 0, 0.25);
             padding: 6px;
-            border-radius: 14px;
+            border-radius: 12px;
             margin-bottom: 1.5rem;
             width: fit-content;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .tab-btn {
@@ -171,168 +309,335 @@
             border: none;
             color: var(--text-dim);
             padding: 8px 18px;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 0.9rem;
             font-weight: 500;
-            transition: all 0.2s;
-            display: flex;
+            transition: all 0.2s ease;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
+            font-family: inherit;
+        }
+
+        .tab-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .tab-btn.active {
-            background: rgba(255,255,255,0.08);
-            color: #fff;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
-        /* Process Table */
-        .table-container { overflow-x: auto; margin-top: 0.5rem; }
-        table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
-        th { text-align: left; padding: 12px 15px; color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        td { padding: 14px 15px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-        td:first-child { border-left: 1px solid var(--border); border-radius: 12px 0 0 12px; }
-        td:last-child { border-right: 1px solid var(--border); border-radius: 0 12px 12px 0; }
+        /* Table Styling */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 0.5rem;
+        }
 
-        tr:hover td { background: rgba(255,255,255,0.05); }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 14px;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--glass-border);
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 0.88rem;
+            vertical-align: middle;
+        }
+
+        td:first-child {
+            border-left: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+        }
+
+        td:last-child {
+            border-right: 1px solid var(--glass-border);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .pid-badge {
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #ffffff;
+        }
+
+        .proc-name-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .proc-icon-box {
+            width: 30px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: var(--net-color);
+            flex-shrink: 0;
+        }
+
+        .proc-name-text {
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .user-badge {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
 
         .progress-mini {
-            width: 100px;
+            width: 90px;
             height: 6px;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255, 255, 255, 0.08);
             border-radius: 10px;
             overflow: hidden;
             display: inline-block;
             vertical-align: middle;
             margin-right: 8px;
         }
-        .progress-fill { height: 100%; border-radius: 10px; }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
 
         .btn-kill {
-            background: rgba(255, 123, 114, 0.1);
-            color: var(--accent-red);
-            border: 1px solid rgba(255, 123, 114, 0.2);
+            background: rgba(255, 107, 107, 0.15);
+            color: var(--cpu-color);
+            border: 1px solid rgba(255, 107, 107, 0.3);
             padding: 5px 12px;
             border-radius: 8px;
             font-size: 0.75rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-kill:hover { background: var(--accent-red); color: #fff; }
-
-        /* Tooltip style */
-        .tooltip-box {
-            background: rgba(13, 15, 23, 0.9);
-            border: 1px solid var(--border);
-            padding: 10px;
-            border-radius: 10px;
-            font-size: 0.85rem;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
 
-        /* Mount Cards */
+        .btn-kill:hover {
+            background: var(--cpu-color);
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(255, 107, 107, 0.5);
+        }
+
+        /* Mount Grid */
         .mount-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1rem;
+            gap: 1.2rem;
         }
+
         .mount-card {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.2rem;
+            padding: 1.3rem;
+            transition: transform 0.25s ease;
         }
-        .mount-info { display: flex; justify-content: space-between; margin-bottom: 12px; }
-        .mount-name { font-weight: 600; font-size: 1rem; }
-        .mount-usage { font-size: 0.85rem; color: var(--text-dim); }
+
+        .mount-card:hover {
+            transform: translateY(-3px);
+            background: var(--glass-card-hover);
+        }
+
+        .mount-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .mount-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .mount-usage {
+            font-size: 0.9rem;
+        }
+
+        .mount-progress-track {
+            background: rgba(255, 255, 255, 0.08);
+            height: 8px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .mount-progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.4s ease;
+        }
+
+        .mount-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        /* Storage Analyzer Section */
+        .storage-analyzer-box {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: var(--radius-md);
+            border: 1px dashed var(--glass-border);
+        }
 
         @media (max-width: 1100px) {
             .dashboard-grid { grid-template-columns: 1fr; }
+            .container { padding: 1.5rem 1rem 3rem 1rem; }
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1><i class="fa-solid fa-chart-line" style="color:var(--accent-blue)"></i> System Performance</h1>
-            <div style="display:flex; align-items:center; gap:1.5rem">
-                <div style="text-align:right">
-                    <div style="font-size:0.75rem; color:var(--text-dim)">Uptime</div>
-                    <div id="uptime-val" style="font-weight:600; font-size:0.95rem">--:--:--</div>
-                </div>
-                <a href="/dashboard" class="back-btn"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
-            </div>
-        </div>
+    <!-- Eka Dashboard Ambient Animated Wallpaper -->
+    <div class="wallpaper"></div>
 
-        <!-- Top Overview Stats -->
-        <div class="stats-overview">
-            <div class="stat-card">
-                <div class="stat-icon blue"><i class="fa-solid fa-microchip"></i></div>
+    <div class="container">
+        <!-- Header Bar -->
+        <header class="page-header">
+            <div class="header-left">
+                <a href="/dashboard" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> Dashboard
+                </a>
+                <div class="page-title">
+                    <i class="fa-solid fa-chart-line" style="color:var(--cpu-color)"></i> System Metrics
+                </div>
+                <div class="page-subtitle">Real-time server telemetry and workload monitor</div>
+            </div>
+            <div class="header-meta">
+                <div class="meta-pill live-badge">
+                    <span class="pulse-dot"></span>
+                    <span id="last-update">Live Telemetry</span>
+                </div>
+                <div class="meta-pill uptime-pill">
+                    <i class="fa-solid fa-clock" style="color:var(--text-dim)"></i>
+                    <span>Uptime: <strong id="uptime-val" style="color:#ffffff">--:--:--</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Top Overview Stats (4 Cards) -->
+        <section class="stats-overview">
+            <!-- CPU Card -->
+            <div class="stat-card glass">
+                <div class="stat-icon cpu"><i class="fa-solid fa-microchip"></i></div>
                 <div class="stat-info">
                     <div class="label">CPU Usage</div>
                     <div class="value" id="stat-cpu-val">--%</div>
                     <div class="sub" id="stat-load-val">Load: --, --, --</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon green"><i class="fa-solid fa-memory"></i></div>
+
+            <!-- Memory Card -->
+            <div class="stat-card glass">
+                <div class="stat-icon ram"><i class="fa-solid fa-memory"></i></div>
                 <div class="stat-info">
-                    <div class="label">Memory</div>
+                    <div class="label">Memory (RAM)</div>
                     <div class="value" id="stat-ram-val">--%</div>
                     <div class="sub" id="stat-ram-sub">-- / -- GB</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon purple"><i class="fa-solid fa-hard-drive"></i></div>
+
+            <!-- Primary Disk Card -->
+            <div class="stat-card glass">
+                <div class="stat-icon disk"><i class="fa-solid fa-hard-drive"></i></div>
                 <div class="stat-info">
                     <div class="label">Primary Disk</div>
                     <div class="value" id="stat-disk-val">--%</div>
                     <div class="sub" id="stat-disk-sub">-- GB Free</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon orange"><i class="fa-solid fa-network-wired"></i></div>
+
+            <!-- Network Speed Card -->
+            <div class="stat-card glass">
+                <div class="stat-icon net"><i class="fa-solid fa-network-wired"></i></div>
                 <div class="stat-info">
-                    <div class="label">Network Speed</div>
+                    <div class="label">Network Throughput</div>
                     <div class="value" id="stat-net-val">-- KB/s</div>
                     <div class="sub" id="stat-net-sub">↓ -- | ↑ --</div>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Main Charts Section -->
-        <div class="dashboard-grid">
-            <div class="card">
+        <section class="dashboard-grid">
+            <!-- 24h Activity History -->
+            <div class="card glass">
                 <div class="card-header">
-                    <div class="card-title"><i class="fa-solid fa-wave-square"></i> Activity History (24h)</div>
-                    <div id="last-update" style="font-size:0.8rem; color:var(--text-dim)">Live Update</div>
+                    <div class="card-title">
+                        <i class="fa-solid fa-wave-square" style="color:var(--cpu-color)"></i> Activity History (24h)
+                    </div>
                 </div>
                 <div class="chart-wrap">
                     <canvas id="main-chart"></canvas>
                 </div>
             </div>
-            <div class="card">
+
+            <!-- CPU Cores Load -->
+            <div class="card glass">
                 <div class="card-header">
-                    <div class="card-title"><i class="fa-solid fa-microchip"></i> CPU Cores Load</div>
+                    <div class="card-title">
+                        <i class="fa-solid fa-microchip" style="color:var(--net-color)"></i> CPU Cores Load
+                    </div>
                 </div>
                 <div class="chart-wrap">
                     <canvas id="cores-chart"></canvas>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Details Section (Tabs) -->
-        <div class="card">
+        <section class="tabs-container glass">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('processes')"><i class="fa-solid fa-list-ul"></i> Top Processes</button>
-                <button class="tab-btn" onclick="switchTab('storage')"><i class="fa-solid fa-hard-drive"></i> Storage Details</button>
-                <button class="tab-btn" onclick="switchTab('network')"><i class="fa-solid fa-network-wired"></i> Network I/O</button>
+                <button class="tab-btn active" data-tab="processes" onclick="switchTab('processes', this)">
+                    <i class="fa-solid fa-list-ul"></i> Top Processes
+                </button>
+                <button class="tab-btn" data-tab="storage" onclick="switchTab('storage', this)">
+                    <i class="fa-solid fa-hard-drive"></i> Storage Details
+                </button>
+                <button class="tab-btn" data-tab="network" onclick="switchTab('network', this)">
+                    <i class="fa-solid fa-network-wired"></i> Network I/O
+                </button>
             </div>
 
-            <!-- Processes Content -->
+            <!-- Tab 1: Top Processes -->
             <div id="tab-processes" class="metric-section">
                 <div class="table-container">
                     <table id="proc-table">
@@ -347,316 +652,51 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="6" style="text-align:center">Fetching process list...</td></tr>
+                            <tr><td colspan="6" style="text-align:center; color:var(--text-dim)">Memuat daftar proses...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Storage Content -->
+            <!-- Tab 2: Storage Details -->
             <div id="tab-storage" class="metric-section" style="display:none">
                 <div class="mount-grid" id="mount-container">
-                    <!-- Mount cards will be injected here -->
+                    <!-- Mount cards will be injected by metrics.js -->
                 </div>
-                
-                <div style="margin-top:2rem; padding:1.5rem; background:rgba(0,0,0,0.2); border-radius:16px; border:1px dashed var(--border)">
-                    <div style="display:flex; justify-content:space-between; align-items:center">
+
+                <div class="storage-analyzer-box">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem">
                         <div>
-                            <h3 style="font-size:1.1rem; margin-bottom:5px">Storage Analyzer</h3>
-                            <p style="font-size:0.85rem; color:var(--text-dim)">Scan root filesystem for files larger than 100MB</p>
+                            <h3 style="font-size:1.05rem; margin-bottom:4px; font-weight:600">Storage Analyzer</h3>
+                            <p style="font-size:0.85rem; color:var(--text-dim)">Pindai sistem berkas root untuk mencari berkas berukuran &gt; 100MB</p>
                         </div>
                         <button class="back-btn" onclick="scanStorage()" id="scan-btn">
-                            <i class="fa-solid fa-magnifying-glass"></i> Start Scan
+                            <i class="fa-solid fa-magnifying-glass"></i> Mulai Pindai
                         </button>
                     </div>
                     <div id="scan-results" style="margin-top:1.5rem; display:none">
                         <table id="scan-table">
-                            <thead><tr><th>Size</th><th>File Path</th></tr></thead>
+                            <thead><tr><th>Ukuran</th><th>Lokasi Berkas</th></tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
-            <!-- Network Content -->
+            <!-- Tab 3: Network I/O -->
             <div id="tab-network" class="metric-section" style="display:none">
                 <div class="chart-wrap" style="height:350px">
                     <canvas id="network-history-chart"></canvas>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 
+    <!-- Scripts -->
     <script>
         window.userRole = "{{ session.get('role', 'readonly') }}";
-        let mainChart, coresChart, netChart;
-        let lastNetData = null;
-        let historyData = { labels: [], cpu: [], mem: [], netIn: [], netOut: [] };
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            fetchHistory();
-            startLiveLoop();
-        });
-
-        function initCharts() {
-            const ctxMain = document.getElementById('main-chart').getContext('2d');
-            const gradientBlue = ctxMain.createLinearGradient(0, 0, 0, 300);
-            gradientBlue.addColorStop(0, 'rgba(88, 166, 255, 0.3)');
-            gradientBlue.addColorStop(1, 'rgba(88, 166, 255, 0)');
-
-        mainChart = new Chart(ctxMain, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'CPU Usage %',
-                            data: [],
-                            borderColor: '#58a6ff',
-                            backgroundColor: 'rgba(88, 166, 255, 0.15)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0,
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Memory Usage %',
-                            data: [],
-                            borderColor: '#3fb950',
-                            backgroundColor: 'rgba(63, 185, 80, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0,
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } },
-                        x: { grid: { display: false }, ticks: { color: '#8b949e', maxRotation: 0 } }
-                    },
-                    plugins: { 
-                        legend: { 
-                            display: true, 
-                            position: 'top', 
-                            align: 'end',
-                            labels: { color: '#8b949e', usePointStyle: true, boxWidth: 6, boxHeight: 6, font: { size: 11 } } 
-                        } 
-                    },
-                    animation: { duration: 0 }
-                }
-            });
-
-            coresChart = new Chart(document.getElementById('cores-chart'), {
-                type: 'bar',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: '#bc8cf2', borderRadius: 8 }] },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false } },
-                        x: { grid: { display: false }, ticks: { color: '#8b949e' } }
-                    },
-                    plugins: { legend: { display: false } },
-                    indexAxis: 'y'
-                }
-            });
-
-            netChart = new Chart(document.getElementById('network-history-chart'), {
-                type: 'line',
-                data: {
-                    labels: Array(30).fill(''),
-                    datasets: [
-                        { label: 'Download', data: Array(30).fill(0), borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
-                        { label: 'Upload', data: Array(30).fill(0), borderColor: '#f0883e', backgroundColor: 'rgba(240,136,62,0.1)', fill: true, tension: 0.4, pointRadius: 0 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } },
-                        x: { display: false }
-                    },
-                    plugins: { legend: { labels: { color: '#e1e7ef', usePointStyle: true } } },
-                    animation: { duration: 0 }
-                }
-            });
-        }
-
-        function fetchHistory() {
-            fetch('/api/metrics/history?hours=24')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.labels) {
-                        const labels = data.labels.map(ts => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                        mainChart.data.labels = labels;
-                        mainChart.data.datasets[0].data = data.cpu;
-                        mainChart.data.datasets[1].data = data.ram;
-                        mainChart.update();
-                    }
-                });
-        }
-
-        function startLiveLoop() {
-            updateMetrics();
-            setInterval(updateMetrics, 3000);
-        }
-
-        function updateMetrics() {
-            fetch('/api/metrics/detailed')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) return;
-
-                    // 1. Top Stats
-                    document.getElementById('stat-cpu-val').innerText = data.cpu.total.toFixed(1) + '%';
-                    document.getElementById('stat-load-val').innerText = `Load: ${data.cpu.load_avg.map(v => v.toFixed(2)).join(', ')}`;
-                    
-                    const m = data.memory.details;
-                    document.getElementById('stat-ram-val').innerText = m.percent.toFixed(1) + '%';
-                    document.getElementById('stat-ram-sub').innerText = `${formatBytes(m.used)} / ${formatBytes(m.total)}`;
-
-                    const root = data.storage.partitions.find(p => p.mountpoint === '/') || data.storage.partitions[0];
-                    document.getElementById('stat-disk-val').innerText = root.percent + '%';
-                    document.getElementById('stat-disk-sub').innerText = `${formatBytes(root.free)} Free`;
-
-                    // Uptime
-                    const upt = data.system.uptime;
-                    const h = Math.floor(upt / 3600);
-                    const min = Math.floor((upt % 3600) / 60);
-                    document.getElementById('uptime-val').innerText = `${h}h ${min}m`;
-
-                    // Network Calculation
-                    if (lastNetData) {
-                        const diffIn = (data.network.bytes_recv - lastNetData.bytes_recv) / 3; // 3s interval
-                        const diffOut = (data.network.bytes_sent - lastNetData.bytes_sent) / 3;
-                        document.getElementById('stat-net-val').innerText = formatBytes(diffIn + diffOut) + '/s';
-                        document.getElementById('stat-net-sub').innerText = `↓ ${formatBytes(diffIn)}/s | ↑ ${formatBytes(diffOut)}/s`;
-                        
-                        // Update net chart
-                        netChart.data.datasets[0].data.push(diffIn / 1024); // KB
-                        netChart.data.datasets[0].data.shift();
-                        netChart.data.datasets[1].data.push(diffOut / 1024);
-                        netChart.data.datasets[1].data.shift();
-                        netChart.update('none');
-                    }
-                    lastNetData = data.network;
-
-                    // 2. Charts
-                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    mainChart.data.labels.push(now);
-                    mainChart.data.datasets[0].data.push(data.cpu.total);
-                    mainChart.data.datasets[1].data.push(data.memory.details.percent);
-                    
-                    if (mainChart.data.labels.length > 100) {
-                        mainChart.data.labels.shift();
-                        mainChart.data.datasets[0].data.shift();
-                        mainChart.data.datasets[1].data.shift();
-                    }
-                    mainChart.update('none');
-
-                    coresChart.data.labels = data.cpu.per_core.map((_, i) => 'Core ' + i);
-                    coresChart.data.datasets[0].data = data.cpu.per_core;
-                    coresChart.update('none');
-
-                    // 3. Tables & Mounts
-                    renderProcesses(data.cpu.top_processes);
-                    renderMounts(data.storage.partitions);
-                });
-        }
-
-        function renderProcesses(procs) {
-            const tbody = document.querySelector('#proc-table tbody');
-            tbody.innerHTML = procs.map(p => {
-                const cpuColor = p.cpu_percent > 10 ? 'var(--accent-red)' : 'var(--accent-blue)';
-                return `
-                <tr>
-                    <td><span style="color:var(--text-dim)">#</span>${p.pid}</td>
-                    <td><div style="display:flex; align-items:center; gap:10px">
-                        <div style="width:30px; height:30px; background:rgba(255,255,255,0.05); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.8rem">
-                            <i class="fa-solid fa-gear"></i>
-                        </div>
-                        <b>${p.name}</b>
-                    </div></td>
-                    <td>${p.username || 'root'}</td>
-                    <td>
-                        <div class="progress-mini"><div class="progress-fill" style="width:${Math.min(100, p.cpu_percent * 5)}%; background:${cpuColor}"></div></div>
-                        ${p.cpu_percent.toFixed(1)}%
-                    </td>
-                    <td>${p.memory_mb.toFixed(1)} MB</td>
-                    <td>${['owner', 'admin'].includes(window.userRole) ? `<button class="btn-kill" onclick="killProc(${p.pid})">Kill</button>` : '-'}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        function renderMounts(parts) {
-            const container = document.getElementById('mount-container');
-            container.innerHTML = parts.map(p => {
-                const color = p.percent > 90 ? 'var(--accent-red)' : p.percent > 70 ? 'var(--accent-orange)' : 'var(--accent-green)';
-                return `
-                <div class="mount-card">
-                    <div class="mount-info">
-                        <div class="mount-name">${p.mountpoint}</div>
-                        <div class="mount-usage">${p.percent}%</div>
-                    </div>
-                    <div style="background:rgba(255,255,255,0.05); height:10px; border-radius:10px; overflow:hidden; margin-bottom:12px">
-                        <div style="width:${p.percent}%; background:${color}; height:100%; box-shadow:0 0 10px ${color}44"></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-dim)">
-                        <span>${formatBytes(p.used)} Used</span>
-                        <span>${formatBytes(p.total)} Total</span>
-                    </div>
-                </div>`;
-            }).join('');
-        }
-
-        function switchTab(tab) {
-            document.querySelectorAll('.metric-section').forEach(el => el.style.display = 'none');
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById('tab-' + tab).style.display = 'block';
-            event.currentTarget.classList.add('active');
-        }
-
-        function killProc(pid) {
-            if (!confirm(`Kill process ${pid}?`)) return;
-            fetch('/api/process/kill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pid })
-            }).then(r => r.json()).then(res => {
-                if (res.success) updateMetrics();
-                else alert(res.error);
-            });
-        }
-
-        function scanStorage() {
-            const btn = document.getElementById('scan-btn');
-            const resDiv = document.getElementById('scan-results');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
-            btn.disabled = true;
-
-            fetch('/api/storage/analyze').then(r => r.json()).then(data => {
-                btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Rescan';
-                btn.disabled = false;
-                resDiv.style.display = 'block';
-                const tbody = document.querySelector('#scan-table tbody');
-                tbody.innerHTML = data.files.map(f => `<tr><td style="color:var(--accent-orange)">${f.size}</td><td style="font-family:monospace; font-size:0.8rem">${f.path}</td></tr>`).join('');
-            });
-        }
-
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
     </script>
+    <script src="{{ url_for('static', filename='metrics.js') }}?v=1"></script>
 </body>
 
 </html>

@@ -1,539 +1,731 @@
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backup & Restore - Eka Dashboard</title>
+    <title>Disaster Recovery & Offsite Backup — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
+    <!-- Master CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=15">
     <style>
-        .backup-container {
-            padding: 1rem;
-            max-width: 1200px;
+        html {
+            background: #0f0c29 !important;
+        }
+        body {
+            font-family: 'Inter', sans-serif !important;
+            color: var(--text-main, #ffffff) !important;
+            background: transparent !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            position: relative !important;
+            user-select: auto !important;
+        }
+        .wallpaper {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: 0 !important;
+            filter: brightness(0.55);
+            pointer-events: none !important;
+            transform: translateZ(0);
+        }
+        .main-content {
+            position: relative !important;
+            z-index: 1 !important;
+            max-width: 1400px;
             margin: 0 auto;
+            padding: 24px 24px 100px 24px;
         }
 
-        .backup-header {
+        /* Top Bar */
+        .top-bar-scheduler {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .top-bar-scheduler .left-group {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
+            gap: 16px;
         }
-
-        .btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: all 0.2s;
-            text-decoration: none;
-        }
-
-        .btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .btn.primary {
-            background: #238636;
-            border-color: #238636;
-        }
-
-        .btn.primary:hover {
-            background: #2ea043;
-        }
-
-        .btn.danger {
-            background: #da3633;
-            border-color: #da3633;
-        }
-
-        .btn.warning {
-            background: #f0883e;
-            border-color: #f0883e;
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 1rem;
-        }
-
-        @media (max-width: 600px) {
-            .cards-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-        }
-
-        .card-header i {
-            font-size: 1.2rem;
-            color: #58a6ff;
-        }
-
-        .card-header h3 {
-            font-weight: 500;
-            font-size: 1rem;
-        }
-
-        .card-body {
-            padding: 1rem;
-        }
-
-        .card-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .backup-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .backup-item {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .backup-item:hover {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .backup-icon {
-            width: 45px;
-            height: 45px;
-            background: rgba(88, 166, 255, 0.15);
-            border-radius: 10px;
+        .top-bar-scheduler .btn-home {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #58a6ff;
-            font-size: 1.2rem;
-        }
-
-        .backup-info {
-            flex: 1;
-        }
-
-        .backup-name {
-            font-weight: 500;
-        }
-
-        .backup-meta {
-            font-size: 0.8rem;
-            color: #8b949e;
-            margin-top: 0.2rem;
-        }
-
-        .backup-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .backup-actions .btn {
-            padding: 0.3rem 0.6rem;
-            font-size: 0.8rem;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #8b949e;
-            font-size: 0.85rem;
-        }
-
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 0.6rem 0.8rem;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
             color: #fff;
-            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.2s ease;
         }
-
-        .checkbox-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+        .top-bar-scheduler .btn-home:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.25);
         }
-
-        .checkbox-item {
+        .top-bar-scheduler .title-group .main-title {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .top-bar-scheduler .title-group .sub-title {
+            font-size: 13px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 2px;
+        }
+        .top-bar-scheduler .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        .checkbox-item input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
+        /* 4 Stat Cards */
+        .stats-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card-glass {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s ease;
+        }
+        .stat-card-glass:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+        .stat-info .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--text-muted, #94a3b8);
+            letter-spacing: 0.5px;
+        }
+        .stat-info .stat-val {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            margin: 4px 0;
+        }
+        .stat-info .stat-sub {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
         }
 
-        .msg {
-            padding: 0.8rem 1rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;
+        /* Tab Navigation */
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted, #94a3b8);
+            padding: 10px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .tab-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(240, 147, 251, 0.25), rgba(245, 87, 108, 0.25));
+            border-color: #f093fb;
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(240, 147, 251, 0.2);
+        }
+        .tab-pane {
             display: none;
         }
-
-        .msg.success {
+        .tab-pane.active {
             display: block;
-            background: rgba(63, 185, 80, 0.15);
-            border: 1px solid rgba(63, 185, 80, 0.3);
-            color: #3fb950;
         }
 
-        .msg.error {
-            display: block;
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            color: #f85149;
+        /* Card Container */
+        .card-container {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            margin-bottom: 24px;
         }
 
-        .msg.info {
-            display: block;
-            background: rgba(88, 166, 255, 0.15);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-            color: #58a6ff;
+        /* Tables */
+        .table-responsive {
+            overflow-x: auto;
         }
-
-        .progress-bar {
+        table {
             width: 100%;
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            overflow: hidden;
-            display: none;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted, #94a3b8);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: #e2e8f0;
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
         }
 
-        .progress-bar.active {
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .badge-info {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        .badge-purple {
+            background: rgba(168, 85, 247, 0.15);
+            color: #a855f7;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-label {
             display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 8px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        .form-control:focus {
+            border-color: #f093fb;
+            box-shadow: 0 0 12px rgba(240, 147, 251, 0.25);
         }
 
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #58a6ff, #3fb950);
-            width: 0%;
-            transition: width 0.3s;
-            animation: progress-pulse 1.5s ease-in-out infinite;
+        /* Checkbox grid */
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .checkbox-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .checkbox-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+        .checkbox-card input[type="checkbox"] {
+            margin-top: 3px;
+            cursor: pointer;
+            accent-color: #f093fb;
+            width: 16px;
+            height: 16px;
         }
 
-        @keyframes progress-pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.7;
-            }
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 650px;
+            max-height: 85vh;
+            padding: 24px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .modal-body {
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 6px;
+        }
+        .modal-footer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }
 
         .empty-state {
             text-align: center;
-            padding: 3rem;
-            color: #8b949e;
+            padding: 40px 16px;
+            color: var(--text-muted, #94a3b8);
         }
-
         .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+            font-size: 40px;
+            margin-bottom: 12px;
             opacity: 0.5;
         }
     </style>
 </head>
-
 <body>
     <div class="wallpaper"></div>
 
-    <div class="app-container backup-container">
-        <!-- Header -->
-        <div class="backup-header">
-            <button class="btn" onclick="window.location.href='/dashboard'"><i class="fa-solid fa-home"></i></button>
-            <h2 style="margin:0; font-weight:400; font-size:1.2rem">
-                <i class="fa-solid fa-box-archive" style="color:#58a6ff"></i> Backup & Restore
-            </h2>
-            <div style="margin-left:auto; display:flex; gap:0.5rem">
-                <button class="btn" onclick="loadBackups()"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+    <div class="main-content">
+        <!-- Top Bar -->
+        <div class="top-bar-scheduler">
+            <div class="left-group">
+                <a href="/dashboard" class="btn-home" title="Kembali ke Dashboard">
+                    <i class="fa-solid fa-home"></i>
+                </a>
+                <div class="title-group">
+                    <div class="main-title">
+                        <i class="fa-solid fa-box-archive" style="color: #f093fb;"></i>
+                        <span>Disaster Recovery & Offsite Backup</span>
+                    </div>
+                    <div class="sub-title">Manajemen Snapshot Sistem, Pemulihan Bencana & Sinkronisasi Cloud (Rclone)</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="btn-top-quick" class="btn btn-secondary">
+                    <i class="fa-solid fa-plus"></i> Snapshot Cepat
+                </button>
+                <button id="btn-top-sync" class="btn btn-primary" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Sync ke Cloud
+                </button>
             </div>
         </div>
 
-        <div id="msg-box" class="msg"></div>
-        <div class="progress-bar" id="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
+        <!-- 4 Stat Cards -->
+        <div class="stats-grid-4">
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Total Snapshot</div>
+                    <div class="stat-val" id="stat-total-snapshots">-</div>
+                    <div class="stat-sub" id="stat-total-size">Memuat arsip...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(240, 147, 251, 0.15); color: #f093fb;">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Cloud Remote (Rclone)</div>
+                    <div class="stat-val" id="stat-remote-name" style="font-size: 20px;">Memeriksa...</div>
+                    <div class="stat-sub" id="stat-rclone-status">Mendeteksi binary rclone...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+                    <i class="fa-solid fa-cloud"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Snapshot Terakhir</div>
+                    <div class="stat-val" id="stat-latest-date" style="font-size: 18px;">-</div>
+                    <div class="stat-sub" id="stat-latest-size">Belum ada snapshot</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Jadwal Otomatis (Cron)</div>
+                    <div class="stat-val" id="stat-schedule-status" style="font-size: 20px;">-</div>
+                    <div class="stat-sub" id="stat-schedule-sub">Memeriksa jadwal...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                    <i class="fa-solid fa-calendar-check"></i>
+                </div>
+            </div>
         </div>
 
-        <div class="cards-grid">
-            <!-- Create Backup -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-plus-circle" style="color:#3fb950"></i>
-                    <h3>Buat Backup Baru</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>Nama Backup (opsional)</label>
-                        <input type="text" id="backup-name" placeholder="Contoh: backup-sebelum-update">
+        <!-- Tab Bar -->
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="tab-snapshots">
+                <i class="fa-solid fa-clock-rotate-left"></i> Daftar Snapshot & Restore
+            </button>
+            <button class="tab-btn" data-tab="tab-create">
+                <i class="fa-solid fa-plus-circle"></i> Buat Snapshot Sistem
+            </button>
+            <button class="tab-btn" data-tab="tab-cloud">
+                <i class="fa-solid fa-cloud"></i> Integrasi Cloud (Rclone)
+            </button>
+            <button class="tab-btn" data-tab="tab-schedule">
+                <i class="fa-solid fa-calendar-days"></i> Jadwal Backup Otomatis
+            </button>
+        </div>
+
+        <!-- TAB 1: Daftar Snapshot -->
+        <div id="tab-snapshots" class="tab-pane active">
+            <div class="card-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 16px; color: #fff;">Arsip Disaster Recovery Lokal</h3>
+                        <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                            Snapshot sistem lengkap siap diunduh, diinspeksi, atau dipulihkan kembali saat terjadi bencana server.
+                        </p>
                     </div>
-                    <div class="form-group">
-                        <label>Yang Akan Di-Backup</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-item">
-                                <input type="checkbox" id="inc-config" checked>
-                                <span>Konfigurasi Dashboard</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" id="inc-docker" checked>
-                                <span>Docker Compose Files</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input type="checkbox" id="inc-users">
-                                <span>Data Pengguna</span>
-                            </label>
-                        </div>
+                    <button id="btn-refresh-list" class="btn btn-secondary">
+                        <i class="fa-solid fa-arrows-rotate"></i> Muat Ulang
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Snapshot</th>
+                                <th>Waktu Pembuatan</th>
+                                <th>Ukuran</th>
+                                <th>Cakupan Komponen</th>
+                                <th>Status Cloud</th>
+                                <th style="text-align: right;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="snapshots-table-body">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <div>Memuat daftar snapshot...</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: Buat Snapshot Baru -->
+        <div id="tab-create" class="tab-pane">
+            <div class="card-container" style="max-width: 900px; margin: 0 auto;">
+                <h3 style="margin: 0 0 8px 0; font-size: 18px; color: #fff;">
+                    <i class="fa-solid fa-cube" style="color: #f093fb;"></i> Buat Snapshot Pemulihan Bencana
+                </h3>
+                <p style="margin: 0 0 24px 0; font-size: 13px; color: var(--text-muted);">
+                    Pilih komponen server yang ingin diarsipkan ke dalam bundle tarball `.tar.gz` ber-manifest.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">Nama / Label Snapshot (Opsional)</label>
+                    <input type="text" id="input-backup-name" class="form-control" placeholder="Contoh: pra-upgrade-kernel atau backup-bulanan">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Komponen yang Disertakan ke dalam Snapshot</label>
+                    <div class="checkbox-grid">
+                        <label class="checkbox-card">
+                            <input type="checkbox" id="check-config" checked>
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #fff;">Konfigurasi Dashboard</div>
+                                <div style="font-size: 11px; color: #94a3b8;">Settings, security keys, alert rules, layout</div>
+                            </div>
+                        </label>
+
+                        <label class="checkbox-card">
+                            <input type="checkbox" id="check-docker" checked>
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #fff;">Docker Stack Compose</div>
+                                <div style="font-size: 11px; color: #94a3b8;">Berkas docker-compose.yml & app catalog</div>
+                            </div>
+                        </label>
+
+                        <label class="checkbox-card">
+                            <input type="checkbox" id="check-users" checked>
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #fff;">Database Pengguna</div>
+                                <div style="font-size: 11px; color: #94a3b8;">Kredensial login users.db terenkripsi</div>
+                            </div>
+                        </label>
+
+                        <label class="checkbox-card">
+                            <input type="checkbox" id="check-nginx" checked>
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #fff;">Host Nginx & SSL Configs</div>
+                                <div style="font-size: 11px; color: #94a3b8;">Vhosts /etc/nginx sites-available & SSL certs</div>
+                            </div>
+                        </label>
+
+                        <label class="checkbox-card">
+                            <input type="checkbox" id="check-system">
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #fff;">Host System Configs</div>
+                                <div style="font-size: 11px; color: #94a3b8;">/etc/netplan, /etc/hosts, fstab, systemd units</div>
+                            </div>
+                        </label>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button class="btn primary" onclick="createBackup()" id="btn-create" {% if session.get('role') not
-                        in ['owner', 'admin' ] %}disabled{% endif %}>
-                        <i class="fa-solid fa-download"></i> Buat Backup
+
+                <div class="form-group" style="margin-top: 20px;">
+                    <label class="form-label">Sinkronisasi Cloud Langsung (Opsional)</label>
+                    <select id="select-upload-remote" class="form-control">
+                        <option value="">Simpan di Penyimpanan Server Lokal Saja</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 28px; display: flex; justify-content: flex-end;">
+                    <button id="btn-submit-create" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); padding: 10px 24px;">
+                        <i class="fa-solid fa-download"></i> Buat Snapshot Sekarang
                     </button>
                 </div>
             </div>
+        </div>
 
-            <!-- Backup List -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-clock-rotate-left"></i>
-                    <h3>Daftar Backup</h3>
-                </div>
-                <div class="card-body">
-                    <div class="backup-list" id="backup-list">
-                        <div class="empty-state">
-                            <i class="fa-solid fa-spinner fa-spin"></i>
-                            <div>Memuat daftar backup...</div>
-                        </div>
+        <!-- TAB 3: Integrasi Cloud Rclone -->
+        <div id="tab-cloud" class="tab-pane">
+            <div class="card-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 16px; color: #fff;">
+                            <i class="fa-solid fa-cloud" style="color: #38bdf8;"></i> Integrasi Offsite Rclone
+                        </h3>
+                        <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                            Salin otomatis seluruh snapshot ke penyedia cloud (Google Drive, AWS S3, Cloudflare R2, SFTP, WebDAV, Mega, B2).
+                        </p>
                     </div>
+                    <div id="rclone-action-box">
+                        <!-- Button will be populated dynamically (Install or Sync) -->
+                    </div>
+                </div>
+
+                <div id="rclone-remotes-container" style="margin-top: 16px;">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <div>Memeriksa konfigurasi Rclone...</div>
+                    </div>
+                </div>
+
+                <!-- Setup Guide Box -->
+                <div style="margin-top: 24px; padding: 18px; border-radius: 12px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div style="font-weight: 700; font-size: 13px; color: #fff; margin-bottom: 8px;">
+                        <i class="fa-solid fa-circle-info" style="color: #38bdf8;"></i> Panduan Cepat Menambahkan Remote Cloud
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+                        Untuk menambahkan remote baru seperti Google Drive atau S3:
+                        <ol style="margin: 6px 0 0 16px; padding: 0;">
+                            <li>Buka terminal server host atau jalankan di web terminal: <code>rclone config</code></li>
+                            <li>Pilih <code>n</code> (New remote), masukkan nama (misal: <code>gdrive</code> atau <code>s3_backup</code>).</li>
+                            <li>Pilih tipe penyimpanan yang diinginkan dan ikuti langkah otorisasi.</li>
+                            <li>Setelah remote tersimpan di host, refresh halaman ini untuk langsung mengaktifkannya!</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: Jadwal Otomatis (Cron) -->
+        <div id="tab-schedule" class="tab-pane">
+            <div class="card-container" style="max-width: 700px; margin: 0 auto;">
+                <h3 style="margin: 0 0 8px 0; font-size: 18px; color: #fff;">
+                    <i class="fa-solid fa-calendar-check" style="color: #a855f7;"></i> Penjadwalan Backup Otomatis
+                </h3>
+                <p style="margin: 0 0 24px 0; font-size: 13px; color: var(--text-muted);">
+                    Atur jadwal berkala pembuatan snapshot sistem agar server terlindungi secara otomatis tanpa intervensi manual.
+                </p>
+
+                <div class="form-group">
+                    <label class="checkbox-card" style="margin-bottom: 20px;">
+                        <input type="checkbox" id="check-schedule-enabled">
+                        <div>
+                            <div style="font-weight: 700; font-size: 14px; color: #fff;">Aktifkan Penjadwalan Otomatis (Cron Host)</div>
+                            <div style="font-size: 12px; color: #94a3b8;">Snapshot dibuat otomatis di latar belakang sesuai waktu yang ditentukan.</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Frekuensi Backup</label>
+                    <select id="select-schedule-freq" class="form-control">
+                        <option value="daily">Setiap Hari (Daily)</option>
+                        <option value="weekly">Setiap Minggu (Weekly - Hari Minggu)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Waktu Eksekusi (Jam : Menit)</label>
+                    <input type="time" id="input-schedule-time" class="form-control" value="02:00">
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                        Disarankan memilih jam dini hari (misal 02:00 WIB) saat beban trafik server minim.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tujuan Sinkronisasi Cloud Otomatis</label>
+                    <select id="select-schedule-remote" class="form-control">
+                        <option value="">Simpan Lokal Saja (Tanpa Cloud Sync)</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 28px; display: flex; justify-content: flex-end;">
+                    <button id="btn-save-schedule" class="btn btn-primary" style="background: linear-gradient(135deg, #a855f7, #6366f1); padding: 10px 24px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Simpan Jadwal Backup
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            loadBackups();
-        });
+    <!-- Modal: Inspect Archive -->
+    <div id="modal-inspect" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin: 0; font-size: 16px; color: #fff;">
+                    <i class="fa-solid fa-magnifying-glass" style="color: #38bdf8;"></i> Inspeksi Berkas Snapshot
+                </h3>
+                <button id="btn-close-inspect" class="btn" style="padding: 4px 10px; font-size: 14px;">✕</button>
+            </div>
+            <div class="modal-body" id="inspect-modal-body">
+                <!-- File list dynamically rendered -->
+            </div>
+            <div class="modal-footer">
+                <button id="btn-inspect-close-footer" class="btn btn-secondary">Tutup</button>
+            </div>
+        </div>
+    </div>
 
-        function showMsg(msg, type) {
-            const el = document.getElementById('msg-box');
-            el.textContent = msg;
-            el.className = 'msg ' + type;
-            setTimeout(() => { el.className = 'msg'; }, 5000);
-        }
-
-        function setProgress(show, percent = 0) {
-            const bar = document.getElementById('progress-bar');
-            const fill = document.getElementById('progress-fill');
-            bar.className = show ? 'progress-bar active' : 'progress-bar';
-            fill.style.width = percent + '%';
-        }
-
-        function loadBackups() {
-            fetch('/api/backup/list')
-                .then(r => r.json())
-                .then(data => {
-                    renderBackups(data.backups || []);
-                })
-                .catch(err => {
-                    document.getElementById('backup-list').innerHTML =
-                        '<div class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><div>Gagal memuat daftar backup</div></div>';
-                });
-        }
-
-        function renderBackups(backups) {
-            const container = document.getElementById('backup-list');
-            const canManage = ['owner', 'admin'].includes(window.userRole);
-
-            if (backups.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fa-solid fa-box-open"></i>
-                        <div>Belum ada backup</div>
-                        <div style="font-size:0.85rem; margin-top:0.5rem">Buat backup pertama Anda!</div>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = backups.map(b => `
-                <div class="backup-item">
-                    <div class="backup-icon">
-                        <i class="fa-solid fa-file-archive"></i>
-                    </div>
-                    <div class="backup-info">
-                        <div class="backup-name">${b.name}</div>
-                        <div class="backup-meta">
-                            <i class="fa-solid fa-calendar"></i> ${b.date} &nbsp;
-                            <i class="fa-solid fa-database"></i> ${b.size}
-                        </div>
-                    </div>
-                    <div class="backup-actions">
-                        <a href="/api/backup/download/${b.id}" class="btn" title="Download">
-                            <i class="fa-solid fa-download"></i>
-                        </a>
-                        ${canManage ? `
-                            <button class="btn warning" onclick="restoreBackup('${b.id}', '${b.name}')" title="Restore">
-                                <i class="fa-solid fa-rotate-left"></i>
-                            </button>
-                            <button class="btn danger" onclick="deleteBackup('${b.id}', '${b.name}')" title="Hapus">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        ` : ''}
-                    </div>
+    <!-- Modal: Confirm Restore -->
+    <div id="modal-restore" class="modal-overlay">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3 style="margin: 0; font-size: 16px; color: #ff6b6b;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Konfirmasi Pemulihan Bencana
+                </h3>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+                    Anda akan memulihkan konfigurasi sistem dari snapshot:
+                    <strong id="restore-target-name" style="color: #f093fb; display: block; margin-top: 6px; word-break: break-all;"></strong>
+                </p>
+                <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 10px; padding: 12px; margin-top: 14px; font-size: 12px; color: #fca5a5;">
+                    <i class="fa-solid fa-circle-exclamation"></i> Perhatian: Konfigurasi saat ini akan ditimpa dengan data snapshot yang dipilih. Lanjutkan?
                 </div>
-            `).join('');
-        }
+            </div>
+            <div class="modal-footer">
+                <button id="btn-cancel-restore" class="btn btn-secondary">Batal</button>
+                <button id="btn-execute-restore" class="btn btn-danger">
+                    <i class="fa-solid fa-rotate-left"></i> Ya, Pulihkan Sekarang
+                </button>
+            </div>
+        </div>
+    </div>
 
-        function createBackup() {
-            const name = document.getElementById('backup-name').value.trim();
-            const includeConfig = document.getElementById('inc-config').checked;
-            const includeDocker = document.getElementById('inc-docker').checked;
-            const includeUsers = document.getElementById('inc-users').checked;
-
-            if (!includeConfig && !includeDocker && !includeUsers) {
-                showMsg('Pilih minimal satu item untuk di-backup', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-create');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Membuat backup...';
-            setProgress(true, 30);
-
-            fetch('/api/backup/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: name,
-                    include_config: includeConfig,
-                    include_docker: includeDocker,
-                    include_users: includeUsers
-                })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-download"></i> Buat Backup';
-                    setProgress(false);
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Backup berhasil dibuat: ' + data.filename, 'success');
-                        document.getElementById('backup-name').value = '';
-                        loadBackups();
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-download"></i> Buat Backup';
-                    setProgress(false);
-                    showMsg('Gagal membuat backup', 'error');
-                });
-        }
-
-        function restoreBackup(id, name) {
-            if (!confirm(`Yakin ingin restore backup "${name}"?\n\nSemua konfigurasi saat ini akan diganti dengan data dari backup.`)) {
-                return;
-            }
-
-            setProgress(true, 50);
-            showMsg('Melakukan restore...', 'info');
-
-            fetch('/api/backup/restore', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    setProgress(false);
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Restore berhasil! Halaman akan di-refresh...', 'success');
-                        setTimeout(() => location.reload(), 2000);
-                    }
-                })
-                .catch(err => {
-                    setProgress(false);
-                    showMsg('Gagal restore backup', 'error');
-                });
-        }
-
-        function deleteBackup(id, name) {
-            if (!confirm(`Yakin ingin menghapus backup "${name}"?`)) {
-                return;
-            }
-
-            fetch('/api/backup/delete/' + id, { method: 'DELETE' })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Backup berhasil dihapus', 'success');
-                        loadBackups();
-                    }
-                })
-                .catch(err => {
-                    showMsg('Gagal menghapus backup', 'error');
-                });
-        }
-    </script>
+    <!-- Modular Frontend Logic -->
+    <script src="{{ url_for('static', filename='backup.js') }}?v=1"></script>
 </body>
-
 </html>

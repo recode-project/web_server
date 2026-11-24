@@ -447,9 +447,9 @@
     /**
      * Menentukan icon perangkat berdasarkan nama dan IP
      */
-    function getDeviceIcon(name, ip) {
+    function getDeviceIcon(name, ip, isGateway = false) {
         const lowerName = (name || '').toLowerCase();
-        if (lowerName.includes('router') || lowerName.includes('gateway') || ip === '192.168.1.1') {
+        if (isGateway || lowerName.includes('router') || lowerName.includes('gateway')) {
             return 'fa-solid fa-network-wired';
         }
         if (lowerName.includes('phone') || lowerName.includes('hp') || lowerName.includes('android') || lowerName.includes('iphone') || lowerName.includes('ipad') || lowerName.includes('mobile')) {
@@ -497,6 +497,7 @@
             let percent = 0;
             let hasCustomName = false;
 
+            let isGateway = false;
             if (item && typeof item === 'object') {
                 if ('ip' in item && 'count' in item) {
                     ip = item.ip;
@@ -504,18 +505,19 @@
                     count = item.count;
                     percent = item.percent || 0;
                     hasCustomName = Boolean(item.has_custom_name);
+                    isGateway = Boolean(item.is_gateway);
                 } else {
                     const keys = Object.keys(item);
                     if (keys.length > 0) {
                         ip = keys[0];
                         count = item[ip];
-                        name = ip === '192.168.1.1' ? 'Router / Gateway' : 'Perangkat Tanpa Nama';
+                        name = 'Perangkat Tanpa Nama';
                         percent = totalQueries > 0 ? Number(((count / totalQueries) * 100).toFixed(2)) : 0;
                     }
                 }
             }
 
-            const deviceIcon = getDeviceIcon(name, ip);
+            const deviceIcon = getDeviceIcon(name, ip, isGateway);
             const progressClass = getProgressClass(percent);
             const displayPercent = percent > 0 ? `${percent}%` : '<1%';
 

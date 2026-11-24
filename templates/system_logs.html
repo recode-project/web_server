@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Logs & Journald Explorer — Eka Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-card: rgba(26, 26, 46, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-glow: rgba(248, 87, 166, 0.25);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-grad: linear-gradient(135deg, #f857a6, #ff5858);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.15);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.15);
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.15);
+            --info: #06b6d4;
+            --info-bg: rgba(6, 182, 212, 0.15);
+            --purple: #a855f7;
+            --purple-bg: rgba(168, 85, 247, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: #0f0c29;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            padding: 24px;
+        }
+
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            filter: brightness(0.48);
+            z-index: -1;
+            transform: translateZ(0);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1520px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Top Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.25s ease;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateX(-3px);
+        }
+
+        .title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .page-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--primary-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-subtitle {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pill-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-icon:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: scale(1.05);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(248, 87, 166, 0.4);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .stat-icon.red { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .stat-icon.amber { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .stat-icon.purple { background: linear-gradient(135deg, #a855f7, #7c3aed); color: white; }
+        .stat-icon.cyan { background: linear-gradient(135deg, #06b6d4, #0284c7); color: white; }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+        }
+
+        .stat-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.1;
+        }
+
+        /* Nav Tabs */
+        .tabs-nav {
+            display: flex;
+            gap: 10px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .tab-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .tab-btn.active {
+            background: var(--primary-grad);
+            color: #ffffff;
+            box-shadow: 0 4px 15px rgba(248, 87, 166, 0.4);
+        }
+
+        /* Tab Content Panes */
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tab-pane.active {
+            display: flex;
+        }
+
+        /* Controls Toolbar */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .select-input, .text-input {
+            background: rgba(15, 12, 41, 0.7);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .select-input:focus, .text-input:focus {
+            border-color: #f857a6;
+        }
+
+        .select-input option {
+            background: #1a162b;
+            color: #fff;
+        }
+
+        .text-input {
+            min-width: 240px;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-action:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .btn-action.active-glow {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #10b981;
+        }
+
+        /* Terminal Log Viewport */
+        .log-viewport {
+            background: rgba(10, 8, 26, 0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px;
+            min-height: 480px;
+            max-height: 720px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .log-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.02);
+            transition: background 0.15s ease;
+            word-break: break-all;
+        }
+
+        .log-entry:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .log-ts {
+            color: #64748b;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+            padding-top: 2px;
+        }
+
+        .priority-badge {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .priority-badge.emerg, .priority-badge.alert, .priority-badge.crit {
+            background: var(--danger-bg);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .priority-badge.err {
+            background: rgba(239, 68, 68, 0.18);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .priority-badge.warning {
+            background: var(--warning-bg);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .priority-badge.notice, .priority-badge.info {
+            background: var(--info-bg);
+            color: #38bdf8;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .priority-badge.debug {
+            background: rgba(148, 163, 184, 0.1);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .log-unit {
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+            border: 1px solid rgba(168, 85, 247, 0.25);
+        }
+
+        .log-pid {
+            color: #64748b;
+            font-size: 0.72rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .log-msg {
+            color: #e2e8f0;
+            flex-grow: 1;
+        }
+
+        /* SSH Audit View */
+        .audit-split {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 16px;
+        }
+
+        .attackers-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .card-header-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ffffff;
+        }
+
+        .attacker-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            transition: background 0.2s ease;
+        }
+
+        .attacker-item:hover {
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .attacker-ip {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #f87171;
+        }
+
+        .attacker-meta {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .btn-ban {
+            padding: 4px 10px;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger);
+            color: #fca5a5;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-ban:hover {
+            background: var(--danger);
+            color: #ffffff;
+        }
+
+        .audit-feed {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .event-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            transition: all 0.2s ease;
+        }
+
+        .event-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .event-card.failed { border-left: 4px solid var(--danger); }
+        .event-card.accepted { border-left: 4px solid var(--success); }
+        .event-card.sudo { border-left: 4px solid var(--purple); }
+
+        .event-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-grow: 1;
+        }
+
+        .event-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .event-user {
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 0.88rem;
+        }
+
+        .event-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .event-detail {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: #cbd5e1;
+            word-break: break-all;
+        }
+
+        /* Kernel Banner Alerts */
+        .kernel-alert-bar {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .health-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border-radius: 12px;
+            background: var(--glass-card);
+            border: 1px solid var(--glass-border);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .health-pill.healthy {
+            color: #34d399;
+            border-color: rgba(52, 211, 153, 0.3);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .health-pill.alert {
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.12);
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(26, 26, 46, 0.95);
+            border: 1px solid var(--glass-border);
+            padding: 12px 20px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 0.88rem;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .empty-state i {
+            font-size: 2.5rem;
+            opacity: 0.4;
+        }
+
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .audit-split {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            body { padding: 12px; }
+            .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .text-input { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wallpaper"></div>
+
+    <div class="container">
+        <!-- Top Header -->
+        <header class="header">
+            <div class="header-left">
+                <a href="/dashboard" class="btn-back">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Dashboard</span>
+                </a>
+                <div class="title-group">
+                    <h1 class="page-title">
+                        <i class="fa-solid fa-file-waveform"></i>
+                        System Logs & Journald Explorer
+                    </h1>
+                    <span class="page-subtitle">Real-Time Host Kernel, Journald Daemons & SSH Security Audit</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="pill-badge">
+                    <span class="pulse-dot"></span>
+                    <span>Sentinel Active</span>
+                </div>
+                <button id="btnRefreshAll" class="btn-icon" title="Perbarui Data">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Grid (24h Summary) -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon red">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Error Logs (24h)</span>
+                    <span id="statErrors24h" class="stat-val">0</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon amber">
+                    <i class="fa-solid fa-shield-virus"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">SSH Failed Attempts (24h)</span>
+                    <span id="statSshFailed24h" class="stat-val">0</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon purple">
+                    <i class="fa-solid fa-memory"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">OOM-Killer Events</span>
+                    <span id="statOomEvents" class="stat-val">0</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon cyan">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Kernel Alerts</span>
+                    <span id="statKernelAlerts" class="stat-val">0</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="tabJournal">
+                <i class="fa-solid fa-terminal"></i>
+                <span>Journald Explorer</span>
+            </button>
+            <button class="tab-btn" data-tab="tabAuth">
+                <i class="fa-solid fa-user-shield"></i>
+                <span>SSH & Auth Security</span>
+            </button>
+            <button class="tab-btn" data-tab="tabDmesg">
+                <i class="fa-solid fa-microchip"></i>
+                <span>Kernel Buffer (dmesg)</span>
+            </button>
+        </nav>
+
+        <!-- TAB 1: Journald Explorer -->
+        <div id="tabJournal" class="tab-pane active">
+            <div class="toolbar">
+                <div class="toolbar-group">
+                    <select id="journalUnitSelect" class="select-input">
+                        <option value="">Semua Service Host</option>
+                    </select>
+
+                    <select id="journalPrioritySelect" class="select-input">
+                        <option value="all">Semua Prioritas</option>
+                        <option value="errors_only">Hanya Error (0..3)</option>
+                        <option value="warnings_and_errors">Warning & Error (0..4)</option>
+                        <option value="info">Info ke Atas (0..6)</option>
+                        <option value="debug">Semua + Debug</option>
+                    </select>
+
+                    <select id="journalSinceSelect" class="select-input">
+                        <option value="15m">15 Menit Terakhir</option>
+                        <option value="1h" selected>1 Jam Terakhir</option>
+                        <option value="6h">6 Jam Terakhir</option>
+                        <option value="24h">24 Jam Terakhir</option>
+                        <option value="7d">7 Hari Terakhir</option>
+                        <option value="today">Hari Ini</option>
+                    </select>
+
+                    <select id="journalLimitSelect" class="select-input">
+                        <option value="50">50 Baris</option>
+                        <option value="100" selected>100 Baris</option>
+                        <option value="250">250 Baris</option>
+                        <option value="500">500 Baris</option>
+                    </select>
+
+                    <input type="text" id="journalSearchInput" class="text-input" placeholder="Filter teks / grep log...">
+                </div>
+
+                <div class="toolbar-group">
+                    <button id="btnJournalAutoRefresh" class="btn-action">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Auto Refresh: OFF</span>
+                    </button>
+                    <button id="btnJournalCopy" class="btn-action" title="Salin Log ke Clipboard">
+                        <i class="fa-solid fa-copy"></i>
+                        <span>Salin</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="journalLogViewport" class="log-viewport">
+                <div class="empty-state">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Memuat log systemd journald...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: SSH & Auth Security Audit -->
+        <div id="tabAuth" class="tab-pane">
+            <div class="toolbar">
+                <div class="toolbar-group">
+                    <select id="authSinceSelect" class="select-input">
+                        <option value="1h">1 Jam Terakhir</option>
+                        <option value="6h">6 Jam Terakhir</option>
+                        <option value="24h" selected>24 Jam Terakhir</option>
+                        <option value="7d">7 Hari Terakhir</option>
+                        <option value="all">Semua Riwayat</option>
+                    </select>
+
+                    <select id="authStatusSelect" class="select-input">
+                        <option value="all">Semua Event Autentikasi</option>
+                        <option value="failed">Hanya Login Gagal (Brute Force)</option>
+                        <option value="accepted">Hanya Login Berhasil</option>
+                        <option value="sudo">Hanya Eksekusi Sudo</option>
+                    </select>
+                </div>
+
+                <div class="toolbar-group">
+                    <span id="authStatsBadge" class="pill-badge">
+                        <span>Failed: 0</span> | <span>Accepted: 0</span> | <span>Sudo: 0</span>
+                    </span>
+                    <button id="btnAuthRefresh" class="btn-action">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Segarkan</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="audit-split">
+                <!-- Top Attacker IPs -->
+                <div class="attackers-card">
+                    <div class="card-header-title">
+                        <i class="fa-solid fa-user-ninja" style="color: #f87171;"></i>
+                        <span>Top Attacker IPs</span>
+                    </div>
+                    <div id="attackersList" style="display:flex; flex-direction:column; gap:8px;">
+                        <div class="empty-state" style="padding: 24px 0;">
+                            <span>Tidak ada aktivitas penyerang terdeteksi.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Auth Events Timeline -->
+                <div class="audit-feed" id="authEventsFeed">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>Memuat audit log autentikasi...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Kernel Buffer (dmesg) -->
+        <div id="tabDmesg" class="tab-pane">
+            <div class="kernel-alert-bar">
+                <div id="oomHealthPill" class="health-pill healthy">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>OOM-Killer: Bebas Insiden Out of Memory</span>
+                </div>
+                <div id="diskHealthPill" class="health-pill healthy">
+                    <i class="fa-solid fa-hard-drive"></i>
+                    <span>Storage I/O: Bebas Hardware / Disk Error</span>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <div class="toolbar-group">
+                    <select id="dmesgLevelSelect" class="select-input">
+                        <option value="all">Semua Level Kernel</option>
+                        <option value="err">Hanya Error & Critical</option>
+                        <option value="warn">Warning & Error</option>
+                        <option value="info">Info ke Atas</option>
+                    </select>
+
+                    <select id="dmesgLimitSelect" class="select-input">
+                        <option value="100">100 Baris</option>
+                        <option value="150" selected>150 Baris</option>
+                        <option value="300">300 Baris</option>
+                    </select>
+
+                    <input type="text" id="dmesgSearchInput" class="text-input" placeholder="Cari pesan dmesg...">
+                </div>
+
+                <div class="toolbar-group">
+                    <button id="btnDmesgCopy" class="btn-action">
+                        <i class="fa-solid fa-copy"></i>
+                        <span>Salin dmesg</span>
+                    </button>
+                    <button id="btnDmesgRefresh" class="btn-action">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Segarkan</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="dmesgLogViewport" class="log-viewport">
+                <div class="empty-state">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Memuat kernel ring buffer...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check" style="color: #10b981;"></i>
+        <span id="toastMsg">Tindakan berhasil</span>
+    </div>
+
+    <!-- Pure External Script -->
+    <script src="/static/system_logs.js"></script>
+</body>
+</html>
+

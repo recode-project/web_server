@@ -24,7 +24,7 @@ Jika server Anda sudah terpasang `git`, Anda dapat langsung mengkloning reposito
 sudo apt-get update && sudo apt-get install -y git
 
 # 2. Clone repositori Eka Dashboard
-git clone https://github.com/ekahr11/web_server.git eka_dashboard
+git clone https://github.com/recode-project/web_server.git eka_dashboard
 
 # 3. Masuk ke direktori
 cd eka_dashboard

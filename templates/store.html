@@ -9,138 +9,232 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=13">
     <style>
-        /* Override global body scroll for store page */
+        html {
+            background: #0f0c29 !important;
+        }
+
         body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            background: transparent !important;
+            overflow-x: hidden !important;
             overflow-y: auto !important;
             height: auto !important;
+            min-height: 100vh !important;
+            color: var(--text-main, #ffffff) !important;
+            position: relative !important;
+            user-select: auto !important;
+        }
+
+        .wallpaper {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: 0 !important;
+            filter: brightness(0.6);
+            pointer-events: none !important;
+            transform: translateZ(0);
         }
 
         .store-container {
-            padding: 1rem;
-            max-width: 1400px;
+            position: relative;
+            z-index: 1;
+            padding: 1.75rem 2.25rem 100px;
+            max-width: 1460px;
             margin: 0 auto;
-            /* Ensure bottom padding for scroll */
-            padding-bottom: 4rem;
         }
 
-        .store-header {
+        .store-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            padding: 1rem 1.5rem;
+            background: var(--glass-bg, rgba(30, 30, 40, 0.6));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+            border-radius: 20px;
+            margin-bottom: 1.35rem;
+            box-shadow: var(--shadow, 0 8px 32px 0 rgba(0, 0, 0, 0.3));
+        }
+
+        .topbar-left {
             display: flex;
             align-items: center;
             gap: 1rem;
-            margin-bottom: 2rem;
             flex-wrap: wrap;
         }
 
-        .categories {
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .store-stats-meta {
+            font-size: 0.82rem;
+            color: var(--text-muted, #a0a0b0);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+            padding-left: 0.9rem;
+            border-left: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+        }
+
+        .categories-bar {
             display: flex;
             gap: 0.5rem;
             overflow-x: auto;
-            padding-bottom: 0.5rem;
-            flex: 1;
-            margin-left: 1rem;
-            scrollbar-width: none;
-            /* Firefox */
-            -ms-overflow-style: none;
-            /* IE and Edge */
+            padding: 0.25rem 0 0.75rem;
+            margin-bottom: 1.25rem;
+            scrollbar-width: thin;
         }
 
-        .categories::-webkit-scrollbar {
-            display: none;
+        .categories-bar::-webkit-scrollbar {
+            height: 4px;
         }
 
-        .category-pill {
-            padding: 0.4rem 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
+        .categories-bar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .category-tab {
+            padding: 0.5rem 0.9rem;
+            background: var(--glass-bg, rgba(30, 30, 40, 0.6));
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+            border-radius: 10px;
             cursor: pointer;
             white-space: nowrap;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-            color: #8b949e;
+            font-size: 0.83rem;
+            font-weight: 500;
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+            color: rgba(255, 255, 255, 0.82);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-family: inherit;
         }
 
-        .category-pill:hover,
-        .category-pill.active {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.3);
-            color: #fff;
+        .category-tab .tab-count {
+            font-size: 0.74rem;
+            color: var(--text-muted, #a0a0b0);
+            font-variant-numeric: tabular-nums;
         }
 
-        .category-pill.active {
-            background: #58a6ff;
-            border-color: #58a6ff;
+        .category-tab:hover {
+            background: rgba(40, 40, 50, 0.72);
+            border-color: rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+        }
+
+        .category-tab.active {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.36);
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .category-tab.active .tab-count {
+            color: #ffffff;
+            opacity: 0.85;
+        }
+
+        .docker-warning-banner {
+            display: none;
+            align-items: center;
+            gap: 0.9rem;
+            padding: 1rem 1.3rem;
+            margin-bottom: 1.25rem;
+            border-radius: 16px;
+            background: var(--glass-bg, rgba(30, 30, 40, 0.6));
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 230, 109, 0.35);
+            color: #fde68a;
+            font-size: 0.88rem;
         }
 
         .apps-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 1.35rem;
         }
 
         .app-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 1.5rem;
+            background: var(--glass-bg, rgba(30, 30, 40, 0.6));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+            box-shadow: var(--shadow, 0 8px 32px 0 rgba(0, 0, 0, 0.3));
+            border-radius: var(--radius-lg, 24px);
+            padding: 1.35rem;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-            transition: transform 0.2s, box-shadow 0.2s;
+            gap: 0.85rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
             position: relative;
             overflow: hidden;
         }
 
         .app-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+            background: rgba(40, 40, 50, 0.7);
             border-color: rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.08);
         }
 
         .app-header {
             display: flex;
-            gap: 1rem;
-            align-items: flex-start;
+            gap: 0.9rem;
+            align-items: center;
         }
 
         .app-icon {
-            width: 64px;
-            height: 64px;
+            width: 48px;
+            height: 48px;
             border-radius: 12px;
             object-fit: contain;
             background: rgba(255, 255, 255, 0.1);
-            padding: 4px;
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+            padding: 6px;
+            flex-shrink: 0;
         }
 
         .app-info {
             flex: 1;
+            min-width: 0;
         }
 
         .app-name {
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.03rem;
             margin-bottom: 0.2rem;
+            color: var(--text-main, #ffffff);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .app-cat {
-            font-size: 0.75rem;
-            color: #58a6ff;
-            background: rgba(88, 166, 255, 0.15);
-            padding: 2px 8px;
-            border-radius: 4px;
-            display: inline-block;
+            font-size: 0.76rem;
+            color: var(--text-muted, #a0a0b0);
+            font-weight: 500;
         }
 
         .app-desc {
-            font-size: 0.85rem;
-            color: #8b949e;
-            line-height: 1.4;
+            font-size: 0.84rem;
+            color: rgba(255, 255, 255, 0.78);
+            line-height: 1.5;
             display: -webkit-box;
             line-clamp: 3;
             -webkit-line-clamp: 3;
@@ -149,198 +243,233 @@
             flex: 1;
         }
 
+        .app-meta-row {
+            font-size: 0.74rem;
+            color: var(--text-muted, #a0a0b0);
+            font-family: monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-top: 0.4rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .app-meta-row.is-running {
+            color: #4ecdc4;
+        }
+
+        .app-meta-row.is-stopped {
+            color: #ffe66d;
+        }
+
         .app-footer {
             margin-top: auto;
             display: flex;
             gap: 0.5rem;
+            align-items: center;
         }
 
         .btn {
-            border: none;
-            padding: 0.6rem 1.2rem;
-            border-radius: 8px;
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 0.56rem 0.95rem;
+            border-radius: 10px;
             cursor: pointer;
+            font-family: inherit;
+            font-size: 0.84rem;
             font-weight: 500;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            transition: all 0.2s;
+            gap: 0.45rem;
+            transition: background 0.18s ease, border-color 0.18s ease;
             flex: 1;
+            text-decoration: none;
+            min-height: 38px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .btn-auto {
+            flex: 0 0 auto;
+            width: auto;
         }
 
         .btn-install {
-            background: #238636;
+            background: rgba(16, 185, 129, 0.78);
+            border-color: rgba(255, 255, 255, 0.16);
             color: #fff;
         }
 
         .btn-install:hover {
-            background: #2ea043;
+            background: rgba(5, 150, 105, 0.92);
+            border-color: rgba(255, 255, 255, 0.24);
         }
 
-        .btn-installed {
-            background: rgba(56, 139, 253, 0.15);
-            color: #58a6ff;
-            cursor: default;
+        .btn-primary-blue {
+            background: rgba(37, 99, 235, 0.78);
+            border-color: rgba(255, 255, 255, 0.16);
+            color: #fff;
         }
 
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(5px);
-            z-index: 1000;
-            display: none;
-            justify-content: center;
-            align-items: center;
+        .btn-primary-blue:hover {
+            background: rgba(29, 78, 216, 0.92);
         }
 
-        .modal-content {
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
         }
 
-        .modal-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #30363d;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.34);
+            color: #fff;
         }
 
-        .modal-body {
-            padding: 1.5rem;
+        .btn-warn {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: rgba(245, 158, 11, 0.4);
+            color: #ffe66d;
         }
 
-        .modal-footer {
-            padding: 1.5rem;
-            border-top: 1px solid #30363d;
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
+        .btn-warn:hover {
+            background: rgba(245, 158, 11, 0.34);
+            color: #fff;
         }
 
-        .config-section {
-            margin-top: 1.5rem;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 1rem;
-            border-radius: 8px;
-        }
-
-        .config-item {
-            margin-bottom: 0.8rem;
-        }
-
-        .config-label {
+        .host-service-label {
+            color: var(--text-muted, #a0a0b0);
             font-size: 0.8rem;
-            color: #8b949e;
-            margin-bottom: 0.3rem;
-        }
-
-        .config-value {
-            font-family: monospace;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 0.4rem;
-            border-radius: 4px;
-            display: block;
-            word-break: break-all;
-        }
-
-        /* Loading Overlay */
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            font-weight: 500;
+            display: inline-flex;
             align-items: center;
-            z-index: 10;
-            border-radius: 16px;
-            display: none;
+            gap: 0.4rem;
+            padding: 0.45rem 0.2rem;
+            flex: 1;
         }
 
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top: 4px solid #58a6ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 1rem;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* NEW CSS */
         .search-box {
-            position: relative;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 0 0.8rem;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 12px;
+            padding: 0 0.85rem;
             display: flex;
             align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
         }
 
         .search-box input {
             background: none;
             border: none;
-            color: white;
-            padding: 0.6rem 0.5rem;
+            color: #fff;
+            padding: 0.56rem 0.5rem;
             outline: none;
-            width: 200px;
+            width: 210px;
+            font-family: inherit;
+            font-size: 0.85rem;
         }
 
         .search-box i {
-            color: #8b949e;
+            color: var(--text-muted, #a0a0b0);
         }
 
         .filter-select {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+            color: #fff;
+            padding: 0.56rem 0.9rem;
+            border-radius: 12px;
             outline: none;
             cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
         }
 
         .filter-select option {
             background: #1e1e28;
+            color: #ffffff;
+        }
+
+        /* Glassmorphism Modals */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        .modal-content {
+            background: rgba(30, 30, 40, 0.9);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+            border-radius: var(--radius-lg, 24px);
+            width: 100%;
+            max-width: 660px;
+            max-height: 90vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        }
+
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .modal-body {
+            padding: 1.35rem 1.5rem;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .config-group {
+            margin-bottom: 1.25rem;
+            background: rgba(0, 0, 0, 0.24);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .config-group h4 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 0.8rem;
+            gap: 0.85rem;
+            margin-bottom: 0.75rem;
             align-items: start;
-        }
-
-        .form-row.single {
-            grid-template-columns: 1fr;
         }
 
         .form-control {
@@ -349,92 +478,67 @@
 
         .form-control label {
             display: block;
-            font-size: 0.8rem;
-            color: #8b949e;
+            font-size: 0.78rem;
+            color: #94a3b8;
             margin-bottom: 0.3rem;
         }
 
-        .form-control input {
+        .form-control input,
+        .form-control select {
             width: 100%;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-            padding: 0.6rem;
-            border-radius: 6px;
+            background: rgba(8, 10, 18, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fff;
+            padding: 0.58rem 0.75rem;
+            border-radius: 8px;
             font-family: monospace;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .form-control input:focus,
+        .form-control select:focus {
+            border-color: #38bdf8;
         }
 
         .form-control .desc {
-            font-size: 0.75rem;
-            color: #58a6ff;
-            margin-top: 0.2rem;
+            font-size: 0.72rem;
+            color: #7dd3fc;
+            margin-top: 0.25rem;
         }
 
-        .toast {
-            background: #1e1e28;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            animation: slideIn 0.3s ease;
-            min-width: 300px;
-        }
-
-        .toast-success {
-            border-left: 4px solid #238636;
-        }
-
-        .toast-error {
-            border-left: 4px solid #da3633;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        /* Badge Status */
-        .status-badge {
+        .loading-overlay {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
-            font-size: 0.75rem;
-            padding: 2px 8px;
-            border-radius: 12px;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
+            inset: 0;
+            background: rgba(10, 12, 22, 0.78);
             display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 18px;
         }
 
-        .status-badge.running {
-            color: #3fb950;
-            display: block;
-            border: 1px solid #3fb950;
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            border-top: 3px solid #38bdf8;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin-bottom: 0.75rem;
         }
 
-        .status-badge.stopped {
-            color: #8b949e;
-            display: block;
-            border: 1px solid #8b949e;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
-        /* Custom App Modal Styles */
         .config-section-custom {
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 1.2rem;
-            margin-bottom: 1.5rem;
-            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background: rgba(0, 0, 0, 0.22);
         }
 
         .section-header-custom {
@@ -443,12 +547,12 @@
             align-items: center;
             margin-bottom: 0.5rem;
             padding-bottom: 0.5rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         .section-header-custom .title {
             font-weight: 600;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             color: #f0f6fc;
             display: flex;
             align-items: center;
@@ -456,9 +560,9 @@
         }
 
         .section-hint {
-            font-size: 0.75rem;
-            color: #8b949e;
-            margin-bottom: 1rem;
+            font-size: 0.74rem;
+            color: #94a3b8;
+            margin-bottom: 0.75rem;
         }
 
         .items-container {
@@ -469,93 +573,186 @@
 
         .empty-state {
             text-align: center;
-            color: #8b949e;
+            color: #94a3b8;
             font-style: italic;
-            padding: 1.5rem;
-            font-size: 0.85rem;
-            border: 1px dashed rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.02);
+            padding: 1rem;
+            font-size: 0.82rem;
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
         }
 
         .btn-sm-add {
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-            color: #58a6ff;
+            background: rgba(56, 189, 248, 0.14);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #7dd3fc;
             font-size: 0.75rem;
-            padding: 0.3rem 0.8rem;
-            border-radius: 6px;
+            padding: 0.3rem 0.75rem;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 0.4rem;
-        }
-
-        .btn-sm-add:hover {
-            background: rgba(88, 166, 255, 0.2);
-            border-color: #58a6ff;
+            gap: 0.35rem;
         }
 
         .btn-remove {
-            background: rgba(248, 81, 73, 0.1);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            color: #f85149;
-            width: 32px;
-            height: 32px;
+            background: rgba(239, 68, 68, 0.14);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #f87171;
+            width: 34px;
+            height: 34px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
             flex-shrink: 0;
-            margin-bottom: 2px;
-            /* Visual alignment with inputs */
-        }
-
-        .btn-remove:hover {
-            background: rgba(248, 81, 73, 0.2);
-            border-color: #f85149;
         }
 
         .custom-row-item {
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
             align-items: flex-end;
             background: rgba(255, 255, 255, 0.03);
-            padding: 0.8rem;
-            border-radius: 6px;
-            border: 1px solid transparent;
-            transition: border-color 0.2s;
+            padding: 0.7rem;
+            border-radius: 8px;
         }
 
-        .custom-row-item:hover {
-            border-color: rgba(255, 255, 255, 0.1);
+        /* Manage Modal Logs */
+        .manage-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.65rem;
+            margin-bottom: 1.15rem;
+        }
+
+        .port-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #7dd3fc;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.76rem;
+        }
+
+        .manage-logs-box {
+            background: #090c14;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 0.9rem;
+            font-family: monospace;
+            font-size: 0.76rem;
+            line-height: 1.45;
+            color: #cbd5e1;
+            height: 240px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Install Progress & Minimized Widget */
+        .progress-track {
+            background: rgba(255, 255, 255, 0.06);
+            height: 5px;
+            width: 100%;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #10b981;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #minimized-install-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(30, 30, 40, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            display: none;
+            align-items: center;
+            gap: 0.85rem;
+            width: 310px;
+            cursor: pointer;
+            z-index: 2200;
+            box-shadow: var(--shadow, 0 12px 32px rgba(0, 0, 0, 0.45));
+        }
+
+        .mini-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-top: 2px solid #4ecdc4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            flex-shrink: 0;
+        }
+
+        .toast {
+            background: rgba(30, 30, 40, 0.92);
+            backdrop-filter: blur(18px);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow, 0 10px 28px rgba(0, 0, 0, 0.4));
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            min-width: 290px;
+            font-size: 0.85rem;
+        }
+
+        .toast-success { border-color: rgba(16, 185, 129, 0.45); }
+        .toast-error { border-color: rgba(239, 68, 68, 0.45); }
+
+        @media (max-width: 640px) {
+            .store-container {
+                padding: 1rem 1rem 90px;
+            }
+            .store-stats-meta {
+                border-left: none;
+                padding-left: 0;
+            }
+            .topbar-right {
+                width: 100%;
+            }
+            .search-box {
+                flex: 1 1 100%;
+            }
+            .search-box input {
+                width: 100%;
+            }
+            .apps-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
-<body>
+<body data-user-role="{{ session.get('role', 'readonly') }}">
     <div class="wallpaper"></div>
 
     <div class="store-container">
-        <div class="store-header">
-            <button class="btn" style="background:rgba(255,255,255,0.1); width:auto; color:white"
-                onclick="window.location.href='/dashboard'">
-                <i class="fa-solid fa-arrow-left"></i> Dashboard
-            </button>
-            <h2 style="margin:0 0 0 1rem; font-weight:500">
-                <i class="fa-solid fa-store" style="color:#f5576c"></i> App Store
-            </h2>
-
-            <div class="categories" id="categories">
-                <div class="category-pill active" onclick="filterApps('All')">All Apps</div>
-                <!-- Categories injected here -->
+        <!-- Top Header Bar -->
+        <div class="store-topbar">
+            <div class="topbar-left">
+                <a href="/dashboard" class="btn btn-auto">
+                    <i class="fa-solid fa-arrow-left"></i> Dashboard
+                </a>
+                <h2 style="margin:0; font-weight:600; font-size:1.25rem; display:flex; align-items:center; gap:0.6rem">
+                    <i class="fa-solid fa-store" style="color:#f5576c"></i> App Store
+                </h2>
+                <span class="store-stats-meta" id="store-stats-pill">Memuat katalog...</span>
             </div>
 
-            <div style="margin-left:auto; display:flex; gap:1rem; align-items:center; flex-wrap:wrap">
-                <!-- Search & Filters -->
+            <div class="topbar-right">
                 <div class="search-box">
                     <i class="fa-solid fa-search"></i>
                     <input type="text" id="app-search" placeholder="Cari aplikasi..." onkeyup="applyFilters()">
@@ -567,812 +764,153 @@
                     <option value="not_installed">Belum Terinstall</option>
                 </select>
 
-                <button class="btn" style="background:#238636; width:auto; color:white"
-                    onclick="openCustomInstallModal()">
+                <button class="btn btn-install btn-auto" id="btn-custom-app" onclick="openCustomInstallModal()">
                     <i class="fa-solid fa-plus"></i> Custom App
                 </button>
 
-                <button class="btn" style="background:rgba(255,255,255,0.1); width:auto; color:white"
-                    onclick="loadApps()">
+                <button class="btn btn-auto" onclick="refreshStore()">
                     <i class="fa-solid fa-rotate-right"></i> Refresh
                 </button>
             </div>
         </div>
 
+        <!-- Category Tabs -->
+        <div class="categories-bar" id="categories">
+            <button type="button" class="category-tab active" onclick="filterCategory('All', this)">All</button>
+        </div>
+
+        <!-- Graceful Docker Unavailable Notice -->
+        <div class="docker-warning-banner" id="docker-warning-banner">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:1.25rem; color:#f59e0b"></i>
+            <div>
+                <strong>Docker Engine Tidak Terdeteksi:</strong> Katalog tetap dapat dijelajahi, namun instalasi kontainer Docker memerlukan Docker Engine aktif pada server ini. Layanan native host tetap terdeteksi otomatis.
+            </div>
+        </div>
+
+        <!-- Apps Grid -->
         <div class="apps-grid" id="apps-grid">
-            <!-- Apps injected here -->
-            <div style="grid-column:1/-1; text-align:center; padding:3rem; color:#8b949e">
+            <div style="grid-column:1/-1; text-align:center; padding:3rem; color:#94a3b8">
                 <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem"></i>
                 <div style="margin-top:1rem">Memuat katalog aplikasi...</div>
             </div>
         </div>
     </div>
 
-    <!-- Advanced Install Modal -->
+    <!-- Install / Custom App Modal -->
     <div id="install-modal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <div style="display:flex; align-items:center; gap:1rem">
-                    <img id="modal-icon" src="" style="width:40px; height:40px; border-radius:8px">
+                <div style="display:flex; align-items:center; gap:0.9rem">
+                    <img id="modal-icon" src="/static/icon.svg" alt="" style="width:42px; height:42px; border-radius:10px; background:rgba(255,255,255,0.08); padding:4px">
                     <div>
-                        <h3 style="margin:0">Install <span id="modal-app-name"></span></h3>
-                        <div id="modal-app-image" style="font-size:0.8rem; color:#8b949e; font-family:monospace"></div>
+                        <h3 style="margin:0; font-size:1.1rem">Install <span id="modal-app-name"></span></h3>
+                        <div id="modal-app-image" style="font-size:0.78rem; color:#94a3b8; font-family:monospace; margin-top:2px"></div>
                     </div>
                 </div>
-                <button onclick="closeModal()"
-                    style="background:none; border:none; color:#8b949e; cursor:pointer; font-size:1.2rem">&times;</button>
+                <button onclick="closeModal()" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:1.4rem">&times;</button>
             </div>
-            <div class="modal-body" id="modal-body">
-                <!-- Config Form -->
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-network-wired"></i> Network Ports</h4>
-                    <div id="config-ports"></div>
+            <div class="modal-body" id="modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-auto" onclick="closeModal()">Batal</button>
+                <button class="btn btn-install btn-auto" onclick="confirmInstall()" id="btn-confirm-install">
+                    <i class="fa-solid fa-download"></i> Install Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Installed App Modal (Start / Stop / Restart / Logs / Uninstall) -->
+    <div id="manage-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width:740px">
+            <div class="modal-header">
+                <div style="display:flex; align-items:center; gap:0.9rem">
+                    <img id="manage-icon" src="/static/icon.svg" alt="" style="width:42px; height:42px; border-radius:10px; background:rgba(255,255,255,0.08); padding:4px">
+                    <div>
+                        <h3 style="margin:0; font-size:1.1rem" id="manage-app-name">Manage App</h3>
+                        <div id="manage-app-meta" style="font-size:0.78rem; color:#94a3b8; font-family:monospace; margin-top:2px"></div>
+                    </div>
+                </div>
+                <button onclick="closeManageModal()" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:1.4rem">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="manage-ports-row" style="display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:1rem"></div>
+
+                <div class="manage-actions-grid">
+                    <button class="btn btn-install" id="btn-manage-start" onclick="runManageAction('start')">
+                        <i class="fa-solid fa-play"></i> Start
+                    </button>
+                    <button class="btn btn-warn" id="btn-manage-stop" onclick="runManageAction('stop')">
+                        <i class="fa-solid fa-stop"></i> Stop
+                    </button>
+                    <button class="btn btn-primary-blue" id="btn-manage-restart" onclick="runManageAction('restart')">
+                        <i class="fa-solid fa-rotate"></i> Restart
+                    </button>
+                    <button class="btn btn-install" id="btn-manage-open" onclick="openManagedApp()" style="display:none">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open UI
+                    </button>
+                    <button class="btn btn-danger" id="btn-manage-uninstall" onclick="runManageAction('uninstall')">
+                        <i class="fa-solid fa-trash"></i> Uninstall
+                    </button>
                 </div>
 
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-folder-open"></i> Volumes (Storage)</h4>
-                    <div id="config-volumes"></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.45rem">
+                    <span style="font-size:0.82rem; font-weight:600; color:#cbd5e1"><i class="fa-solid fa-terminal"></i> Container Logs (Last 150 lines)</span>
+                    <button class="btn btn-auto" style="padding:0.25rem 0.65rem; font-size:0.75rem" onclick="loadManageLogs()">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh Logs
+                    </button>
                 </div>
-
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-list"></i> Environment Variables</h4>
-                    <div id="config-env"></div>
-                </div>
+                <div class="manage-logs-box" id="manage-logs-box">Memuat log kontainer...</div>
             </div>
             <div class="modal-footer">
-                <button class="btn" style="background:rgba(255,255,255,0.1); color:#fff; width:auto"
-                    onclick="closeModal()">Batal</button>
-                <button class="btn btn-install" style="width:auto" onclick="confirmInstall()" id="btn-confirm-install">
-                    Install Now
+                <button class="btn btn-auto" onclick="closeManageModal()">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Minimized Install Widget -->
+    <div id="minimized-install-widget" onclick="restoreLogModal()">
+        <div class="mini-spinner" id="mini-spinner"></div>
+        <div style="flex:1; overflow:hidden">
+            <div style="font-weight:600; font-size:0.88rem; margin-bottom:2px" id="mini-title">Installing...</div>
+            <div id="mini-status" style="font-size:0.74rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Starting...</div>
+        </div>
+        <i class="fa-solid fa-expand" style="color:#94a3b8"></i>
+    </div>
+
+    <!-- Realtime Install Log Modal -->
+    <div id="log-modal" class="modal-overlay" style="z-index:2100">
+        <div class="modal-content" style="max-width:800px; height:78vh">
+            <div class="modal-header" style="background:rgba(10,12,20,0.9)">
+                <h3 style="margin:0; font-size:1rem; display:flex; align-items:center; gap:0.5rem">
+                    <i class="fa-solid fa-terminal" style="color:#38bdf8"></i> Installation Logs
+                </h3>
+                <button class="btn btn-auto" style="padding:0.35rem 0.7rem" onclick="minimizeLogModal()" title="Minimize">
+                    <i class="fa-solid fa-minus"></i>
+                </button>
+            </div>
+            <div class="progress-track">
+                <div class="progress-bar" id="install-progress-bar"></div>
+            </div>
+            <div style="background:rgba(10,12,20,0.9); padding:0.45rem 1rem; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.75rem; color:#94a3b8; font-family:monospace; display:flex; justify-content:space-between">
+                <span id="progress-text">Initializing...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="modal-body" style="background:#090c14; color:#cbd5e1; font-family:monospace; font-size:0.82rem; flex:1" id="log-container"></div>
+            <div class="modal-footer" id="log-footer" style="display:none; background:rgba(10,12,20,0.9)">
+                <button class="btn btn-auto" onclick="closeLogModal()">Tutup</button>
+                <button class="btn btn-install btn-auto" style="display:none" id="btn-open-app" onclick="refreshStoreAfterInstall()">
+                    <i class="fa-solid fa-rotate"></i> Refresh Store
                 </button>
             </div>
         </div>
     </div>
 
     <!-- Toast Container -->
-    <div id="toast-container"
-        style="position:fixed; bottom:20px; right:20px; z-index:2000; display:flex; flex-direction:column; gap:10px">
-    </div>
-
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}"; // Injected by Flask (Session)
-
-        let allApps = [];
-        let currentApp = null;
-        let installedApps = {}; // Map: id -> { running: bool, ports: [] }
-        let currentCategory = 'All';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadInstalledApps().then(loadApps);
-
-            // RBAC for Header Button
-            if (window.userRole !== 'owner' && window.userRole !== 'admin') {
-                const customBtn = document.querySelector('button[onclick="openCustomInstallModal()"]');
-                if (customBtn) customBtn.style.display = 'none';
-            }
-        });
-
-        function showToast(msg, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.innerHTML = `
-                <i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}" style="color:${type === 'success' ? '#3fb950' : '#da3633'}"></i>
-                <div style="flex:1">${msg}</div>
-                <button onclick="this.parentElement.remove()" style="background:none; border:none; color:#8b949e; cursor:pointer">&times;</button>
-            `;
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 5000);
-        }
-
-        function loadInstalledApps() {
-            return fetch('/api/store/installed')
-                .then(r => r.json())
-                .then(data => {
-                    installedApps = {};
-                    if (data.installed) {
-                        if (Array.isArray(data.installed)) {
-                            data.installed.forEach(item => {
-                                if (typeof item === 'string') {
-                                    installedApps[item] = { running: true };
-                                } else {
-                                    installedApps[item.id] = item;
-                                }
-                            });
-                        }
-                    }
-                })
-                .catch(console.error);
-        }
-
-        function loadApps() {
-            const grid = document.getElementById('apps-grid');
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:#8b949e"><i class="fa-solid fa-spinner fa-spin fa-2x"></i></div>';
-
-            fetch('/api/store/catalog')
-                .then(r => r.json())
-                .then(data => {
-                    allApps = data.catalog || [];
-                    renderCategories();
-                    applyFilters();
-                })
-                .catch(err => {
-                    grid.innerHTML = 'Error loading catalog';
-                    showToast('Gagal memuat katalog', 'error');
-                });
-        }
-
-        function renderCategories() {
-            const categories = ['All', ...new Set(allApps.map(a => a.category))];
-            const container = document.getElementById('categories');
-            container.innerHTML = categories.map(cat => `
-                <div class="category-pill ${cat === currentCategory ? 'active' : ''}" onclick="filterCategory('${cat}', this)">
-                    ${cat}
-                </div>
-            `).join('');
-        }
-
-        function filterCategory(cat, el) {
-            currentCategory = cat;
-            document.querySelectorAll('.category-pill').forEach(p => p.classList.remove('active'));
-            if (el) el.classList.add('active');
-            applyFilters();
-        }
-
-        function applyFilters() {
-            const search = document.getElementById('app-search').value.toLowerCase();
-            const statusFilter = document.getElementById('status-filter').value;
-
-            const filtered = allApps.filter(app => {
-                if (currentCategory !== 'All' && app.category !== currentCategory) return false;
-                if (search && !app.name.toLowerCase().includes(search) && !app.description.toLowerCase().includes(search)) return false;
-
-                const isInstalled = !!installedApps[app.id];
-                if (statusFilter === 'installed' && !isInstalled) return false;
-                if (statusFilter === 'not_installed' && isInstalled) return false;
-
-                return true;
-            });
-
-            renderApps(filtered);
-        }
-
-        function renderApps(apps) {
-            const container = document.getElementById('apps-grid');
-            if (apps.length === 0) {
-                container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:2rem; color:#8b949e">Tidak ada aplikasi ditemukan</div>';
-                return;
-            }
-
-            const canManage = (window.userRole === 'owner' || window.userRole === 'admin');
-
-            container.innerHTML = apps.map(app => {
-                const info = installedApps[app.id];
-                const isInstalled = !!info;
-                const isRunning = info && info.running;
-                const isNative = info && info.is_native;
-                const isCustom = app.category === 'Custom';
-
-                // Determine buttons
-                let buttons = '';
-                if (isInstalled) {
-                    if (canManage && !isNative) {
-                        buttons += `<button class="btn" style="background:rgba(255,255,255,0.1)" onclick="manageApp('${app.id}')"><i class="fa-solid fa-gear"></i> Manage</button>`;
-                    } else if (isNative) {
-                        buttons += `<span class="badge" style="background:rgba(59, 130, 246, 0.18); color:#60a5fa; border:1px solid rgba(59, 130, 246, 0.35); padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:600; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-server"></i> Host Service</span>`;
-                    }
-                    if (isRunning && info.ports && info.ports.length > 0) {
-                        buttons += `<button class="btn btn-install" onclick="openApp('${app.id}')"><i class="fa-solid fa-external-link-alt"></i> Open</button>`;
-                    }
-                } else {
-                    if (canManage) {
-                        buttons += `<button class="btn btn-install" onclick="openInstallModal('${app.id}')"><i class="fa-solid fa-download"></i> Install</button>`;
-                    }
-                }
-
-                return `
-                <div class="app-card" id="card-${app.id}">
-                    ${isInstalled ? `<div class="status-badge ${isRunning ? 'running' : 'stopped'}"><i class="fa-solid fa-circle" style="font-size:8px"></i> ${isRunning ? (isNative ? 'Running (Host)' : 'Running') : 'Stopped'}</div>` : ''}
-                    
-                    <div class="app-header">
-                        <img src="${app.icon}" class="app-icon" onerror="this.src='/static/icon.png'">
-                        <div class="app-info">
-                            <div class="app-name">${app.name}</div>
-                            <div class="app-cat">${app.category}</div>
-                        </div>
-                    </div>
-                    <div class="app-desc">${app.description}</div>
-                    <div class="app-footer">
-                        ${buttons}
-                    </div>
-                    
-                    <div class="loading-overlay" id="loading-${app.id}">
-                        <div class="spinner"></div><div style="color:white; font-size:0.9rem">Processing...</div>
-                    </div>
-                </div>
-            `;
-            }).join('');
-        }
-
-        function openApp(appId) {
-            const app = allApps.find(a => a.id === appId);
-            const installedInfo = installedApps[appId];
-
-            let port = null;
-            let protocol = 'http';
-
-            // Prioritize actual running ports from Docker
-            if (installedInfo && installedInfo.ports && installedInfo.ports.length > 0) {
-                // Try to find a mapped host port
-                // Filter out empty host ports if any
-                const validPort = installedInfo.ports.find(p => p.host && p.host !== '0' && p.host !== 0);
-                if (validPort) {
-                    port = validPort.host;
-                    if (validPort.protocol) protocol = validPort.protocol;
-                }
-            }
-
-            // Fallback to Catalog definition if not found in runtime (e.g. stopped but we want to guess, or custom)
-            if (!port && app && app.ports && app.ports.length > 0) {
-                port = app.ports[0].host;
-                if (app.ports[0].protocol === 'https') protocol = 'https';
-            }
-
-            if (port) {
-                // Normalize protocol
-                if (protocol === 'tcp') protocol = 'http';
-                window.open(`${protocol}://${window.location.hostname}:${port}`, '_blank');
-            } else {
-                showToast('Tidak dapat membuka aplikasi (Port tidak diketahui)', 'error');
-            }
-        }
-
-        function manageApp(appId) {
-            if (confirm(`Uninstall ${appId}? Data volume akan tetap tersimpan.`)) {
-                performAction(appId, 'uninstall');
-            }
-        }
-
-        function performAction(appId, action) {
-            const loading = document.getElementById(`loading-${appId}`);
-            if (loading) loading.style.display = 'flex';
-
-            fetch('/api/store/manage', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ app_id: appId, action: action })
-            }).then(r => r.json()).then(data => {
-                if (data.error) showToast(data.error, 'error');
-                else {
-                    showToast(`Berhasil ${action} ${appId}`);
-                    if (action === 'uninstall') {
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
-                    } else {
-                        setTimeout(() => {
-                            loadInstalledApps().then(applyFilters);
-                        }, 1000);
-                    }
-                }
-                if (loading) loading.style.display = 'none';
-            });
-        }
-
-
-        function openInstallModal(appId) {
-            currentApp = allApps.find(a => a.id === appId);
-            if (!currentApp) return;
-
-            document.getElementById('modal-app-name').textContent = currentApp.name;
-            document.getElementById('modal-app-image').textContent = currentApp.image;
-            document.getElementById('modal-icon').src = currentApp.icon;
-
-            // Standard Install View
-            document.getElementById('modal-body').innerHTML = `
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-network-wired"></i> Network Ports</h4>
-                    <div id="config-ports"></div>
-                </div>
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-folder-open"></i> Volumes (Storage)</h4>
-                    <div id="config-volumes"></div>
-                </div>
-                <div class="config-group">
-                    <h4><i class="fa-solid fa-list"></i> Environment Variables</h4>
-                    <div id="config-env"></div>
-                </div>
-            `;
-
-            // Build Configs
-            const portsHtml = (currentApp.ports || []).map((p, i) => `
-                <div class="form-row">
-                     <div class="form-control">
-                        <label>Host Port</label>
-                        <input type="number" id="port-host-${i}" value="${p.host}" class="install-config" data-config="port" data-idx="${i}" data-key="host">
-                        <div class="desc">Port di Eka Dashboard</div>
-                    </div>
-                    <div class="form-control">
-                        <label>Container Port (${p.protocol})</label>
-                        <input type="text" value="${p.container}" disabled style="opacity:0.5; cursor:not-allowed">
-                        <input type="hidden" id="port-container-${i}" value="${p.container}">
-                        <input type="hidden" id="port-proto-${i}" value="${p.protocol}">
-                    </div>
-                </div>
-            `).join('');
-            document.getElementById('config-ports').innerHTML = portsHtml || '<div style="color:#8b949e; font-style:italic">Tidak ada port yang perlu di-expose</div>';
-
-            const volHtml = (currentApp.volumes || []).map((v, i) => `
-                <div class="form-control" style="margin-bottom:1rem">
-                    <label>Host Path (${v.description})</label>
-                    <input type="text" id="vol-host-${i}" value="${v.bind}" class="install-config" data-config="vol" data-idx="${i}" data-key="bind">
-                    <div class="desc">Container Path: ${v.container}</div>
-                    <input type="hidden" id="vol-container-${i}" value="${v.container}">
-                </div>
-            `).join('');
-            document.getElementById('config-volumes').innerHTML = volHtml || '<div style="color:#8b949e; font-style:italic">Tidak ada volume persistent</div>';
-
-            const envHtml = (currentApp.env || []).map((e, i) => `
-                 <div class="form-control" style="margin-bottom:1rem">
-                    <label>${e.key}</label>
-                    <input type="text" id="env-val-${i}" value="${e.value}" class="install-config" data-config="env" data-idx="${i}" data-key="value">
-                    <input type="hidden" id="env-key-${i}" value="${e.key}">
-                </div>
-            `).join('');
-            document.getElementById('config-env').innerHTML = envHtml || '<div style="color:#8b949e; font-style:italic">Tidak ada environment variables</div>';
-
-            document.getElementById('install-modal').style.display = 'flex';
-        }
-
-        // --- CUSTOM INSTALL LOGIC ---
-        function openCustomInstallModal() {
-            currentApp = { id: 'custom' };
-
-            document.getElementById('modal-app-name').textContent = "Install Custom App";
-            document.getElementById('modal-app-image').textContent = "Manual Configuration";
-            document.getElementById('modal-icon').src = "/static/icon.png";
-
-            // Build Dynamic Form - Modern Layout
-            document.getElementById('modal-body').innerHTML = `
-                 <!-- Basic Info: Grid 2 Column -->
-                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; margin-bottom:1.5rem">
-                    <div class="form-control">
-                        <label>App Name <span style="color:#f85149">*</span></label>
-                        <input type="text" id="custom-app-name" placeholder="e.g. My Service" required>
-                    </div>
-                    <div class="form-control">
-                        <label>Docker Image <span style="color:#f85149">*</span></label>
-                        <input type="text" id="custom-app-image" placeholder="e.g. nginx:latest" required>
-                    </div>
-                 </div>
-
-                 <!-- Network Mode: Full Width -->
-                 <div class="form-control" style="margin-bottom:2rem">
-                    <label>Network Mode</label>
-                    <div class="select-wrapper" style="position:relative">
-                        <select id="custom-net-mode" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:white; padding:0.7rem; border-radius:8px; appearance:none; font-family:inherit">
-                            <option value="bridge">Bridge (Default - Recommended)</option>
-                            <option value="host">Host (Direct hardware access)</option>
-                            <option value="none">None</option>
-                        </select>
-                        <i class="fa-solid fa-chevron-down" style="position:absolute; right:1rem; top:50%; transform:translateY(-50%); color:#8b949e; pointer-events:none"></i>
-                    </div>
-                 </div>
-
-                 <!-- Section: Ports -->
-                 <div class="config-section-custom">
-                    <div class="section-header-custom">
-                        <div class="title"><i class="fa-solid fa-network-wired"></i> Ports</div>
-                        <button class="btn-sm-add" onclick="addCustomPort()"><i class="fa-solid fa-plus"></i> Add Port</button>
-                    </div>
-                    <div class="section-hint">Petakan port container ke host agar bisa diakses.</div>
-                    <div id="custom-ports-container" class="items-container">
-                        <div class="empty-state">Tidak ada port ditambahkan</div>
-                    </div>
-                </div>
-
-                <!-- Section: Volumes -->
-                <div class="config-section-custom">
-                    <div class="section-header-custom">
-                        <div class="title"><i class="fa-solid fa-folder-open"></i> Volumes</div>
-                        <button class="btn-sm-add" onclick="addCustomVol()"><i class="fa-solid fa-plus"></i> Add Volume</button>
-                    </div>
-                    <div class="section-hint">Persist data container ke penyimpanan host.</div>
-                    <div id="custom-vols-container" class="items-container">
-                        <div class="empty-state">Tidak ada volume ditambahkan</div>
-                    </div>
-                </div>
-
-                <!-- Section: Environment -->
-                <div class="config-section-custom">
-                    <div class="section-header-custom">
-                        <div class="title"><i class="fa-solid fa-list"></i> Environment Variables</div>
-                        <button class="btn-sm-add" onclick="addCustomEnv()"><i class="fa-solid fa-plus"></i> Add Variable</button>
-                    </div>
-                    <div class="section-hint">Konfigurasi variabel lingkungan (e.g. TZ, PUID).</div>
-                    <div id="custom-env-container" class="items-container">
-                         <div class="empty-state">Tidak ada environment var ditambahkan</div>
-                    </div>
-                </div>
-            `;
-
-            document.getElementById('install-modal').style.display = 'flex';
-        }
-
-        function clearEmptyState(containerId) {
-            const container = document.getElementById(containerId);
-            const empty = container.querySelector('.empty-state');
-            if (empty) empty.remove();
-        }
-
-        function addCustomPort() {
-            clearEmptyState('custom-ports-container');
-            const div = document.createElement('div');
-            div.className = 'form-row custom-row-item';
-            div.innerHTML = `
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Host Port</label>
-                    <input type="number" placeholder="8080" class="custom-port-host" style="width:100%">
-                </div>
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Container Port</label>
-                    <input type="number" placeholder="80" class="custom-port-container" style="width:100%">
-                </div>
-                <button onclick="this.closest('.custom-row-item').remove()" class="btn-remove" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-            `;
-            document.getElementById('custom-ports-container').appendChild(div);
-        }
-
-        function addCustomVol() {
-            clearEmptyState('custom-vols-container');
-            const div = document.createElement('div');
-            div.className = 'form-row custom-row-item';
-            div.innerHTML = `
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Host Path</label>
-                    <input type="text" placeholder="/data/myapp" class="custom-vol-host" style="width:100%">
-                </div>
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Container Path</label>
-                    <input type="text" placeholder="/config" class="custom-vol-container" style="width:100%">
-                </div>
-                <button onclick="this.closest('.custom-row-item').remove()" class="btn-remove" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-            `;
-            document.getElementById('custom-vols-container').appendChild(div);
-        }
-
-        function addCustomEnv() {
-            clearEmptyState('custom-env-container');
-            const div = document.createElement('div');
-            div.className = 'form-row custom-row-item';
-            div.innerHTML = `
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Key</label>
-                    <input type="text" placeholder="PUID" class="custom-env-key" style="width:100%">
-                </div>
-                <div style="flex:1">
-                    <label style="font-size:0.7rem; margin-bottom:0.2rem; display:block; color:#8b949e">Value</label>
-                    <input type="text" placeholder="1000" class="custom-env-val" style="width:100%">
-                </div>
-                <button onclick="this.closest('.custom-row-item').remove()" class="btn-remove" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-            `;
-            document.getElementById('custom-env-container').appendChild(div);
-        }
-
-
-        function closeModal() {
-            document.getElementById('install-modal').style.display = 'none';
-            currentApp = null;
-        }
-
-        function confirmInstall() {
-            if (!currentApp) return;
-            const appId = currentApp.id;
-
-            // Payload
-            let payload = { app_id: appId };
-
-            if (appId === 'custom') {
-                // Harvest Custom Data
-                const name = document.getElementById('custom-app-name').value;
-                const image = document.getElementById('custom-app-image').value;
-                const net = document.getElementById('custom-net-mode').value;
-
-                if (!name || !image) {
-                    alert("Name and Image are required");
-                    return;
-                }
-
-                // Harvest Ports
-                const ports = Array.from(document.querySelectorAll('.custom-row-item')).map(row => {
-                    const h = row.querySelector('.custom-port-host');
-                    const c = row.querySelector('.custom-port-container');
-                    if (h && c && h.value && c.value) return { host: h.value, container: c.value, protocol: 'tcp' };
-                    return null;
-                }).filter(Boolean);
-
-                // Harvest Vols
-                const vols = Array.from(document.querySelectorAll('.custom-row-item')).map(row => {
-                    const h = row.querySelector('.custom-vol-host');
-                    const c = row.querySelector('.custom-vol-container');
-                    if (h && c && h.value && c.value) return { bind: h.value, container: c.value };
-                    return null;
-                }).filter(Boolean);
-
-                // Harvest Envs
-                const envs = Array.from(document.querySelectorAll('.custom-row-item')).map(row => {
-                    const k = row.querySelector('.custom-env-key');
-                    const v = row.querySelector('.custom-env-val');
-                    if (k && v && k.value && v.value) return { key: k.value, value: v.value };
-                    return null;
-                }).filter(Boolean);
-
-                payload.config = { name, image, network_mode: net, ports, volumes: vols, env: envs };
-            } else {
-                // Harvest Standard
-                const customPorts = (currentApp.ports || []).map((p, i) => ({
-                    host: document.getElementById(`port-host-${i}`).value,
-                    container: document.getElementById(`port-container-${i}`).value,
-                    protocol: document.getElementById(`port-proto-${i}`).value
-                }));
-
-                const customVols = (currentApp.volumes || []).map((v, i) => ({
-                    bind: document.getElementById(`vol-host-${i}`).value,
-                    container: document.getElementById(`vol-container-${i}`).value
-                }));
-
-                const customEnv = (currentApp.env || []).map((e, i) => ({
-                    key: document.getElementById(`env-key-${i}`).value,
-                    value: document.getElementById(`env-val-${i}`).value
-                }));
-
-                payload.config = { ports: customPorts, volumes: customVols, env: customEnv };
-            }
-
-            // Close Config Modal
-            closeModal();
-
-            // Open Log Modal
-            resetLogModal();
-            document.getElementById('log-modal').style.display = 'flex';
-
-            fetch('/api/store/install', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        appendLog("Request Error: " + data.error, 'error');
-                    } else {
-                        appendLog("Request Accepted. Starting process...", 'success');
-                    }
-                })
-                .catch(err => {
-                    appendLog("Network Error: " + err.message, 'error');
-                });
-        }
-    </script>
-
-    <style>
-        /* Install Log UI Extras */
-        .progress-track {
-            background: rgba(255, 255, 255, 0.05);
-            height: 4px;
-            width: 100%;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: #238636;
-            width: 0%;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 10px rgba(35, 134, 54, 0.5);
-        }
-
-        #minimized-install-widget {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-left: 4px solid #58a6ff;
-            border-radius: 8px;
-            padding: 1rem;
-            display: none;
-            align-items: center;
-            gap: 1rem;
-            width: 300px;
-            cursor: pointer;
-            z-index: 2200;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
-            transition: transform 0.2s;
-        }
-
-        #minimized-install-widget:hover {
-            transform: translateY(-5px);
-        }
-
-        .mini-spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-top: 2px solid #58a6ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-    </style>
-
-    <!-- Minimized Widget -->
-    <div id="minimized-install-widget" onclick="restoreLogModal()">
-        <div class="mini-spinner" id="mini-spinner"></div>
-        <div style="flex:1; overflow:hidden">
-            <div style="font-weight:600; font-size:0.9rem; margin-bottom:2px" id="mini-title">Installing...</div>
-            <div id="mini-status"
-                style="font-size:0.75rem; color:#8b949e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
-                Starting...</div>
-        </div>
-        <i class="fa-solid fa-expand" style="color:#8b949e"></i>
-    </div>
-
-    <!-- Log Modal UI -->
-    <div id="log-modal" class="modal-overlay" style="z-index:2100">
-        <div class="modal-content"
-            style="max-width:800px; height:80vh; display:flex; flex-direction:column; border-radius:12px; overflow:hidden">
-            <!-- Header -->
-            <div class="modal-header" style="background:#0d1117; border-bottom:1px solid #30363d; padding:1rem 1.5rem">
-                <h3 style="margin:0; font-size:1rem; display:flex; align-items:center; gap:0.5rem">
-                    <i class="fa-solid fa-terminal" style="color:#8b949e"></i>
-                    Installation Logs
-                </h3>
-                <div style="display:flex; gap:0.5rem">
-                    <button class="btn" style="padding:0.4rem 0.8rem; background:rgba(255,255,255,0.05); width:auto"
-                        onclick="minimizeLogModal()" title="Minimize">
-                        <i class="fa-solid fa-minus"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Progress Bar -->
-            <div class="progress-track">
-                <div class="progress-bar" id="install-progress-bar"></div>
-            </div>
-            <div
-                style="background:#0d1117; padding:0.5rem 1rem; border-bottom:1px solid #21262d; font-size:0.75rem; color:#8b949e; font-family:monospace; display:flex; justify-content:space-between">
-                <span id="progress-text">Initializing...</span>
-                <span id="progress-percent">0%</span>
-            </div>
-
-            <!-- Body -->
-            <div class="modal-body"
-                style="background:#0d1117; color:#c9d1d9; font-family:monospace; padding:1rem; overflow-y:auto; flex:1"
-                id="log-container">
-                <!-- Logs here -->
-            </div>
-
-            <!-- Footer -->
-            <div class="modal-footer" id="log-footer" style="display:none; background:#0d1117">
-                <button class="btn" style="background:rgba(255,255,255,0.1); width:auto"
-                    onclick="closeLogModal()">Close</button>
-                <button class="btn btn-install" style="width:auto; display:none" id="btn-open-app"
-                    onclick="window.location.reload()">Refresh & Open</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Socket.IO Client -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script>
-        const socket = io();
-        let isMinimized = false;
-
-        socket.on('connect', () => console.log("Socket connected"));
-
-        socket.on('install_log', (data) => {
-            appendLog(data.message, data.type);
-        });
-
-        socket.on('install_progress', (data) => {
-            const percent = Math.round(data.percent);
-            updateProgress(percent, data.message);
-        });
-
-        socket.on('install_complete', (data) => {
-            const footer = document.getElementById('log-footer');
-            const btnOpen = document.getElementById('btn-open-app');
-            footer.style.display = 'flex';
-
-            // Finalize Progress
-            if (data.status === 'success') {
-                updateProgress(100, "Installation Complete");
-                appendLog("✅ INSTALLATION COMPLETE!", 'success');
-                btnOpen.style.display = 'flex';
-
-                // Update Mini Widget
-                updateMiniWidget("Installed", "Click to refresh", false);
-                document.getElementById('minimized-install-widget').style.borderLeftColor = '#3fb950';
-
-            } else {
-                updateProgress(100, "Installation Failed");
-                document.getElementById('install-progress-bar').style.backgroundColor = '#da3633';
-                appendLog("❌ INSTALLATION FAILED", 'error');
-
-                // Update Mini Widget
-                updateMiniWidget("Failed", "Check logs", false);
-                document.getElementById('minimized-install-widget').style.borderLeftColor = '#da3633';
-            }
-
-            // Auto-restore if minimized? Optional.
-            // if (isMinimized) restoreLogModal(); 
-        });
-
-        function resetLogModal() {
-            document.getElementById('log-container').innerHTML = '';
-            document.getElementById('install-progress-bar').style.width = '0%';
-            document.getElementById('install-progress-bar').style.backgroundColor = '#238636';
-            document.getElementById('progress-text').innerText = 'Starting...';
-            document.getElementById('progress-percent').innerText = '0%';
-            document.getElementById('log-footer').style.display = 'none';
-            document.getElementById('btn-open-app').style.display = 'none';
-        }
-
-        function appendLog(msg, type = 'info') {
-            const container = document.getElementById('log-container');
-            const div = document.createElement('div');
-            div.style.marginBottom = '5px';
-            div.style.lineHeight = '1.4';
-
-            if (type === 'error') div.style.color = '#ff7b72';
-            else if (type === 'success') div.style.color = '#3fb950';
-            else if (type === 'warning') div.style.color = '#d29922';
-            else if (type === 'dim') div.style.color = '#8b949e';
-
-            const time = new Date().toLocaleTimeString();
-            div.innerHTML = `<span style="color:#8b949e; margin-right:8px">[${time}]</span> ${msg}`;
-            container.appendChild(div);
-
-            // Auto scroll only if not minimized
-            if (!isMinimized) container.scrollTop = container.scrollHeight;
-        }
-
-        function updateProgress(percent, msg) {
-            document.getElementById('install-progress-bar').style.width = percent + '%';
-            document.getElementById('progress-percent').innerText = percent + '%';
-            if (msg) document.getElementById('progress-text').innerText = msg;
-
-            // Minimized State Logic
-            updateMiniWidget(`Installing... ${percent}%`, msg, true);
-        }
-
-        function updateMiniWidget(title, status, spinning) {
-            document.getElementById('mini-title').innerText = title;
-            document.getElementById('mini-status').innerText = status;
-            document.getElementById('mini-spinner').style.display = spinning ? 'block' : 'none';
-        }
-
-        function minimizeLogModal() {
-            isMinimized = true;
-            document.getElementById('log-modal').style.display = 'none';
-            // Show Widget
-            const widget = document.getElementById('minimized-install-widget');
-            widget.style.display = 'flex';
-        }
-
-        function restoreLogModal() {
-            isMinimized = false;
-            document.getElementById('minimized-install-widget').style.display = 'none';
-            document.getElementById('log-modal').style.display = 'flex';
-            // Scroll to bottom upon restore
-            const container = document.getElementById('log-container');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function closeLogModal() {
-            document.getElementById('log-modal').style.display = 'none';
-            document.getElementById('minimized-install-widget').style.display = 'none';
-        }
-    </script>
+    <div id="toast-container" style="position:fixed; bottom:20px; right:20px; z-index:2300; display:flex; flex-direction:column; gap:10px"></div>
+
+    <!-- External Modular Scripts (Zero Inline JS) -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="/static/store.js?v=3"></script>
 </body>
 
 </html>

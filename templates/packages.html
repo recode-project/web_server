@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Package & OS Update Manager — Eka Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=14">
+    <style>
+        html {
+            background: #0f0c29 !important;
+        }
+        body {
+            font-family: 'Inter', sans-serif !important;
+            color: var(--text-main) !important;
+            background: transparent !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            position: relative !important;
+            user-select: auto !important;
+        }
+        .wallpaper {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: 0 !important;
+            filter: brightness(0.55);
+            pointer-events: none !important;
+        }
+        .main-content {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+
+        /* Glassmorphism Buttons */
+        .btn {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            color: #fff !important;
+            padding: 8px 16px !important;
+            border-radius: 12px !important;
+            cursor: pointer !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            transition: all 0.2s ease !important;
+            text-decoration: none !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            outline: none !important;
+            font-family: inherit !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        }
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.18) !important;
+            transform: translateY(-2px) !important;
+            border-color: rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) !important;
+        }
+        .btn:active {
+            transform: translateY(0) !important;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            color: #e2e8f0 !important;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.18) !important;
+            color: #fff !important;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #0ba360, #3cba92) !important;
+            color: #fff !important;
+            font-weight: 700 !important;
+            border: none !important;
+            box-shadow: 0 4px 16px rgba(11, 163, 96, 0.35) !important;
+        }
+        .btn-primary:hover {
+            opacity: 0.94 !important;
+            box-shadow: 0 6px 20px rgba(11, 163, 96, 0.5) !important;
+        }
+        .top-bar-scheduler {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .top-bar-scheduler .left-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .top-bar-scheduler .btn-home {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .top-bar-scheduler .btn-home:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+        .top-bar-scheduler .title-group .main-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .top-bar-scheduler .title-group .sub-title {
+            font-size: 13px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 2px;
+        }
+        .top-bar-scheduler .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stats-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card-glass {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s ease;
+        }
+        .stat-card-glass:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+        .stat-info .stat-label {
+            font-size: 13px;
+            color: var(--text-muted, #94a3b8);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stat-info .stat-val {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .stat-info .stat-sub {
+            font-size: 12px;
+            color: var(--text-muted, #94a3b8);
+            margin-top: 4px;
+        }
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .tabs-header {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
+        }
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-muted, #94a3b8);
+            padding: 10px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        .tab-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.25), rgba(0, 242, 254, 0.25));
+            border-color: #4facfe;
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(79, 172, 254, 0.2);
+        }
+
+        .tab-pane {
+            display: none;
+        }
+        .tab-pane.active {
+            display: block;
+        }
+
+        .card-container {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .search-box {
+            position: relative;
+            flex: 1;
+            max-width: 380px;
+        }
+        .search-box i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted, #94a3b8);
+        }
+        .search-box input {
+            width: 100%;
+            padding: 10px 14px 10px 40px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box input:focus {
+            border-color: #4facfe;
+        }
+
+        .chip-group {
+            display: flex;
+            gap: 8px;
+        }
+        .filter-chip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted, #94a3b8);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-chip.active {
+            background: rgba(79, 172, 254, 0.2);
+            border-color: #4facfe;
+            color: #fff;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted, #94a3b8);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: #e2e8f0;
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-security {
+            background: rgba(255, 87, 87, 0.15);
+            color: #ff5757;
+            border: 1px solid rgba(255, 87, 87, 0.3);
+        }
+        .badge-regular {
+            background: rgba(79, 172, 254, 0.15);
+            color: #4facfe;
+            border: 1px solid rgba(79, 172, 254, 0.3);
+        }
+        .badge-success {
+            background: rgba(56, 239, 125, 0.15);
+            color: #38ef7d;
+            border: 1px solid rgba(56, 239, 125, 0.3);
+        }
+        .badge-warning {
+            background: rgba(245, 175, 25, 0.15);
+            color: #f5af19;
+            border: 1px solid rgba(245, 175, 25, 0.3);
+        }
+
+        .terminal-box {
+            background: #090d16;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #10b981;
+            height: 480px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 560px;
+            padding: 24px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted, #94a3b8);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 16px;
+            color: var(--text-muted, #94a3b8);
+        }
+        .empty-state i {
+            font-size: 40px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="wallpaper"></div>
+
+    <div class="main-content" style="max-width: 1400px; margin: 0 auto; padding: 24px 24px 100px 24px;">
+        <!-- Top Bar -->
+        <div class="top-bar-scheduler">
+            <div class="left-group">
+                <a href="/dashboard" class="btn-home" title="Kembali ke Dashboard">
+                    <i class="fa-solid fa-home"></i>
+                </a>
+                <div class="title-group">
+                    <div class="main-title">
+                        <i class="fa-solid fa-box-open" style="color: #4facfe;"></i>
+                        <span>Package & OS Update Manager</span>
+                    </div>
+                    <div class="sub-title" id="pm-subtitle">Manajemen Pembaruan Sistem Operasi &amp; Repository Paket Host</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="btn-refresh-apt" class="btn btn-secondary">
+                    <i class="fa-solid fa-arrows-rotate"></i> <span id="pm-refresh-label">Perbarui Cache Paket</span>
+                </button>
+                <button id="btn-upgrade-dryrun" class="btn btn-secondary">
+                    <i class="fa-solid fa-vial"></i> Simulasi (Dry-Run)
+                </button>
+                <button id="btn-upgrade-all" class="btn btn-primary" style="background: linear-gradient(135deg, #0ba360, #3cba92);">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> Upgrade Semua
+                </button>
+            </div>
+        </div>
+
+        <!-- 4 Stat Cards -->
+        <div class="stats-grid-4">
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Total Upgradable</div>
+                    <div class="stat-val" id="stat-total-pkgs">-</div>
+                    <div class="stat-sub" id="stat-pkgs-sub">Memuat paket...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(79, 172, 254, 0.15); color: #4facfe;">
+                    <i class="fa-solid fa-box-open"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Pembaruan Keamanan</div>
+                    <div class="stat-val" id="stat-security-pkgs">-</div>
+                    <div class="stat-sub" id="stat-security-sub">Memeriksa security repo...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(255, 87, 87, 0.15); color: #ff5757;">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Status Reboot Host</div>
+                    <div class="stat-val" id="stat-reboot-status" style="font-size: 20px;">-</div>
+                    <div class="stat-sub" id="stat-reboot-sub">Memeriksa kernel/system...</div>
+                </div>
+                <div class="stat-icon" id="stat-reboot-icon" style="background: rgba(56, 239, 125, 0.15); color: #38ef7d;">
+                    <i class="fa-solid fa-power-off"></i>
+                </div>
+            </div>
+
+            <div class="stat-card-glass">
+                <div class="stat-info">
+                    <div class="stat-label">Auto-Update Daemon</div>
+                    <div class="stat-val" id="stat-autoupdate-status" style="font-size: 20px;">-</div>
+                    <div class="stat-sub" id="pm-autoupdate-service">Mendeteksi daemon...</div>
+                </div>
+                <div class="stat-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs-header">
+            <button class="tab-btn active" data-tab="tab-packages">
+                <i class="fa-solid fa-boxes-stacked"></i> Paket Upgradable (<span id="badge-pkg-count">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="tab-kernel">
+                <i class="fa-solid fa-microchip"></i> Kernel & Reboot Status
+            </button>
+            <button class="tab-btn" data-tab="tab-console">
+                <i class="fa-solid fa-terminal"></i> <span id="pm-console-tab-label">Terminal Eksekusi Paket</span>
+            </button>
+        </div>
+
+        <!-- Tab 1: Upgradable Packages Table -->
+        <div id="tab-packages" class="tab-pane active">
+            <div class="card-container">
+                <div class="filter-bar">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-packages" placeholder="Cari nama paket, repository, versi...">
+                    </div>
+                    <div class="chip-group">
+                        <button class="filter-chip active" data-filter="all">Semua (<span id="count-chip-all">0</span>)</button>
+                        <button class="filter-chip" data-filter="security">Keamanan (<span id="count-chip-sec">0</span>)</button>
+                        <button class="filter-chip" data-filter="regular">Reguler (<span id="count-chip-reg">0</span>)</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Paket</th>
+                                <th>Kategori / Repository</th>
+                                <th>Versi Saat Ini</th>
+                                <th>Versi Baru</th>
+                                <th>Arsitektur</th>
+                                <th style="text-align: right;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packages-table-body">
+                            <tr>
+                                <td colspan="6">
+                                    <div class="empty-state">
+                                        <i class="fa-solid fa-spinner fa-spin"></i>
+                                        <p>Memuat daftar paket upgradable...</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Kernel & Reboot Telemetry -->
+        <div id="tab-kernel" class="tab-pane">
+            <div class="card-container">
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px; color: #fff;">
+                    <i class="fa-solid fa-server" style="color: #4facfe; margin-right: 8px;"></i>
+                    Informasi Kernel Linux Host
+                </h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase;">Kernel Aktif (Running)</div>
+                        <div id="kernel-running-val" style="font-size: 18px; font-weight: 700; color: #38ef7d; margin-top: 6px; font-family: 'JetBrains Mono', monospace;">-</div>
+                    </div>
+                    <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase;">Status Pembaruan Kernel</div>
+                        <div id="kernel-upgrade-status" style="font-size: 18px; font-weight: 700; color: #fff; margin-top: 6px;">-</div>
+                    </div>
+                </div>
+
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #fff;">
+                    <i class="fa-solid fa-layer-group" style="color: #a855f7; margin-right: 8px;"></i>
+                    Daftar Kernel Terpasang di Host
+                </h3>
+                <div id="installed-kernels-list" style="margin-bottom: 24px;">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <p>Memeriksa paket kernel...</p>
+                    </div>
+                </div>
+
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #fff;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color: #f5af19; margin-right: 8px;"></i>
+                    Pemicu Kebutuhan Reboot Host
+                </h3>
+                <div id="reboot-pkgs-list">
+                    <p style="color: var(--text-muted); font-size: 13px;">Memeriksa status reboot...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Execution Terminal Console -->
+        <div id="tab-console" class="tab-pane">
+            <div class="card-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span id="console-status-badge" class="badge badge-regular">Standby</span>
+                        <span id="pm-console-sub" style="font-size: 13px; color: var(--text-muted);">Output live proses package manager</span>
+                    </div>
+                    <button id="btn-clear-console" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                        <i class="fa-solid fa-trash"></i> Bersihkan Log
+                    </button>
+                </div>
+                <div id="apt-terminal-output" class="terminal-box">Menunggu perintah... Silakan klik "Perbarui Cache Paket", "Simulasi (Dry-Run)", atau "Upgrade Semua".</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Konfirmasi Aksi Paket</h3>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="margin-bottom: 20px;">
+                <p id="modal-message" style="color: #e2e8f0; font-size: 14px; line-height: 1.6;"></p>
+                <div id="modal-warning-box" style="display: none; margin-top: 12px; padding: 12px; background: rgba(255, 87, 87, 0.1); border: 1px solid rgba(255, 87, 87, 0.3); border-radius: 8px; color: #ff5757; font-size: 13px;"></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="modal-cancel-btn" class="btn btn-secondary">Batal</button>
+                <button id="modal-confirm-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #0ba360, #3cba92);">Jalankan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- External JavaScript: 100% Zero Inline JS -->
+    <script src="{{ url_for('static', filename='packages.js') }}?v=2"></script>
+</body>
+</html>
+

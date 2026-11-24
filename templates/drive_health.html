@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Health & S.M.A.R.T. Inspector — Eka Dashboard</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Eka Dashboard Master CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=13">
+    <style>
+        :root {
+            --glass-bg: rgba(30, 30, 40, 0.6);
+            --glass-card: rgba(26, 28, 42, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-muted: #a0a0b0;
+            --primary-grad: linear-gradient(135deg, #ff0844, #ffb199);
+            --danger: #ff6b6b;
+            --danger-bg: rgba(255, 107, 107, 0.15);
+            --warning: #ffe66d;
+            --warning-bg: rgba(255, 230, 109, 0.15);
+            --success: #4ecdc4;
+            --success-bg: rgba(78, 205, 196, 0.15);
+            --info: #38bdf8;
+            --info-bg: rgba(56, 189, 248, 0.15);
+            --purple: #a855f7;
+            --purple-bg: rgba(168, 85, 247, 0.15);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            background: #0f0c29;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            position: relative;
+            user-select: auto;
+        }
+
+        /* Eka Dashboard Signature Dynamic Animated Wallpaper */
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            filter: brightness(0.48);
+            z-index: -1;
+            transform: translateZ(0);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .drive-layout {
+            padding: 2rem 2.5rem;
+            max-width: 1520px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Top Bar Aligned with Dashboard */
+        .top-bar-smart {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 1rem 1.8rem;
+            border-radius: 99px;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .btn-home {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .btn-home:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .header-title h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .header-title h1 i {
+            color: #ff6b6b;
+            filter: drop-shadow(0 0 10px rgba(255, 107, 107, 0.5));
+        }
+
+        .header-title p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.55rem 1.15rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: var(--primary-grad);
+            color: #fff;
+            font-weight: 700;
+            border: none;
+            box-shadow: 0 4px 15px rgba(255, 8, 68, 0.3);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.94;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(255, 8, 68, 0.4);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+            border: none;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 18px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .stat-info h3 {
+            font-size: 11.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-info .stat-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-top: 4px;
+            letter-spacing: -0.5px;
+        }
+
+        .stat-info .stat-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .stat-icon.red { background: var(--danger-bg); color: #ff6b6b; }
+        .stat-icon.green { background: var(--success-bg); color: var(--success); }
+        .stat-icon.blue { background: var(--info-bg); color: var(--info); }
+        .stat-icon.purple { background: var(--purple-bg); color: var(--purple); }
+
+        /* Navigation Tabs */
+        .tabs-nav {
+            display: flex;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 6px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 11px 18px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 13.5px;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            background: var(--primary-grad);
+            font-weight: 700;
+            box-shadow: 0 4px 15px rgba(255, 8, 68, 0.3);
+        }
+
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tab-pane.active {
+            display: flex;
+        }
+
+        /* Drive Cards Grid */
+        .drives-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .drives-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .drive-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .drive-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .drive-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .drive-main-info {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .drive-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #38bdf8;
+        }
+
+        .drive-avatar.nvme {
+            color: #38ef7d;
+            background: rgba(56, 239, 125, 0.12);
+        }
+
+        .drive-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .drive-model {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11.5px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .badge-passed {
+            background: var(--success-bg);
+            color: #4ecdc4;
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        }
+
+        .badge-warning {
+            background: var(--danger-bg);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .badge-protocol {
+            background: rgba(255, 255, 255, 0.08);
+            color: #f1f5f9;
+            border: 1px solid var(--glass-border);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Telemetry Metrics Bar */
+        .telemetry-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 12px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .telemetry-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .telemetry-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .telemetry-val {
+            font-size: 14px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-main);
+        }
+
+        /* Progress Bar */
+        .progress-bar-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .progress-bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .progress-bar-bg {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        .fill-green { background: linear-gradient(90deg, #10b981, #38ef7d); }
+        .fill-yellow { background: linear-gradient(90deg, #f59e0b, #ffe66d); }
+        .fill-red { background: linear-gradient(90deg, #ef4444, #ff6b6b); }
+
+        /* Card Footer Actions */
+        .drive-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding-top: 14px;
+            margin-top: 4px;
+        }
+
+        /* Table Card */
+        .card-main {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        thead {
+            background: rgba(0, 0, 0, 0.35);
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        th {
+            padding: 14px 18px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* Form Controls */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .select-custom {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            font-size: 13px;
+            padding: 9px 14px;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .select-custom option {
+            background: #1a1a2e;
+            color: var(--text-main);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: rgba(22, 22, 36, 0.95);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 860px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .modal-header h2 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: var(--text-main);
+        }
+
+        .modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state i {
+            font-size: 42px;
+            margin-bottom: 14px;
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body>
+    <!-- Eka Dashboard Signature Dynamic Animated Wallpaper -->
+    <div class="wallpaper"></div>
+
+    <div class="drive-layout">
+        <!-- Top Navigation Bar aligned with Dashboard Theme -->
+        <header class="top-bar-smart">
+            <div class="header-brand">
+                <a href="/dashboard" class="btn-home" title="Kembali ke Dashboard">
+                    <i class="fa-solid fa-home"></i>
+                </a>
+                <div class="header-title">
+                    <h1><i class="fa-solid fa-heart-pulse"></i> Drive Health & S.M.A.R.T. Inspector</h1>
+                    <p>Telemetri Fisik NVMe & HDD SATA, S.M.A.R.T. Self-Test & Monitoring Array RAID / ZFS</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn" id="btn-refresh">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>Total Drive Fisik</h3>
+                    <div class="stat-val" id="stat-total-drives">-</div>
+                    <div class="stat-sub" id="stat-drives-breakdown">Memindai bus penyimpanan...</div>
+                </div>
+                <div class="stat-icon blue">
+                    <i class="fa-solid fa-hard-drive"></i>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>Kesehatan S.M.A.R.T.</h3>
+                    <div class="stat-val" id="stat-health-status" style="color: #4ecdc4;">-</div>
+                    <div class="stat-sub" id="stat-health-sub">- sehat, - perlu perhatian</div>
+                </div>
+                <div class="stat-icon green" id="stat-health-icon">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>Suhu Puncak Drive</h3>
+                    <div class="stat-val" id="stat-peak-temp">- °C</div>
+                    <div class="stat-sub" id="stat-peak-sub">Status termal fisik</div>
+                </div>
+                <div class="stat-icon red">
+                    <i class="fa-solid fa-temperature-half"></i>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>Array RAID / Storage</h3>
+                    <div class="stat-val" id="stat-raid-val" style="font-size: 1.25rem;">-</div>
+                    <div class="stat-sub" id="stat-raid-sub">mdadm & ZFS Inspector</div>
+                </div>
+                <div class="stat-icon purple">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="tab-drives">
+                <i class="fa-solid fa-hard-drive"></i> Drive Fisik (<span id="badge-drives-count">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="tab-selftest">
+                <i class="fa-solid fa-stethoscope"></i> S.M.A.R.T. Self-Test Runner
+            </button>
+            <button class="tab-btn" data-tab="tab-raid">
+                <i class="fa-solid fa-layer-group"></i> Array RAID & Storage Pool
+            </button>
+        </nav>
+
+        <!-- TAB 1: PHYSICAL DRIVES CARDS -->
+        <div class="tab-pane active" id="tab-drives">
+            <div class="drives-grid" id="drives-container">
+                <div class="empty-state" style="grid-column: 1 / -1;">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <p>Memindai telemetri S.M.A.R.T. dari drive fisik host...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: SELF-TEST RUNNER -->
+        <div class="tab-pane" id="tab-selftest">
+            <div class="card-main" style="padding: 24px; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i class="fa-solid fa-microchip" style="font-size: 24px; color: #ff6b6b;"></i>
+                    <div>
+                        <h2 style="font-size: 16px; font-weight: 700;">Jalankan S.M.A.R.T. Self-Test Diagnostik</h2>
+                        <p style="font-size: 12.5px; color: var(--text-muted);">Uji kesehatan internal kontroler, memori flash, dan integritas sektor disk tanpa memengaruhi data.</p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 8px;">
+                    <div class="form-group">
+                        <label class="form-label">Pilih Drive Sasaran:</label>
+                        <select class="select-custom" id="selftest-drive-select">
+                            <option value="">Memuat drive...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Tipe Pengujian (Self-Test Routine):</label>
+                        <select class="select-custom" id="selftest-type-select">
+                            <option value="short">Short Self-Test (Pemeriksaan cepat elektrik & mekanik ~2 menit)</option>
+                            <option value="long">Extended / Long Self-Test (Pemindaian menyeluruh seluruh sektor ~1-2 jam)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 6px;">
+                    <button class="btn btn-primary" id="btn-start-selftest">
+                        <i class="fa-solid fa-play"></i> Mulai Self-Test
+                    </button>
+                    <button class="btn btn-danger" id="btn-abort-selftest">
+                        <i class="fa-solid fa-stop"></i> Batalkan Pengujian (Abort)
+                    </button>
+                </div>
+
+                <div style="margin-top: 14px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border); border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Status Pengujian Saat Ini:</div>
+                    <div id="selftest-output-box" style="margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #a7f3d0;">
+                        Pilih drive di atas lalu klik "Mulai Self-Test" untuk memulai diagnosa.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: RAID & ZFS STORAGE POOLS -->
+        <div class="tab-pane" id="tab-raid">
+            <div class="card-main">
+                <div style="padding: 18px 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center;">
+                    <h2 style="font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-server" style="color: #a855f7;"></i> Linux Software RAID (`mdadm`) &amp; ZFS Pools
+                    </h2>
+                    <span class="badge badge-protocol" id="raid-status-badge">Standby</span>
+                </div>
+                <div id="raid-content-box" style="padding: 24px;">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <p>Memeriksa status RAID dan storage pool...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: DETAILED S.M.A.R.T. INSPECTION -->
+    <div class="modal-overlay" id="modal-smart-detail">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>
+                    <i class="fa-solid fa-microchip" style="color: #ff6b6b;"></i>
+                    <span id="modal-drive-title">Detail S.M.A.R.T. Drive</span>
+                </h2>
+                <button class="modal-close" id="modal-detail-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-detail-body">
+                <div class="empty-state">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <p>Memuat atribut telemetri lengkap...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- External JavaScript: 100% Zero Inline JS -->
+    <script src="{{ url_for('static', filename='drive_health.js') }}?v=2"></script>
+</body>
+</html>
+

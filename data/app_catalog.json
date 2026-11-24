@@ -1,0 +1,2887 @@
+[
+    {
+        "id": "ollama",
+        "name": "Ollama",
+        "description": "Run Llama 3, Qwen, DeepSeek, Mistral, and custom GGUF models locally with an OpenAI-compatible API.",
+        "category": "AI & LLM",
+        "image": "ollama/ollama:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/ollama.png",
+        "ports": [
+            {
+                "container": 11434,
+                "host": 11434,
+                "protocol": "tcp",
+                "description": "REST API"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/root/.ollama",
+                "bind": "ollama_models",
+                "description": "Models & Config"
+            }
+        ],
+        "env": [],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "open-webui",
+        "name": "Open WebUI",
+        "description": "Feature-rich self-hosted AI chat interface for Ollama and OpenAI-compatible LLM endpoints.",
+        "category": "AI & LLM",
+        "image": "ghcr.io/open-webui/open-webui:main",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/open-webui.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 3080,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/backend/data",
+                "bind": "open_webui_data",
+                "description": "App Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "OLLAMA_BASE_URL",
+                "value": "http://host.docker.internal:11434"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "n8n",
+        "name": "n8n Automation",
+        "description": "Fair-code workflow automation and AI agent orchestration platform with 400+ integrations.",
+        "category": "AI & LLM",
+        "image": "docker.n8n.io/n8nio/n8n:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/n8n.png",
+        "ports": [
+            {
+                "container": 5678,
+                "host": 5678,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/home/node/.n8n",
+                "bind": "n8n_data",
+                "description": "Workflows & Credentials"
+            }
+        ],
+        "env": [
+            {
+                "key": "GENERIC_TIMEZONE",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5678
+    },
+    {
+        "id": "flowise",
+        "name": "Flowise AI",
+        "description": "Drag-and-drop visual builder to create customized LLM flows, RAG pipelines, and AI agents.",
+        "category": "AI & LLM",
+        "image": "flowiseai/flowise:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/flowise.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 3010,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/root/.flowise",
+                "bind": "flowise_data",
+                "description": "Flows & Storage"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "qdrant",
+        "name": "Qdrant Vector DB",
+        "description": "High-performance vector similarity search engine and vector database for AI & RAG workloads.",
+        "category": "AI & LLM",
+        "image": "qdrant/qdrant:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/qdrant.png",
+        "ports": [
+            {
+                "container": 6333,
+                "host": 6333,
+                "protocol": "tcp",
+                "description": "REST API & Dashboard"
+            },
+            {
+                "container": 6334,
+                "host": 6334,
+                "protocol": "tcp",
+                "description": "gRPC API"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/qdrant/storage",
+                "bind": "qdrant_storage",
+                "description": "Vector Storage"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 6333
+    },
+    {
+        "id": "librechat",
+        "name": "LibreChat",
+        "description": "Enhanced multi-provider AI chat workspace supporting OpenAI, Anthropic, Gemini, Groq, and local LLMs.",
+        "category": "AI & LLM",
+        "image": "ghcr.io/danny-avila/librechat-dev:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/librechat.png",
+        "ports": [
+            {
+                "container": 3080,
+                "host": 3081,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/client/public/images",
+                "bind": "librechat_images",
+                "description": "Uploads"
+            }
+        ],
+        "env": [
+            {
+                "key": "HOST",
+                "value": "0.0.0.0"
+            },
+            {
+                "key": "PORT",
+                "value": "3080"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3080
+    },
+    {
+        "id": "mariadb",
+        "name": "MariaDB",
+        "description": "Popular open-source relational database server and drop-in replacement for MySQL.",
+        "category": "Database",
+        "image": "mariadb:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/mariadb.png",
+        "ports": [
+            {
+                "container": 3306,
+                "host": 3306,
+                "protocol": "tcp",
+                "description": "Database Port"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/lib/mysql",
+                "bind": "mariadb_data",
+                "description": "Database Data"
+            },
+            {
+                "container": "/etc/mysql/conf.d",
+                "bind": "mariadb_config",
+                "description": "Custom Config"
+            }
+        ],
+        "env": [
+            {
+                "key": "MARIADB_ROOT_PASSWORD",
+                "value": "changeme_strong_pass"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "postgres",
+        "name": "PostgreSQL",
+        "description": "Advanced open-source object-relational database system with strong ACID compliance.",
+        "category": "Database",
+        "image": "postgres:16-alpine",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/postgresql.png",
+        "ports": [
+            {
+                "container": 5432,
+                "host": 5432,
+                "protocol": "tcp",
+                "description": "Database Port"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/lib/postgresql/data",
+                "bind": "postgres_data",
+                "description": "Database Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "POSTGRES_PASSWORD",
+                "value": "changeme_strong_pass"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "redis",
+        "name": "Redis",
+        "description": "In-memory data structure store used as database, cache, message broker, and streaming engine.",
+        "category": "Database",
+        "image": "redis:7-alpine",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/redis.png",
+        "ports": [
+            {
+                "container": 6379,
+                "host": 6379,
+                "protocol": "tcp",
+                "description": "Redis Port"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "redis_data",
+                "description": "Persistence Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "mongodb",
+        "name": "MongoDB",
+        "description": "Flexible document-oriented NoSQL database engineered for modern cloud and web applications.",
+        "category": "Database",
+        "image": "mongo:7",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/mongodb.png",
+        "ports": [
+            {
+                "container": 27017,
+                "host": 27017,
+                "protocol": "tcp",
+                "description": "MongoDB Port"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data/db",
+                "bind": "mongodb_data",
+                "description": "Database Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "MONGO_INITDB_ROOT_USERNAME",
+                "value": "admin"
+            },
+            {
+                "key": "MONGO_INITDB_ROOT_PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "phpmyadmin",
+        "name": "phpMyAdmin",
+        "description": "Web administration interface for managing MySQL and MariaDB databases.",
+        "category": "Database",
+        "image": "lscr.io/linuxserver/phpmyadmin:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/phpmyadmin.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8089,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [
+            {
+                "key": "PMA_ARBITRARY",
+                "value": "1"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "adminer",
+        "name": "Adminer",
+        "description": "Ultra-lightweight full-featured database management UI supporting MySQL, PostgreSQL, SQLite & MongoDB.",
+        "category": "Database",
+        "image": "adminer:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/adminer.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8084,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "pgadmin",
+        "name": "pgAdmin 4",
+        "description": "Comprehensive web administration and SQL query platform for PostgreSQL servers.",
+        "category": "Database",
+        "image": "dpage/pgadmin4:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/pgadmin.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 5050,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/lib/pgadmin",
+                "bind": "pgadmin_data",
+                "description": "pgAdmin Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "PGADMIN_DEFAULT_EMAIL",
+                "value": "admin@example.com"
+            },
+            {
+                "key": "PGADMIN_DEFAULT_PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "minio",
+        "name": "MinIO S3 Storage",
+        "description": "High-performance, S3-compatible object storage server with built-in web console.",
+        "category": "Database",
+        "image": "minio/minio:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/minio.png",
+        "ports": [
+            {
+                "container": 9000,
+                "host": 9005,
+                "protocol": "tcp",
+                "description": "S3 API"
+            },
+            {
+                "container": 9001,
+                "host": 9006,
+                "protocol": "tcp",
+                "description": "Web Console"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "minio_data",
+                "description": "Object Storage"
+            }
+        ],
+        "env": [
+            {
+                "key": "MINIO_ROOT_USER",
+                "value": "minioadmin"
+            },
+            {
+                "key": "MINIO_ROOT_PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 9001,
+        "command": "server /data --console-address :9001"
+    },
+    {
+        "id": "jellyfin",
+        "name": "Jellyfin",
+        "description": "Free open-source media streaming server for movies, TV shows, music, and live TV.",
+        "category": "Media",
+        "image": "jellyfin/jellyfin:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png",
+        "ports": [
+            {
+                "container": 8096,
+                "host": 8096,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "jellyfin_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/cache",
+                "bind": "jellyfin_cache",
+                "description": "Transcode Cache"
+            },
+            {
+                "container": "/media",
+                "bind": "/srv/media",
+                "description": "Media Library"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8096
+    },
+    {
+        "id": "plex",
+        "name": "Plex Media Server",
+        "description": "Organize and stream your personal movies, shows, photos, and music to any device.",
+        "category": "Media",
+        "image": "lscr.io/linuxserver/plex:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/plex.png",
+        "ports": [
+            {
+                "container": 32400,
+                "host": 32400,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "plex_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/data",
+                "bind": "/srv/media",
+                "description": "Media Library"
+            }
+        ],
+        "env": [
+            {
+                "key": "VERSION",
+                "value": "docker"
+            },
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "host",
+        "restart": "unless-stopped",
+        "web_port": 32400
+    },
+    {
+        "id": "emby",
+        "name": "Emby Server",
+        "description": "Personal media server that converts and streams your media library on-the-fly.",
+        "category": "Media",
+        "image": "emby/embyserver:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png",
+        "ports": [
+            {
+                "container": 8096,
+                "host": 8097,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "emby_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/mnt/share",
+                "bind": "/srv/media",
+                "description": "Media Library"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8096
+    },
+    {
+        "id": "navidrome",
+        "name": "Navidrome",
+        "description": "Modern, fast Subsonic-compatible music streaming server for your personal audio collection.",
+        "category": "Media",
+        "image": "deluan/navidrome:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/navidrome.png",
+        "ports": [
+            {
+                "container": 4533,
+                "host": 4533,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "navidrome_data",
+                "description": "Database & Cache"
+            },
+            {
+                "container": "/music",
+                "bind": "/srv/media/music",
+                "description": "Music Folder"
+            }
+        ],
+        "env": [
+            {
+                "key": "ND_SCANSCHEDULE",
+                "value": "1h"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 4533
+    },
+    {
+        "id": "audiobookshelf",
+        "name": "Audiobookshelf",
+        "description": "Self-hosted audiobook and podcast server with progress sync across mobile and web.",
+        "category": "Media",
+        "image": "ghcr.io/advplyr/audiobookshelf:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/audiobookshelf.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 13378,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "audiobookshelf_config",
+                "description": "Config"
+            },
+            {
+                "container": "/metadata",
+                "bind": "audiobookshelf_meta",
+                "description": "Metadata"
+            },
+            {
+                "container": "/audiobooks",
+                "bind": "/srv/media/audiobooks",
+                "description": "Audiobooks"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "photoprism",
+        "name": "PhotoPrism",
+        "description": "AI-powered self-hosted photo gallery and media organizer with automatic tagging.",
+        "category": "Media",
+        "image": "photoprism/photoprism:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/photoprism.png",
+        "ports": [
+            {
+                "container": 2342,
+                "host": 2342,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/photoprism/originals",
+                "bind": "/srv/media/photos",
+                "description": "Originals"
+            },
+            {
+                "container": "/photoprism/storage",
+                "bind": "photoprism_storage",
+                "description": "Storage & Index"
+            }
+        ],
+        "env": [
+            {
+                "key": "PHOTOPRISM_ADMIN_PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 2342
+    },
+    {
+        "id": "kavita",
+        "name": "Kavita",
+        "description": "Lightning-fast cross-platform reading server for Manga, Comics, EPUBs, and PDFs.",
+        "category": "Media",
+        "image": "jvmilazz0/kavita:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/kavita.png",
+        "ports": [
+            {
+                "container": 5000,
+                "host": 5005,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/kavita/config",
+                "bind": "kavita_config",
+                "description": "Config"
+            },
+            {
+                "container": "/books",
+                "bind": "/srv/media/books",
+                "description": "Books & Manga"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5000
+    },
+    {
+        "id": "calibre-web",
+        "name": "Calibre-Web",
+        "description": "Clean web interface for browsing, reading, and downloading eBooks from a Calibre database.",
+        "category": "Media",
+        "image": "lscr.io/linuxserver/calibre-web:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/calibre-web.png",
+        "ports": [
+            {
+                "container": 8083,
+                "host": 8083,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "calibre_web_config",
+                "description": "Config"
+            },
+            {
+                "container": "/books",
+                "bind": "/srv/media/books",
+                "description": "Calibre Library"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8083
+    },
+    {
+        "id": "metube",
+        "name": "MeTube",
+        "description": "Self-hosted web GUI for yt-dlp supporting video and audio downloads from hundreds of sites.",
+        "category": "Media",
+        "image": "ghcr.io/alexta69/metube:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/metube.png",
+        "ports": [
+            {
+                "container": 8081,
+                "host": 8085,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8081
+    },
+    {
+        "id": "nextcloud",
+        "name": "Nextcloud",
+        "description": "Complete self-hosted cloud file sync, calendar, contacts, and team collaboration suite.",
+        "category": "Files",
+        "image": "nextcloud:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/nextcloud.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8086,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/www/html",
+                "bind": "nextcloud_data",
+                "description": "Nextcloud Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "filebrowser",
+        "name": "File Browser",
+        "description": "Fast web-based file manager with upload, sharing, preview, and multi-user permissions.",
+        "category": "Files",
+        "image": "filebrowser/filebrowser:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/filebrowser.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8088,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/srv",
+                "bind": "/srv",
+                "description": "Served Directory"
+            },
+            {
+                "container": "/database",
+                "bind": "filebrowser_db",
+                "description": "Database Dir"
+            },
+            {
+                "container": "/config",
+                "bind": "filebrowser_config",
+                "description": "Config Dir"
+            }
+        ],
+        "env": [
+            {
+                "key": "FB_DATABASE",
+                "value": "/database/filebrowser.db"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "syncthing",
+        "name": "Syncthing",
+        "description": "Continuous decentralized peer-to-peer file synchronization across all your devices.",
+        "category": "Files",
+        "image": "lscr.io/linuxserver/syncthing:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/syncthing.png",
+        "ports": [
+            {
+                "container": 8384,
+                "host": 8384,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 22000,
+                "host": 22000,
+                "protocol": "tcp",
+                "description": "Sync TCP"
+            },
+            {
+                "container": 22000,
+                "host": 22000,
+                "protocol": "udp",
+                "description": "Sync UDP"
+            },
+            {
+                "container": 21027,
+                "host": 21027,
+                "protocol": "udp",
+                "description": "Discovery"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "syncthing_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/data1",
+                "bind": "/srv/media",
+                "description": "Synced Folder"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8384
+    },
+    {
+        "id": "stirling-pdf",
+        "name": "Stirling PDF",
+        "description": "Locally hosted all-in-one PDF manipulation suite: merge, split, OCR, compress, sign & convert.",
+        "category": "Files",
+        "image": "frooodle/s-pdf:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/stirling-pdf.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8087,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/configs",
+                "bind": "stirling_pdf_config",
+                "description": "Config"
+            },
+            {
+                "container": "/usr/share/tessdata",
+                "bind": "stirling_pdf_ocr",
+                "description": "OCR Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "memos",
+        "name": "Memos",
+        "description": "Privacy-first, lightweight self-hosted memo hub and Markdown knowledge capture tool.",
+        "category": "Files",
+        "image": "neosmemo/memos:stable",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/memos.png",
+        "ports": [
+            {
+                "container": 5230,
+                "host": 5230,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/opt/memos",
+                "bind": "memos_data",
+                "description": "Memos Database"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5230
+    },
+    {
+        "id": "bookstack",
+        "name": "BookStack Wiki",
+        "description": "Simple, organized self-hosted documentation and wiki platform arranged in shelves, books & pages.",
+        "category": "Files",
+        "image": "lscr.io/linuxserver/bookstack:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/bookstack.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 6875,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "bookstack_config",
+                "description": "Config & Uploads"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "APP_URL",
+                "value": "http://localhost:6875"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "trilium",
+        "name": "Trilium Notes",
+        "description": "Hierarchical personal knowledge base with rich note trees, scripting, and encrypted sync.",
+        "category": "Files",
+        "image": "triliumnext/notes:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/trilium.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8090,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/home/node/trilium-data",
+                "bind": "trilium_data",
+                "description": "Notes Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "pairdrop",
+        "name": "PairDrop",
+        "description": "Local network file transfer app inspired by AirDrop \u2014 share files instantly via browser.",
+        "category": "Files",
+        "image": "lscr.io/linuxserver/pairdrop:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/pairdrop.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 3002,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "excalidraw",
+        "name": "Excalidraw",
+        "description": "Virtual hand-drawn style whiteboard for architecture diagrams and collaborative sketching.",
+        "category": "Files",
+        "image": "excalidraw/excalidraw:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/excalidraw.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 5002,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "adguardhome",
+        "name": "AdGuard Home",
+        "description": "Network-wide DNS ad-blocker, tracker shield, and private DNS-over-HTTPS resolver.",
+        "category": "Network",
+        "image": "adguard/adguardhome:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/adguard-home.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8053,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 3000,
+                "host": 3053,
+                "protocol": "tcp",
+                "description": "Initial Setup UI"
+            },
+            {
+                "container": 53,
+                "host": 5353,
+                "protocol": "tcp",
+                "description": "DNS TCP"
+            },
+            {
+                "container": 53,
+                "host": 5353,
+                "protocol": "udp",
+                "description": "DNS UDP"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/opt/adguardhome/work",
+                "bind": "adguard_work",
+                "description": "Work Dir"
+            },
+            {
+                "container": "/opt/adguardhome/conf",
+                "bind": "adguard_conf",
+                "description": "Config Dir"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "pihole",
+        "name": "Pi-hole",
+        "description": "DNS sinkhole that protects all devices on your network from unwanted ads and trackers.",
+        "category": "Network",
+        "image": "pihole/pihole:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/pihole.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8080,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 53,
+                "host": 5354,
+                "protocol": "tcp",
+                "description": "DNS TCP"
+            },
+            {
+                "container": 53,
+                "host": 5354,
+                "protocol": "udp",
+                "description": "DNS UDP"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/etc/pihole",
+                "bind": "pihole_etc",
+                "description": "Pi-hole Config"
+            },
+            {
+                "container": "/etc/dnsmasq.d",
+                "bind": "pihole_dnsmasq",
+                "description": "DNSMasq Config"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "WEBPASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "nginx-proxy-manager",
+        "name": "Nginx Proxy Manager",
+        "description": "Manage Nginx reverse proxy hosts and free Let's Encrypt SSL certificates from a visual UI.",
+        "category": "Network",
+        "image": "jc21/nginx-proxy-manager:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/nginx-proxy-manager.png",
+        "ports": [
+            {
+                "container": 81,
+                "host": 81,
+                "protocol": "tcp",
+                "description": "Admin Web UI"
+            },
+            {
+                "container": 80,
+                "host": 8081,
+                "protocol": "tcp",
+                "description": "HTTP Proxy"
+            },
+            {
+                "container": 443,
+                "host": 8443,
+                "protocol": "tcp",
+                "description": "HTTPS Proxy"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "npm_data",
+                "description": "Data"
+            },
+            {
+                "container": "/etc/letsencrypt",
+                "bind": "npm_letsencrypt",
+                "description": "SSL Certs"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 81
+    },
+    {
+        "id": "caddy",
+        "name": "Caddy Server",
+        "description": "Fast, modern web server and reverse proxy with automatic HTTPS via Let's Encrypt.",
+        "category": "Network",
+        "image": "caddy:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/caddy.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8091,
+                "protocol": "tcp",
+                "description": "HTTP"
+            },
+            {
+                "container": 443,
+                "host": 8444,
+                "protocol": "tcp",
+                "description": "HTTPS"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "caddy_data",
+                "description": "Certs & State"
+            },
+            {
+                "container": "/config",
+                "bind": "caddy_config",
+                "description": "Caddy Config"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "tailscale",
+        "name": "Tailscale",
+        "description": "Zero-config WireGuard mesh VPN for securely connecting servers and devices anywhere.",
+        "category": "Network",
+        "image": "tailscale/tailscale:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/tailscale.png",
+        "ports": [],
+        "volumes": [
+            {
+                "container": "/var/lib/tailscale",
+                "bind": "tailscale_state",
+                "description": "State Dir"
+            }
+        ],
+        "env": [
+            {
+                "key": "TS_STATE_DIR",
+                "value": "/var/lib/tailscale"
+            },
+            {
+                "key": "TS_AUTHKEY",
+                "value": ""
+            }
+        ],
+        "has_web_ui": false,
+        "network_mode": "host",
+        "restart": "unless-stopped",
+        "cap_add": [
+            "NET_ADMIN"
+        ],
+        "devices": [
+            "/dev/net/tun:/dev/net/tun"
+        ]
+    },
+    {
+        "id": "wg-easy",
+        "name": "WireGuard Easy",
+        "description": "All-in-one WireGuard VPN server with a clean Web UI and instant mobile QR codes.",
+        "category": "Network",
+        "image": "ghcr.io/wg-easy/wg-easy:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/wireguard.png",
+        "ports": [
+            {
+                "container": 51821,
+                "host": 51821,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 51820,
+                "host": 51820,
+                "protocol": "udp",
+                "description": "WireGuard UDP"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/etc/wireguard",
+                "bind": "wg_easy_config",
+                "description": "WireGuard Config"
+            }
+        ],
+        "env": [
+            {
+                "key": "WG_HOST",
+                "value": "your.public.ip.or.domain"
+            },
+            {
+                "key": "PASSWORD_HASH",
+                "value": ""
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 51821,
+        "cap_add": [
+            "NET_ADMIN",
+            "SYS_MODULE"
+        ]
+    },
+    {
+        "id": "cloudflared",
+        "name": "Cloudflare Tunnel",
+        "description": "Expose internal web apps securely through Cloudflare Zero Trust without opening router ports.",
+        "category": "Network",
+        "image": "cloudflare/cloudflared:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/cloudflare.png",
+        "ports": [],
+        "volumes": [],
+        "env": [
+            {
+                "key": "TUNNEL_TOKEN",
+                "value": ""
+            }
+        ],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "command": "tunnel --no-autoupdate run"
+    },
+    {
+        "id": "uptime-kuma",
+        "name": "Uptime Kuma",
+        "description": "Self-hosted uptime monitoring tool with status pages and multi-channel incident alerts.",
+        "category": "Monitoring",
+        "image": "louislam/uptime-kuma:1",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/uptime-kuma.png",
+        "ports": [
+            {
+                "container": 3001,
+                "host": 3001,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/data",
+                "bind": "uptime_kuma_data",
+                "description": "Database & Config"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3001
+    },
+    {
+        "id": "grafana",
+        "name": "Grafana",
+        "description": "Open-source observability and interactive time-series dashboarding platform.",
+        "category": "Monitoring",
+        "image": "grafana/grafana-oss:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/grafana.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 3005,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/lib/grafana",
+                "bind": "grafana_data",
+                "description": "Dashboards & Plugins"
+            }
+        ],
+        "env": [
+            {
+                "key": "GF_SECURITY_ADMIN_PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "prometheus",
+        "name": "Prometheus",
+        "description": "Systems monitoring and time-series metrics collection toolkit with PromQL alerting.",
+        "category": "Monitoring",
+        "image": "prom/prometheus:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/prometheus.png",
+        "ports": [
+            {
+                "container": 9090,
+                "host": 9090,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/prometheus",
+                "bind": "prometheus_data",
+                "description": "TSDB Storage"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 9090
+    },
+    {
+        "id": "dozzle",
+        "name": "Dozzle",
+        "description": "Real-time lightweight web log viewer for all running Docker containers with live search.",
+        "category": "Monitoring",
+        "image": "amir20/dozzle:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/dozzle.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8888,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/run/docker.sock",
+                "bind": "/var/run/docker.sock",
+                "description": "Docker Socket"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "beszel",
+        "name": "Beszel Hub",
+        "description": "Lightweight multi-server monitoring hub with historical stats, Docker metrics, and alerts.",
+        "category": "Monitoring",
+        "image": "henrygd/beszel:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/beszel.png",
+        "ports": [
+            {
+                "container": 8090,
+                "host": 8092,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/beszel_data",
+                "bind": "beszel_data",
+                "description": "Hub Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8090
+    },
+    {
+        "id": "glances",
+        "name": "Glances",
+        "description": "Cross-platform real-time system monitoring tool with web UI and REST API.",
+        "category": "Monitoring",
+        "image": "nicolargo/glances:latest-full",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/glances.png",
+        "ports": [
+            {
+                "container": 61208,
+                "host": 61208,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/run/docker.sock",
+                "bind": "/var/run/docker.sock",
+                "description": "Docker Socket"
+            }
+        ],
+        "env": [
+            {
+                "key": "GLANCES_OPT",
+                "value": "-w"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 61208
+    },
+    {
+        "id": "speedtest-tracker",
+        "name": "Speedtest Tracker",
+        "description": "Automated internet speedtest scheduler tracking download, upload, and ping history.",
+        "category": "Monitoring",
+        "image": "lscr.io/linuxserver/speedtest-tracker:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/speedtest-tracker.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8098,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "speedtest_tracker_config",
+                "description": "Config & DB"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "DB_CONNECTION",
+                "value": "sqlite"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "portainer",
+        "name": "Portainer CE",
+        "description": "Lightweight Docker container, image, network, and stack management web interface.",
+        "category": "Developer",
+        "image": "portainer/portainer-ce:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/portainer.png",
+        "ports": [
+            {
+                "container": 9000,
+                "host": 9000,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 8000,
+                "host": 8000,
+                "protocol": "tcp",
+                "description": "Edge Agent"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/run/docker.sock",
+                "bind": "/var/run/docker.sock",
+                "description": "Docker Socket"
+            },
+            {
+                "container": "/data",
+                "bind": "portainer_data",
+                "description": "Portainer Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "always",
+        "web_port": 9000
+    },
+    {
+        "id": "dockge",
+        "name": "Dockge",
+        "description": "Reactive, clean web manager specifically crafted for docker-compose.yaml stacks.",
+        "category": "Developer",
+        "image": "louislam/dockge:1",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/dockge.png",
+        "ports": [
+            {
+                "container": 5001,
+                "host": 5001,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/run/docker.sock",
+                "bind": "/var/run/docker.sock",
+                "description": "Docker Socket"
+            },
+            {
+                "container": "/app/data",
+                "bind": "dockge_data",
+                "description": "Dockge Data"
+            },
+            {
+                "container": "/opt/stacks",
+                "bind": "/opt/stacks",
+                "description": "Stacks Directory"
+            }
+        ],
+        "env": [
+            {
+                "key": "DOCKGE_STACKS_DIR",
+                "value": "/opt/stacks"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5001
+    },
+    {
+        "id": "gitea",
+        "name": "Gitea",
+        "description": "Painless, ultra-lightweight self-hosted Git service with issues, pull requests, and CI Actions.",
+        "category": "Developer",
+        "image": "gitea/gitea:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/gitea.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 3030,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 22,
+                "host": 2222,
+                "protocol": "tcp",
+                "description": "Git SSH"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "gitea_data",
+                "description": "Repositories & DB"
+            }
+        ],
+        "env": [
+            {
+                "key": "USER_UID",
+                "value": "1000"
+            },
+            {
+                "key": "USER_GID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "code-server",
+        "name": "VS Code Server",
+        "description": "Run full Visual Studio Code on your Linux server and code from any browser.",
+        "category": "Developer",
+        "image": "lscr.io/linuxserver/code-server:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/vscode.png",
+        "ports": [
+            {
+                "container": 8443,
+                "host": 8445,
+                "protocol": "tcp",
+                "description": "Web IDE"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "code_server_config",
+                "description": "Workspace & Extensions"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "PASSWORD",
+                "value": "changeme_strong_pass"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8443
+    },
+    {
+        "id": "it-tools",
+        "name": "IT-Tools",
+        "description": "Collection of 80+ handy developer utilities: JWT, Base64, Hash, Regex, Cron, CIDR & Docker tools.",
+        "category": "Developer",
+        "image": "corentinth/it-tools:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/it-tools.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8093,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "cyberchef",
+        "name": "CyberChef",
+        "description": "The Cyber Swiss Army Knife for encryption, encoding, compression, and forensic data analysis.",
+        "category": "Developer",
+        "image": "ghcr.io/gchq/cyberchef:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/cyberchef.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8094,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "registry",
+        "name": "Docker Registry",
+        "description": "Private self-hosted OCI/Docker container image registry for internal deployments.",
+        "category": "Developer",
+        "image": "registry:2",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/docker.png",
+        "ports": [
+            {
+                "container": 5000,
+                "host": 5004,
+                "protocol": "tcp",
+                "description": "Registry API"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/lib/registry",
+                "bind": "docker_registry_data",
+                "description": "Image Blobs"
+            }
+        ],
+        "env": [],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "homeassistant",
+        "name": "Home Assistant",
+        "description": "Open-source smart home automation hub putting local control and privacy first.",
+        "category": "Home Automation",
+        "image": "ghcr.io/home-assistant/home-assistant:stable",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/home-assistant.png",
+        "ports": [
+            {
+                "container": 8123,
+                "host": 8123,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "hass_config",
+                "description": "Configuration"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "host",
+        "restart": "unless-stopped",
+        "web_port": 8123
+    },
+    {
+        "id": "homebridge",
+        "name": "Homebridge",
+        "description": "Lightweight Node.js server emulating the Apple HomeKit API for smart home devices.",
+        "category": "Home Automation",
+        "image": "homebridge/homebridge:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homebridge.png",
+        "ports": [
+            {
+                "container": 8581,
+                "host": 8581,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/homebridge",
+                "bind": "homebridge_config",
+                "description": "Configuration"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "host",
+        "restart": "unless-stopped",
+        "web_port": 8581
+    },
+    {
+        "id": "mosquitto",
+        "name": "Eclipse Mosquitto",
+        "description": "Lightweight open-source MQTT message broker for IoT sensors, ESP32, and smart home gear.",
+        "category": "Home Automation",
+        "image": "eclipse-mosquitto:2",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/mosquitto.png",
+        "ports": [
+            {
+                "container": 1883,
+                "host": 1883,
+                "protocol": "tcp",
+                "description": "MQTT TCP"
+            },
+            {
+                "container": 9001,
+                "host": 9002,
+                "protocol": "tcp",
+                "description": "WebSockets"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/mosquitto/config",
+                "bind": "mosquitto_config",
+                "description": "Config"
+            },
+            {
+                "container": "/mosquitto/data",
+                "bind": "mosquitto_data",
+                "description": "Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "nodered",
+        "name": "Node-RED",
+        "description": "Low-code event-driven flow programming for IoT hardware, MQTT brokers, and APIs.",
+        "category": "Home Automation",
+        "image": "nodered/node-red:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/node-red.png",
+        "ports": [
+            {
+                "container": 1880,
+                "host": 1880,
+                "protocol": "tcp",
+                "description": "Flow Editor"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "nodered_data",
+                "description": "Flows & Nodes"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 1880
+    },
+    {
+        "id": "vaultwarden",
+        "name": "Vaultwarden",
+        "description": "Lightweight Rust implementation of the Bitwarden password manager server.",
+        "category": "Privacy",
+        "image": "vaultwarden/server:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/vaultwarden.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8099,
+                "protocol": "tcp",
+                "description": "Web Vault"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "vaultwarden_data",
+                "description": "Encrypted Vault"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "ntfy",
+        "name": "ntfy Push Server",
+        "description": "Simple HTTP pub-sub notification server to send push alerts to phones and desktops.",
+        "category": "Privacy",
+        "image": "binwiederhier/ntfy:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/ntfy.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8095,
+                "protocol": "tcp",
+                "description": "Web UI & API"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/cache/ntfy",
+                "bind": "ntfy_cache",
+                "description": "Cache"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80,
+        "command": "serve"
+    },
+    {
+        "id": "gotify",
+        "name": "Gotify",
+        "description": "Self-hosted real-time notification server with WebSocket streaming and Android app.",
+        "category": "Privacy",
+        "image": "gotify/server:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/gotify.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 8075,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/data",
+                "bind": "gotify_data",
+                "description": "Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "searxng",
+        "name": "SearXNG",
+        "description": "Privacy-respecting metasearch engine aggregating results without tracking or profiling.",
+        "category": "Privacy",
+        "image": "searxng/searxng:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/searxng.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8082,
+                "protocol": "tcp",
+                "description": "Search UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/etc/searxng",
+                "bind": "searxng_config",
+                "description": "Config"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "homarr",
+        "name": "Homarr",
+        "description": "Customizable modern homelab dashboard integrating seamlessly with Docker and *arr apps.",
+        "category": "Dashboards",
+        "image": "ghcr.io/ajnart/homarr:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homarr.png",
+        "ports": [
+            {
+                "container": 7575,
+                "host": 7575,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/data/configs",
+                "bind": "homarr_configs",
+                "description": "Configs"
+            },
+            {
+                "container": "/app/public/icons",
+                "bind": "homarr_icons",
+                "description": "Icons"
+            },
+            {
+                "container": "/data",
+                "bind": "homarr_data",
+                "description": "Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 7575
+    },
+    {
+        "id": "homepage",
+        "name": "Homepage",
+        "description": "Fast, static-compiled application dashboard with over 100 service API widgets.",
+        "category": "Dashboards",
+        "image": "ghcr.io/gethomepage/homepage:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 3008,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/config",
+                "bind": "homepage_config",
+                "description": "YAML Config"
+            },
+            {
+                "container": "/var/run/docker.sock",
+                "bind": "/var/run/docker.sock",
+                "description": "Docker Socket"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "linkding",
+        "name": "Linkding",
+        "description": "Minimal, blazing-fast self-hosted bookmark manager with full-text search and archiving.",
+        "category": "Dashboards",
+        "image": "sissbruecker/linkding:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/linkding.png",
+        "ports": [
+            {
+                "container": 9090,
+                "host": 9095,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/etc/linkding/data",
+                "bind": "linkding_data",
+                "description": "Bookmarks DB"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 9090
+    },
+    {
+        "id": "actual-budget",
+        "name": "Actual Budget",
+        "description": "Local-first personal finance and envelope budgeting app with multi-device sync.",
+        "category": "Dashboards",
+        "image": "actualbudget/actual-server:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/actual-budget.png",
+        "ports": [
+            {
+                "container": 5006,
+                "host": 5006,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/data",
+                "bind": "actual_budget_data",
+                "description": "Budget Data"
+            }
+        ],
+        "env": [],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5006
+    },
+    {
+        "id": "qbittorrent",
+        "name": "qBittorrent",
+        "description": "Fast open-source BitTorrent client with full web UI, RSS automation, and bandwidth scheduling.",
+        "category": "Downloader",
+        "image": "lscr.io/linuxserver/qbittorrent:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/qbittorrent.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8071,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 6881,
+                "host": 6881,
+                "protocol": "tcp",
+                "description": "Peer TCP"
+            },
+            {
+                "container": 6881,
+                "host": 6881,
+                "protocol": "udp",
+                "description": "Peer UDP"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "qbittorrent_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "WEBUI_PORT",
+                "value": "8080"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "transmission",
+        "name": "Transmission",
+        "description": "Lightweight, low-memory BitTorrent client with clean web management interface.",
+        "category": "Downloader",
+        "image": "lscr.io/linuxserver/transmission:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/transmission.png",
+        "ports": [
+            {
+                "container": 9091,
+                "host": 9091,
+                "protocol": "tcp",
+                "description": "Web UI"
+            },
+            {
+                "container": 51413,
+                "host": 51413,
+                "protocol": "tcp",
+                "description": "Peer TCP"
+            },
+            {
+                "container": 51413,
+                "host": 51413,
+                "protocol": "udp",
+                "description": "Peer UDP"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "transmission_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            },
+            {
+                "container": "/watch",
+                "bind": "/srv/media/watch",
+                "description": "Watch Folder"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 9091
+    },
+    {
+        "id": "sabnzbd",
+        "name": "SABnzbd",
+        "description": "Automated Usenet binary newsreader with post-processing and *arr integration.",
+        "category": "Downloader",
+        "image": "lscr.io/linuxserver/sabnzbd:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sabnzbd.png",
+        "ports": [
+            {
+                "container": 8080,
+                "host": 8072,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "sabnzbd_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8080
+    },
+    {
+        "id": "sonarr",
+        "name": "Sonarr",
+        "description": "Smart PVR for monitoring RSS feeds and automatically organizing TV series.",
+        "category": "Automation",
+        "image": "lscr.io/linuxserver/sonarr:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sonarr.png",
+        "ports": [
+            {
+                "container": 8989,
+                "host": 8989,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "sonarr_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/tv",
+                "bind": "/srv/media/tv",
+                "description": "TV Series"
+            },
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8989
+    },
+    {
+        "id": "radarr",
+        "name": "Radarr",
+        "description": "Automated movie collection manager integrating seamlessly with media servers and downloaders.",
+        "category": "Automation",
+        "image": "lscr.io/linuxserver/radarr:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/radarr.png",
+        "ports": [
+            {
+                "container": 7878,
+                "host": 7878,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "radarr_config",
+                "description": "Configuration"
+            },
+            {
+                "container": "/movies",
+                "bind": "/srv/media/movies",
+                "description": "Movies"
+            },
+            {
+                "container": "/downloads",
+                "bind": "/srv/media/downloads",
+                "description": "Downloads"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 7878
+    },
+    {
+        "id": "prowlarr",
+        "name": "Prowlarr",
+        "description": "Unified indexer manager and proxy for Sonarr, Radarr, Readarr, and Lidarr.",
+        "category": "Automation",
+        "image": "lscr.io/linuxserver/prowlarr:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/prowlarr.png",
+        "ports": [
+            {
+                "container": 9696,
+                "host": 9696,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "prowlarr_config",
+                "description": "Configuration"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 9696
+    },
+    {
+        "id": "overseerr",
+        "name": "Overseerr",
+        "description": "Sleek media request and discovery portal for Plex, Sonarr, and Radarr.",
+        "category": "Automation",
+        "image": "sctx/overseerr:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/overseerr.png",
+        "ports": [
+            {
+                "container": 5055,
+                "host": 5055,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/app/config",
+                "bind": "overseerr_config",
+                "description": "Configuration"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5055
+    },
+    {
+        "id": "immich",
+        "name": "Immich Photos",
+        "description": "High performance self-hosted photo and video backup solution with AI face & object search.",
+        "category": "Media",
+        "image": "ghcr.io/immich-app/immich-server:release",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/immich.png",
+        "ports": [
+            {
+                "container": 2283,
+                "host": 2283,
+                "protocol": "tcp",
+                "description": "Web UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/usr/src/app/upload",
+                "bind": "immich_upload",
+                "description": "Photo & Video Library"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 2283
+    },
+    {
+        "id": "pocketbase",
+        "name": "PocketBase",
+        "description": "Open Source realtime backend in 1 file with embedded SQLite, auth, file storage, and admin UI.",
+        "category": "Developer",
+        "image": "ghcr.io/muchobien/pocketbase:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/pocketbase.png",
+        "ports": [
+            {
+                "container": 8090,
+                "host": 8190,
+                "protocol": "tcp",
+                "description": "API & Admin UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/pb_data",
+                "bind": "pocketbase_data",
+                "description": "SQLite Database & Uploads"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 8090
+    },
+    {
+        "id": "onlyoffice",
+        "name": "OnlyOffice Docs",
+        "description": "Collaborative online office suite (Docs, Sheets, Slides) compatible with Nextcloud and OwnCloud.",
+        "category": "Files",
+        "image": "onlyoffice/documentserver:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/onlyoffice.png",
+        "ports": [
+            {
+                "container": 80,
+                "host": 7400,
+                "protocol": "tcp",
+                "description": "Web UI & Document Server"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/var/www/onlyoffice/Data",
+                "bind": "onlyoffice_data",
+                "description": "Document Server Data"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            },
+            {
+                "key": "JWT_ENABLED",
+                "value": "false"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 80
+    },
+    {
+        "id": "obsidian",
+        "name": "Obsidian Web",
+        "description": "Private Markdown knowledge base and second brain accessible directly via browser.",
+        "category": "Files",
+        "image": "lscr.io/linuxserver/obsidian:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/obsidian.png",
+        "ports": [
+            {
+                "container": 3000,
+                "host": 8195,
+                "protocol": "tcp",
+                "description": "Web UI (HTTP)"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/config",
+                "bind": "obsidian_config",
+                "description": "Vaults & Config"
+            }
+        ],
+        "env": [
+            {
+                "key": "PUID",
+                "value": "1000"
+            },
+            {
+                "key": "PGID",
+                "value": "1000"
+            },
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 3000
+    },
+    {
+        "id": "rustdesk-server",
+        "name": "RustDesk Server",
+        "description": "Self-hosted open-source remote desktop ID/rendezvous server (hbbs) for private remote access.",
+        "category": "Network",
+        "image": "rustdesk/rustdesk-server:latest",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/rustdesk.png",
+        "ports": [
+            {
+                "container": 21115,
+                "host": 21115,
+                "protocol": "tcp",
+                "description": "NAT Type Test"
+            },
+            {
+                "container": 21116,
+                "host": 21116,
+                "protocol": "tcp",
+                "description": "ID Registration TCP"
+            },
+            {
+                "container": 21116,
+                "host": 21116,
+                "protocol": "udp",
+                "description": "Heartbeat & ID UDP"
+            },
+            {
+                "container": 21118,
+                "host": 21118,
+                "protocol": "tcp",
+                "description": "Web Client WS"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/root",
+                "bind": "rustdesk_data",
+                "description": "Keys & Database"
+            }
+        ],
+        "env": [
+            {
+                "key": "TZ",
+                "value": "{{AUTO_TZ}}"
+            }
+        ],
+        "command": [
+            "hbbs"
+        ],
+        "has_web_ui": false,
+        "network_mode": "bridge",
+        "restart": "unless-stopped"
+    },
+    {
+        "id": "couchdb",
+        "name": "Apache CouchDB",
+        "description": "NoSQL document database with seamless HTTP sync (ideal for Obsidian LiveSync & offline-first apps).",
+        "category": "Database",
+        "image": "couchdb:3.3.3",
+        "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/couchdb.png",
+        "ports": [
+            {
+                "container": 5984,
+                "host": 5984,
+                "protocol": "tcp",
+                "description": "HTTP API & Fauxton UI"
+            }
+        ],
+        "volumes": [
+            {
+                "container": "/opt/couchdb/data",
+                "bind": "couchdb_data",
+                "description": "Database Storage"
+            }
+        ],
+        "env": [
+            {
+                "key": "COUCHDB_USER",
+                "value": "admin"
+            },
+            {
+                "key": "COUCHDB_PASSWORD",
+                "value": "changeme"
+            }
+        ],
+        "has_web_ui": true,
+        "network_mode": "bridge",
+        "restart": "unless-stopped",
+        "web_port": 5984
+    }
+]

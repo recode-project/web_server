@@ -1,10 +1,15 @@
 __pycache__/
 *.pyc
 venv/
+.venv/
 .env
 .idea/
 .vscode/
-data/
+.kiro/
+*.bak
+*.code-workspace
+data/*
+!data/app_catalog.json
 *.zip
 create_package.py
 verify_update_check.py
@@ -22,4 +27,3 @@ admin_keygen_gui.py
 license_manager.py
 utils/license.py
 file_lister
-.venv/

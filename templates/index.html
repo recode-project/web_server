@@ -215,7 +215,7 @@
     </style>
 </head>
 
-<body>
+<body data-user-role="{{ session.get('role', 'readonly') }}">
     <div class="wallpaper"></div>
 
     <div class="app-container">
@@ -338,7 +338,7 @@
                     </div>
                 </div>
                 <!-- Power Widget -->
-                <div class="widget-card glass">
+                <div class="widget-card glass" id="energy-widget-card" style="cursor: pointer;" title="Buka Detail Energi & Proyeksi Biaya">
                     <div class="widget-header">
                         <div class="icon-box power-color">
                             <i class="fa-solid fa-bolt"></i>
@@ -350,11 +350,11 @@
                             <span id="power-kwh" style="font-size:2rem; font-weight:bold">0.00</span>
                             <span style="color:var(--text-muted)">kWh used</span>
                             <div style="font-size:0.9rem; color:#ffd700; margin-top:5px">
-                                Est. <span id="power-cost">Rp 0</span>
+                                Est. <span id="power-cost">--</span>
                             </div>
                         </div>
                         <div class="widget-meta">
-                            <span style="color:var(--text-muted)">kWh used</span>
+                            <span id="power-est" style="color:var(--text-muted)">-- W</span>
                         </div>
                     </div>
                 </div>
@@ -374,7 +374,7 @@
                 </div>
 
                 <!-- Web Monitor Widget -->
-                <div class="widget-card glass" onclick="window.location.href='/web_monitor'" style="cursor: pointer;">
+                <div class="widget-card glass" id="web-shield-widget" onclick="window.location.href='/web_monitor'" style="cursor: pointer;">
                     <div class="widget-header">
                         <div class="icon-box" style="background:#14b8a6; box-shadow:0 0 10px rgba(20, 184, 166, 0.3)">
                             <i class="fa-solid fa-shield-halved"></i>
@@ -391,6 +391,30 @@
                                 <span>Req: <strong id="web-reqs" style="color:#14b8a6;">...</strong></span>
                                 <span>IPs: <strong id="web-ips" style="color:#14b8a6;">...</strong></span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disaster Recovery & Backup Widget -->
+                <div class="widget-card glass" onclick="window.location.href='/backup'" style="cursor: pointer;" title="Buka Disaster Recovery & Offsite Backup Engine">
+                    <div class="widget-header">
+                        <div class="icon-box" style="background: linear-gradient(135deg, #f093fb, #f5576c); box-shadow: 0 0 10px rgba(240, 147, 251, 0.35);">
+                            <i class="fa-solid fa-box-archive"></i>
+                        </div>
+                        <h3>Backup</h3>
+                    </div>
+                    <div class="widget-body">
+                        <div class="power-stats">
+                            <div style="display: flex; align-items: baseline; gap: 6px; justify-content: center; margin-bottom: 4px;">
+                                <span id="backup-widget-count" style="font-size: 1.8rem; font-weight: 700; color: #fff;">-</span>
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Snapshots</span>
+                            </div>
+                            <div id="backup-widget-status" style="font-size: 0.82rem; color: #10b981; text-align: center; margin-top: 2px;">
+                                <i class="fa-solid fa-circle-check"></i> <span id="backup-widget-status-text">Siap</span>
+                            </div>
+                        </div>
+                        <div class="widget-meta" style="text-align: center; margin-top: 6px;">
+                            <span style="font-size: 0.8rem; color: #aaa;">Total: <strong id="backup-widget-size" style="color: #f093fb;">0 B</strong></span>
                         </div>
                     </div>
                 </div>
@@ -448,34 +472,7 @@
     </div>
 
     <!-- Scripts -->
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-
-        // Handle Access Denied Redirects
-        const urlParams = new URLSearchParams(window.location.search);
-
-        function showAdModal(feature) {
-            const m = document.getElementById('ad-modal');
-            const msg = document.getElementById('ad-message');
-            msg.textContent = "Anda tidak memiliki akses untuk menu: " + feature + ". Silakan hubungi Administrator.";
-            m.classList.add('active');
-        }
-
-        function closeAdModal() {
-            const m = document.getElementById('ad-modal');
-            m.classList.remove('active');
-            // Clear URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        if (urlParams.get('error') === 'access_denied') {
-            const feature = urlParams.get('feature') || 'Restricted Area';
-            setTimeout(() => {
-                showAdModal(feature);
-            }, 100);
-        }
-    </script>
-    <script src="{{ url_for('static', filename='script.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=13"></script>
 </body>
 
 </html>

@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Firewall Manager — Eka Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-card: rgba(26, 26, 46, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary-grad: linear-gradient(135deg, #f12711, #f5af19);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.15);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.15);
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.15);
+            --info: #06b6d4;
+            --info-bg: rgba(6, 182, 212, 0.15);
+            --purple: #a855f7;
+            --purple-bg: rgba(168, 85, 247, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: #0f0c29;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            padding: 24px;
+        }
+
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            filter: brightness(0.48);
+            z-index: -1;
+            transform: translateZ(0);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1520px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Top Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.25s ease;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateX(-3px);
+        }
+
+        .title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .page-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--primary-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-subtitle {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+        }
+
+        .switch-label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.2);
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background: var(--primary-grad);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-icon:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: scale(1.05);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(241, 39, 17, 0.4);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .stat-icon.fire { background: linear-gradient(135deg, #f12711, #f5af19); color: white; }
+        .stat-icon.green { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+        .stat-icon.blue { background: linear-gradient(135deg, #2563eb, #38bdf8); color: white; }
+        .stat-icon.purple { background: linear-gradient(135deg, #a855f7, #7c3aed); color: white; }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+        }
+
+        .stat-val {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.1;
+        }
+
+        .stat-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Nav Tabs */
+        .tabs-nav {
+            display: flex;
+            gap: 10px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .tab-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .tab-btn.active {
+            background: var(--primary-grad);
+            color: #ffffff;
+            box-shadow: 0 4px 15px rgba(241, 39, 17, 0.4);
+        }
+
+        /* Tab Panes */
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tab-pane.active {
+            display: flex;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px;
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .filter-pills {
+            display: flex;
+            gap: 6px;
+            background: rgba(15, 12, 41, 0.6);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .pill-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pill-btn:hover { color: #fff; }
+        .pill-btn.active { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+        .search-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .search-input {
+            background: rgba(15, 12, 41, 0.7);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 14px 8px 34px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            outline: none;
+            min-width: 240px;
+            transition: border-color 0.2s ease;
+        }
+
+        .search-input:focus { border-color: #f12711; }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            background: var(--primary-grad);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 15px rgba(241, 39, 17, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(241, 39, 17, 0.45);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 9px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-main);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        /* Rules Table Card */
+        .table-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            overflow-x: auto;
+        }
+
+        .rules-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .rules-table th {
+            text-align: left;
+            padding: 12px 14px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .rules-table td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+        }
+
+        .rules-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .rule-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: #64748b;
+        }
+
+        .rule-target {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .rule-action-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .rule-action-badge.allow {
+            background: var(--success-bg);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .rule-action-badge.deny, .rule-action-badge.reject {
+            background: var(--danger-bg);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .rule-action-badge.limit {
+            background: var(--warning-bg);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .rule-source {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            color: #cbd5e1;
+        }
+
+        .badge-v6 {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        .badge-v4 {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .btn-del {
+            padding: 6px 12px;
+            background: var(--danger-bg);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            color: #fca5a5;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-del:hover {
+            background: var(--danger);
+            color: #ffffff;
+        }
+
+        /* Presets Grid */
+        .presets-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .preset-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+
+        .preset-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .preset-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .preset-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .preset-desc {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .preset-footer {
+            margin-top: auto;
+            display: flex;
+            justify-content: flex-end;
+            padding-top: 10px;
+        }
+
+        /* Default Policies Panel */
+        .policies-card {
+            background: var(--glass-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 800px;
+        }
+
+        .policy-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .policy-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .policy-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .policy-desc {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Raw Iptables Viewport */
+        .code-viewport {
+            background: rgba(10, 8, 26, 0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px;
+            min-height: 480px;
+            max-height: 720px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+            white-space: pre-wrap;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 20px;
+        }
+
+        .modal-card {
+            background: #1a162b;
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 540px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover { color: #ffffff; }
+
+        .modal-body {
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .form-input, .form-select {
+            background: rgba(15, 12, 41, 0.8);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            outline: none;
+        }
+
+        .form-input:focus, .form-select:focus {
+            border-color: #f12711;
+        }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(26, 26, 46, 0.95);
+            border: 1px solid var(--glass-border);
+            padding: 12px 20px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 0.88rem;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .empty-state i {
+            font-size: 2.5rem;
+            opacity: 0.4;
+        }
+
+        @media (max-width: 1024px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .presets-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 640px) {
+            body { padding: 12px; }
+            .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .search-input { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wallpaper"></div>
+
+    <div class="container">
+        <!-- Top Header -->
+        <header class="header">
+            <div class="header-left">
+                <a href="/dashboard" class="btn-back">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Dashboard</span>
+                </a>
+                <div class="title-group">
+                    <h1 class="page-title">
+                        <i class="fa-solid fa-shield"></i>
+                        Central Firewall Manager
+                    </h1>
+                    <span class="page-subtitle">UFW, Nftables & Iptables Network Access Control</span>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="switch-container">
+                    <span id="firewallStatusLabel" class="switch-label">Firewall: Active</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="firewallToggleCheckbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <button id="btnReloadFirewall" class="btn-icon" title="Reload Aturan Firewall">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+                <button id="btnRefreshAll" class="btn-icon" title="Perbarui Data">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon fire">
+                    <i class="fa-solid fa-fire"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Firewall State</span>
+                    <span id="statFirewallState" class="stat-val">ACTIVE</span>
+                    <span id="statLoggingState" class="stat-sub">Logging: on (low)</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Total Rules</span>
+                    <span id="statTotalRules" class="stat-val">0</span>
+                    <span id="statRulesSub" class="stat-sub">0 IPv4 | 0 IPv6</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Default Policy</span>
+                    <span id="statDefaultPolicy" class="stat-val">DENY</span>
+                    <span id="statPolicySub" class="stat-sub">Incoming Traffic</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon purple">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">Rate-Limited Rules</span>
+                    <span id="statRateLimits" class="stat-val">0</span>
+                    <span class="stat-sub">Anti Brute-Force</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Nav Tabs -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="tabRules">
+                <i class="fa-solid fa-list-check"></i>
+                <span>Rules Manager</span>
+            </button>
+            <button class="tab-btn" data-tab="tabPresets">
+                <i class="fa-solid fa-bolt-lightning"></i>
+                <span>Quick Presets & Rate-Limit</span>
+            </button>
+            <button class="tab-btn" data-tab="tabPolicies">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Default Policies</span>
+            </button>
+            <button class="tab-btn" data-tab="tabRaw">
+                <i class="fa-solid fa-code"></i>
+                <span>Raw Iptables / Nftables</span>
+            </button>
+        </nav>
+
+        <!-- TAB 1: Rules Manager -->
+        <div id="tabRules" class="tab-pane active">
+            <div class="toolbar">
+                <div class="toolbar-group">
+                    <div class="filter-pills">
+                        <button class="pill-btn active" data-filter="all">Semua (<span id="countAll">0</span>)</button>
+                        <button class="pill-btn" data-filter="allow">ALLOW (<span id="countAllow">0</span>)</button>
+                        <button class="pill-btn" data-filter="deny">DENY/REJECT (<span id="countDeny">0</span>)</button>
+                        <button class="pill-btn" data-filter="limit">LIMIT (<span id="countLimit">0</span>)</button>
+                    </div>
+
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="rulesSearchInput" class="search-input" placeholder="Cari port, IP, action...">
+                    </div>
+                </div>
+
+                <div class="toolbar-group">
+                    <button id="btnOpenAddRule" class="btn-primary">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Tambah Aturan</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">#</th>
+                            <th>Port / Layanan (To)</th>
+                            <th>Action</th>
+                            <th>Source (From)</th>
+                            <th>Protokol / IP</th>
+                            <th style="text-align: right; width: 100px;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rulesTableBody">
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <span>Memuat aturan firewall UFW...</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 2: Quick Presets & Rate-Limit -->
+        <div id="tabPresets" class="tab-pane">
+            <div class="presets-grid">
+                <!-- Preset: SSH Protection (Port 22 Rate Limiting) -->
+                <div class="preset-card">
+                    <div class="preset-header">
+                        <div class="preset-icon" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">
+                            <i class="fa-solid fa-key"></i>
+                        </div>
+                        <div>
+                            <div class="preset-title">SSH Anti-Brute-Force Limit</div>
+                            <span class="badge-v4">Port 22/tcp</span>
+                        </div>
+                    </div>
+                    <p class="preset-desc">
+                        Menerapkan aturan <code>ufw limit 22/tcp</code>. Membatasi percobaan koneksi SSH yang melebihi 6 kali dalam rentang waktu 30 detik untuk mencegah serangan brute-force otomatis.
+                    </p>
+                    <div class="preset-footer">
+                        <button id="btnApplySshLimit" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>Terapkan Rate-Limit</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preset: Web Services (Port 80/443 Allow) -->
+                <div class="preset-card">
+                    <div class="preset-header">
+                        <div class="preset-icon" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">
+                            <i class="fa-solid fa-globe"></i>
+                        </div>
+                        <div>
+                            <div class="preset-title">Buka Port Web Server</div>
+                            <span class="badge-v4">Port 80, 443 TCP</span>
+                        </div>
+                    </div>
+                    <p class="preset-desc">
+                        Membuka akses publik untuk protokol HTTP (Port 80) dan HTTPS (Port 443) agar reverse-proxy Nginx dan website dapat diakses dari internet.
+                    </p>
+                    <div class="preset-footer">
+                        <button id="btnApplyWebPorts" class="btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+                            <i class="fa-solid fa-check"></i>
+                            <span>Buka Port 80 & 443</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preset: Tailscale Mesh Isolation -->
+                <div class="preset-card">
+                    <div class="preset-header">
+                        <div class="preset-icon" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">
+                            <i class="fa-solid fa-network-wired"></i>
+                        </div>
+                        <div>
+                            <div class="preset-title">Izinkan Subnet Tailscale</div>
+                            <span class="badge-v4">Interface tailscale0</span>
+                        </div>
+                    </div>
+                    <p class="preset-desc">
+                        Mengizinkan seluruh lalu lintas masuk dari antarmuka virtual <code>tailscale0</code> sehingga seluruh perangkat jaringan mesh dapat saling terhubung tanpa batasan firewall lokal.
+                    </p>
+                    <div class="preset-footer">
+                        <button id="btnApplyTailscaleMesh" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #38bdf8);">
+                            <i class="fa-solid fa-shield-check"></i>
+                            <span>Izinkan on tailscale0</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Default Policies -->
+        <div id="tabPolicies" class="tab-pane">
+            <div class="policies-card">
+                <div class="policy-row">
+                    <div class="policy-info">
+                        <span class="policy-name">Default Incoming Policy</span>
+                        <span class="policy-desc">Kebijakan untuk seluruh paket yang masuk ke server jika tidak cocok dengan aturan khusus.</span>
+                    </div>
+                    <select id="selectPolicyIncoming" class="form-select" style="min-width: 140px;">
+                        <option value="deny">DENY (Tolak diam)</option>
+                        <option value="reject">REJECT (Tolak dengan notifikasi)</option>
+                        <option value="allow">ALLOW (Izinkan semua)</option>
+                    </select>
+                </div>
+
+                <div class="policy-row">
+                    <div class="policy-info">
+                        <span class="policy-name">Default Outgoing Policy</span>
+                        <span class="policy-desc">Kebijakan untuk lalu lintas yang dikirimkan oleh host ke internet/jaringan luar.</span>
+                    </div>
+                    <select id="selectPolicyOutgoing" class="form-select" style="min-width: 140px;">
+                        <option value="allow">ALLOW (Izinkan keluar)</option>
+                        <option value="deny">DENY (Tolak keluar)</option>
+                    </select>
+                </div>
+
+                <div class="policy-row">
+                    <div class="policy-info">
+                        <span class="policy-name">Default Routed Policy</span>
+                        <span class="policy-desc">Kebijakan forward routing antar antarmuka/kontainer (LXD bridge, Docker bridge).</span>
+                    </div>
+                    <select id="selectPolicyRouted" class="form-select" style="min-width: 140px;">
+                        <option value="allow">ALLOW (Izinkan routing)</option>
+                        <option value="deny">DENY (Tolak routing)</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end;">
+                    <button id="btnSavePolicies" class="btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Simpan Kebijakan Default</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: Raw Iptables / Nftables -->
+        <div id="tabRaw" class="tab-pane">
+            <div class="toolbar">
+                <div class="toolbar-group">
+                    <span class="switch-label">Inspeksi Kernel Filter Table (iptables -L -n -v & nftables)</span>
+                </div>
+                <div class="toolbar-group">
+                    <button id="btnCopyRawIptables" class="btn-secondary">
+                        <i class="fa-solid fa-copy"></i>
+                        <span>Salin Output</span>
+                    </button>
+                    <button id="btnRefreshRawIptables" class="btn-secondary">
+                        <i class="fa-solid fa-rotate"></i>
+                        <span>Segarkan</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="rawIptablesViewport" class="code-viewport">Memuat aturan raw kernel filter...</div>
+        </div>
+    </div>
+
+    <!-- Modal: Tambah Rule Baru -->
+    <div id="modalAddRule" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">Tambah Aturan Firewall Baru</span>
+                <button id="btnCloseModal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Tindakan (Action)</label>
+                    <select id="modalAction" class="form-select">
+                        <option value="allow">ALLOW (Izinkan Lalu Lintas)</option>
+                        <option value="deny">DENY (Tolak / Blokir)</option>
+                        <option value="reject">REJECT (Tolak dengan reset)</option>
+                        <option value="limit">LIMIT (Rate-Limiting Anti Brute-Force)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Port atau Rentang Port</label>
+                    <input type="text" id="modalPort" class="form-input" placeholder="Contoh: 8080, 8080:8090, 22">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Protokol</label>
+                    <select id="modalProto" class="form-select">
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                        <option value="any">TCP & UDP (Any)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Alamat IP / Subnet Sumber (From IP)</label>
+                    <input type="text" id="modalFromIp" class="form-input" placeholder="Kosongkan untuk 'Anywhere', atau contoh: 192.168.1.0/24">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Interface Jaringan (Opsional)</label>
+                    <input type="text" id="modalInterface" class="form-input" placeholder="Kosongkan untuk semua, atau contoh: tailscale0, eth0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnCancelModal" class="btn-secondary">Batal</button>
+                <button id="btnSubmitAddRule" class="btn-primary">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Simpan Aturan</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check" style="color: #10b981;"></i>
+        <span id="toastMsg">Tindakan berhasil</span>
+    </div>
+
+    <!-- Pure External Script -->
+    <script src="/static/firewall.js"></script>
+</body>
+</html>
+

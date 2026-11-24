@@ -1,700 +1,921 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Websites Manager — Eka Dashboard</title>
+    <title>Web & Reverse Proxy Shield — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --glass-bg: rgba(30, 30, 40, 0.6);
+            --glass-bg: rgba(30, 30, 40, 0.65);
+            --glass-card: rgba(30, 30, 40, 0.65);
+            --glass-card-hover: rgba(38, 38, 52, 0.78);
             --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-border-hover: rgba(255, 255, 255, 0.22);
             --text-main: #ffffff;
-            --text-muted: #a0a0b0;
-            --success: #4ecdc4;
-            --danger: #ff6b6b;
-            --warning: #ffe66d;
-            --radius-lg: 24px;
-            --radius-md: 16px;
+            --text-dim: #a0a0b0;
+
+            --accent-cyan: #23d5ab;
+            --accent-blue: #23a6d5;
+            --accent-purple: #7928ca;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
             min-height: 100vh;
-            position: relative;
             overflow-x: hidden;
+            background: #0f0c29;
+            user-select: none;
         }
+
+        /* Ambient Dynamic Animated Wallpaper — Identik Dashboard Utama */
         .wallpaper {
             position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
             z-index: -1;
-            filter: brightness(0.45);
+            filter: brightness(0.48);
         }
+
         @keyframes gradientBG {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
-        .page-wrap { padding: 2rem 3rem; max-width: 1400px; margin: 0 auto; }
 
-        /* Glass card */
-        .glass {
-            background: var(--glass-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            border-radius: var(--radius-lg);
+        .page-wrap {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 2.2rem 1.5rem 4rem 1.5rem;
         }
-        .card { padding: 1.5rem; margin-bottom: 1.5rem; }
 
-        /* Header */
+        /* Top Header */
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 2rem;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 1.2rem;
         }
-        .back-btn {
-            background: rgba(255,255,255,0.1);
-            border: none; color: var(--text-muted);
-            padding: 0.4rem 1rem; border-radius: 8px;
-            cursor: pointer; font-size: 0.9rem;
-            display: flex; align-items: center; gap: 0.5rem;
-            transition: all 0.2s; margin-bottom: 0.5rem;
-            font-family: inherit;
-        }
-        .back-btn:hover { background: rgba(255,255,255,0.2); color: white; }
-        .page-title { font-size: 2rem; font-weight: 700; display: flex; align-items: center; gap: 0.8rem; }
-        .page-subtitle { font-size: 0.9rem; color: var(--text-muted); margin-top: 0.2rem; }
 
-        /* Stats row */
-        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .back-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: var(--text-dim);
+            padding: 0.45rem 1rem;
+            border-radius: 99px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.6rem;
+            text-decoration: none;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+            border-color: var(--glass-border-hover);
+        }
+
+        .page-title {
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .page-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            padding: 0.5rem 1.1rem;
+            border-radius: 99px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .pulse-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .pulse-dot.online {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+            animation: pulse-green 2s infinite;
+        }
+
+        .pulse-dot.offline {
+            background: var(--danger);
+            box-shadow: 0 0 10px var(--danger);
+        }
+
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.55rem 1.1rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .btn-action:hover {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: var(--glass-border-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-action.btn-primary {
+            background: rgba(35, 213, 171, 0.2);
+            border-color: rgba(35, 213, 171, 0.4);
+            color: var(--accent-cyan);
+        }
+
+        .btn-action.btn-primary:hover {
+            background: rgba(35, 213, 171, 0.32);
+        }
+
+        .btn-action.btn-danger {
+            background: rgba(248, 81, 73, 0.18);
+            border-color: rgba(248, 81, 73, 0.35);
+            color: var(--danger);
+        }
+
+        .btn-action.btn-danger:hover {
+            background: rgba(248, 81, 73, 0.28);
+        }
+
+        /* Overview Stat Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.1rem;
+            margin-bottom: 2rem;
+        }
+
         .stat-card {
             background: var(--glass-bg);
             backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
-            border-radius: var(--radius-md);
-            padding: 1.2rem;
-            text-align: center;
-        }
-        .stat-val { font-size: 2rem; font-weight: 700; }
-        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 0.3rem; }
-
-        /* Table */
-        .section-title {
-            font-size: 1rem; font-weight: 600; margin-bottom: 1.2rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.8rem;
-            display: flex; align-items: center; gap: 0.5rem;
-        }
-        table { width: 100%; border-collapse: collapse; }
-        thead tr { border-bottom: 1px solid rgba(255,255,255,0.1); }
-        th { padding: 0.8rem 1rem; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; text-align: left; }
-        td { padding: 0.9rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.9rem; }
-        tr:hover td { background: rgba(255,255,255,0.03); }
-        .badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: 99px;
-        }
-        .badge-success { background: rgba(78,205,196,0.15); color: var(--success); border: 1px solid rgba(78,205,196,0.3); }
-        .badge-danger { background: rgba(255,107,107,0.15); color: var(--danger); border: 1px solid rgba(255,107,107,0.3); }
-        .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.5s ease infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-        .open-btn {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: white; padding: 0.3rem 0.8rem; border-radius: 8px;
-            font-size: 0.75rem; cursor: pointer; text-decoration: none;
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            transition: background 0.2s;
-        }
-        .open-btn:hover { background: rgba(255,255,255,0.15); }
-
-        /* Action buttons */
-        .action-bar { display: flex; gap: 0.8rem; }
-        .action-btn {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.12);
-            color: white; padding: 0.6rem 1.2rem; border-radius: 12px;
-            cursor: pointer; font-family: inherit; font-size: 0.85rem;
-            display: flex; align-items: center; gap: 0.5rem;
-            transition: all 0.2s;
-        }
-        .action-btn:hover { background: rgba(255,255,255,0.18); }
-        .action-btn.primary { background: rgba(35,213,171,0.2); border-color: rgba(35,213,171,0.4); color: #23d5ab; }
-        .action-btn.primary:hover { background: rgba(35,213,171,0.3); }
-
-        /* Nginx status badge */
-        #nginx-status-pill {
-            display: flex; align-items: center; gap: 0.6rem;
-            background: var(--glass-bg); backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border); padding: 0.5rem 1rem; border-radius: 99px;
-            font-size: 0.85rem;
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 1.1rem;
+            box-shadow: var(--shadow);
+            transition: all 0.25s ease;
         }
 
-        /* CF rows */
-        .cf-row {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: var(--radius-md);
-            padding: 1rem 1.2rem;
-            display: flex; align-items: center; gap: 1rem;
+        .stat-card:hover {
+            background: var(--glass-card-hover);
+            border-color: var(--glass-border-hover);
+            transform: translateY(-2px);
         }
-        .cf-icon { font-size: 1.5rem; color: #f48024; }
-        .cf-domain { font-weight: 600; }
-        .cf-target { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
-        .cf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
 
-        /* Toast */
-        #toast {
-            position: fixed; bottom: 2rem; right: 2rem;
-            background: rgba(30,30,40,0.9); backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.1); color: white;
-            padding: 0.8rem 1.4rem; border-radius: 12px;
-            font-size: 0.85rem; display: none;
-            align-items: center; gap: 0.6rem; z-index: 999;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            flex-shrink: 0;
         }
-        .empty-state { text-align: center; padding: 4rem 1rem; color: var(--text-muted); }
-        .empty-state i { font-size: 3rem; opacity: 0.3; margin-bottom: 1rem; display: block; }
 
-        /* Threat Detection */
-        .threat-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.2rem; }
-        .threat-stat { background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); border-radius: 12px; padding: 1rem; text-align: center; }
-        .threat-stat.safe { background: rgba(78,205,196,0.08); border-color: rgba(78,205,196,0.2); }
-        .threat-stat-val { font-size: 1.8rem; font-weight: 700; color: #ff6b6b; }
-        .threat-stat.safe .threat-stat-val { color: #4ecdc4; }
-        .threat-stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 0.2rem; }
-
-        .threat-tag {
-            display: inline-block; font-size: 0.65rem; font-weight: 600;
-            padding: 2px 7px; border-radius: 6px; margin: 1px;
-            background: rgba(255,107,107,0.15); color: #ff6b6b;
-            border: 1px solid rgba(255,107,107,0.3);
+        .stat-info .stat-val {
+            font-size: 1.75rem;
+            font-weight: 800;
+            line-height: 1.1;
         }
-        .threat-tag.scanner { background: rgba(255,230,109,0.15); color: #ffe66d; border-color: rgba(255,230,109,0.3); }
-        .threat-tag.path { background: rgba(255,107,107,0.15); color: #ff6b6b; border-color: rgba(255,107,107,0.3); }
-        .threat-tag.rate { background: rgba(244,128,36,0.15); color: #f48024; border-color: rgba(244,128,36,0.3); }
 
-        .block-btn {
-            background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3);
-            color: #ff6b6b; padding: 3px 10px; border-radius: 8px;
-            font-size: 0.72rem; cursor: pointer; font-family: inherit;
-            transition: all 0.2s; white-space: nowrap;
+        .stat-info .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.3rem;
         }
-        .block-btn:hover { background: rgba(255,107,107,0.3); }
-        .block-btn.blocked { background: rgba(78,205,196,0.15); border-color: rgba(78,205,196,0.3); color: #4ecdc4; }
 
-        .tab-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        /* Navigation Tabs */
+        .tab-bar {
+            display: flex;
+            gap: 0.5rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 0.4rem;
+            margin-bottom: 1.8rem;
+            overflow-x: auto;
+        }
+
         .tab-btn {
-            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-            color: var(--text-muted); padding: 0.45rem 1rem; border-radius: 10px;
-            cursor: pointer; font-family: inherit; font-size: 0.82rem;
-            transition: all 0.2s;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            padding: 0.65rem 1.3rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            transition: all 0.2s ease;
+            white-space: nowrap;
         }
-        .tab-btn.active { background: rgba(35,213,171,0.15); border-color: rgba(35,213,171,0.4); color: #23d5ab; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
 
-        .path-chip {
-            display: inline-block; font-family: monospace; font-size: 0.7rem;
-            background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
-            color: var(--text-muted); margin: 1px; max-width: 200px;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            background: rgba(35, 213, 171, 0.15);
+            border-color: rgba(35, 213, 171, 0.35);
+            color: var(--accent-cyan);
+            box-shadow: 0 4px 16px rgba(35, 213, 171, 0.15);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.25s ease forwards;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Panels & Cards */
+        .panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 1.6rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.8rem;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.4rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .panel-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        /* Search input */
+        .search-bar {
+            position: relative;
+            min-width: 260px;
+        }
+
+        .search-bar input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.5rem 1rem 0.5rem 2.3rem;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .search-bar input:focus {
+            border-color: var(--accent-cyan);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .search-bar i {
+            position: absolute;
+            left: 0.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        /* Tables */
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        thead th {
+            text-align: left;
+            padding: 0.85rem 1rem;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.15s ease;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        tbody td {
+            padding: 0.95rem 1rem;
             vertical-align: middle;
         }
 
-        #threat-loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
 
-        @media(max-width:768px){ .page-wrap{ padding: 1rem; } .page-header{ flex-direction: column; align-items: flex-start; } .threat-stats{ grid-template-columns: 1fr; } }
+        .badge-success {
+            background: rgba(63, 185, 80, 0.16);
+            color: var(--success);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .badge-warning {
+            background: rgba(210, 153, 34, 0.16);
+            color: var(--warning);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+
+        .badge-danger {
+            background: rgba(248, 81, 73, 0.16);
+            color: var(--danger);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .badge-info {
+            background: rgba(35, 166, 213, 0.16);
+            color: var(--accent-blue);
+            border: 1px solid rgba(35, 166, 213, 0.3);
+        }
+
+        .badge-purple {
+            background: rgba(121, 40, 202, 0.16);
+            color: #b784f5;
+            border: 1px solid rgba(121, 40, 202, 0.3);
+        }
+
+        /* Traffic flex chart */
+        .chart-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            height: 140px;
+            padding: 1.2rem 0.5rem 0.5rem 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            overflow-x: auto;
+        }
+
+        .chart-col {
+            flex: 1;
+            min-width: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            justify-content: flex-end;
+        }
+
+        .chart-bar {
+            width: 100%;
+            background: linear-gradient(180deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            transition: height 0.5s ease;
+            position: relative;
+        }
+
+        .chart-label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-top: 6px;
+            white-space: nowrap;
+        }
+
+        /* Mini action button */
+        .btn-mini {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.35rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            text-decoration: none;
+        }
+
+        .btn-mini:hover {
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+        }
+
+        /* Toast Popup */
+        #toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: rgba(24, 28, 42, 0.95);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 0.85rem 1.4rem;
+            border-radius: 14px;
+            font-size: 0.88rem;
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            z-index: 9999;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        #toast.show {
+            display: flex;
+            transform: translateY(0);
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 3.5rem 1rem;
+            color: var(--text-dim);
+        }
+
+        .empty-state i {
+            font-size: 2.8rem;
+            opacity: 0.35;
+            margin-bottom: 0.8rem;
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .page-wrap { padding: 1.2rem 1rem; }
+            .page-header { flex-direction: column; align-items: flex-start; }
+            .header-actions { width: 100%; justify-content: space-between; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .search-bar { width: 100%; }
+        }
     </style>
 </head>
-<body>
-<div class="wallpaper"></div>
-<div class="page-wrap">
 
-    <!-- Header -->
-    <div class="page-header">
-        <div>
-            <button class="back-btn" onclick="window.location.href='/dashboard'">
-                <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
-            </button>
-            <div class="page-title"><i class="fa-solid fa-globe" style="color:#23d5ab"></i> Websites Manager</div>
-            <div class="page-subtitle">Nginx virtual hosts & Cloudflare Tunnel services</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
-            <div id="nginx-status-pill">
-                <span style="width:10px;height:10px;border-radius:50%;background:#ffe66d;display:inline-block;animation:pulse 1s infinite"></span>
-                <span id="nginx-status-text">Checking Nginx...</span>
-            </div>
-            <button class="action-btn primary" onclick="reloadNginx()">
-                <i class="fa-solid fa-rotate"></i> Reload Nginx
-            </button>
-        </div>
-    </div>
+<body data-initial-tab="{{ initial_tab or 'vhosts' }}">
+    <div class="wallpaper"></div>
+    <div class="page-wrap">
 
-    <!-- Stats -->
-    <div class="stats-row">
-        <div class="stat-card">
-            <div class="stat-val" style="color:#23d5ab">{{ sites|length }}</div>
-            <div class="stat-label">Total Sites</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-val" style="color:#4ecdc4" id="active-count">{{ sites|selectattr('enabled')|list|length }}</div>
-            <div class="stat-label">Active</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-val" style="color:#ffe66d" id="nginx-stat-val">—</div>
-            <div class="stat-label">Nginx Status</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-val" style="color:#f48024">CF</div>
-            <div class="stat-label">Tunnel Active</div>
-        </div>
-    </div>
-
-    <!-- Virtual Hosts Table -->
-    <div class="glass card">
-        <div class="section-title">
-            <i class="fa-solid fa-server" style="color:#23a6d5"></i> Virtual Hosts — Nginx sites-enabled
-        </div>
-        {% if sites %}
-        <div style="overflow-x:auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Domain / Server Name</th>
-                        <th>Port</th>
-                        <th>Document Root</th>
-                        <th>Config File</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for site in sites %}
-                <tr>
-                    <td style="font-family:monospace; font-weight:600;">
-                        <i class="fa-solid fa-globe" style="color:#23a6d5; margin-right:8px;"></i>{{ site.domain }}
-                    </td>
-                    <td><span style="background:rgba(35,166,213,0.15); color:#23a6d5; border:1px solid rgba(35,166,213,0.3); padding:2px 10px; border-radius:6px; font-family:monospace; font-size:0.8rem;">:{{ site.port }}</span></td>
-                    <td style="font-family:monospace; font-size:0.8rem; color:var(--text-muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ site.root }}">{{ site.root }}</td>
-                    <td style="font-size:0.8rem; color:var(--text-muted);">{{ site.name }}</td>
-                    <td>
-                        {% if site.enabled %}
-                        <span class="badge badge-success"><span class="pulse"></span> Active</span>
-                        {% else %}
-                        <span class="badge badge-danger">Disabled</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <a href="https://{{ site.domain }}" target="_blank" class="open-btn">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <i class="fa-solid fa-server"></i>
-            <p style="font-size:1.1rem; margin-bottom:0.3rem;">No virtual hosts found</p>
-            <p style="font-size:0.85rem;">Could not read Nginx sites-enabled directory from host</p>
-        </div>
-        {% endif %}
-    </div>
-
-    <!-- Cloudflare Tunnel -->
-    <div class="glass card">
-        <div class="section-title">
-            <i class="fa-brands fa-cloudflare" style="color:#f48024"></i> Cloudflare Tunnel — Example Routes
-        </div>
-        <div class="cf-grid">
-            <div class="cf-row">
-                <i class="fa-brands fa-cloudflare cf-icon"></i>
-                <div>
-                    <div class="cf-domain">example.com</div>
-                    <div class="cf-target">→ http://localhost:8080</div>
+        <!-- Top Header -->
+        <div class="page-header">
+            <div>
+                <a href="/dashboard" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> Kembali ke Dashboard
+                </a>
+                <div class="page-title">
+                    <i class="fa-solid fa-shield-halved" style="color: var(--accent-cyan);"></i>
+                    Web & Reverse Proxy Shield
                 </div>
-                <span class="badge badge-success" style="margin-left:auto;"> Demo</span>
-            </div>
-            <div class="cf-row">
-                <i class="fa-brands fa-cloudflare cf-icon"></i>
-                <div>
-                    <div class="cf-domain">api.example.com</div>
-                    <div class="cf-target">→ http://localhost:8081</div>
+                <div class="page-subtitle">
+                    Nginx Virtual Hosts, Analisis Trafik Real-Time, Keamanan Bot & Sertifikat SSL Dinamis
                 </div>
-                <span class="badge badge-success" style="margin-left:auto;"> Demo</span>
             </div>
-        </div>
-    </div>
 
-    <!-- ===== THREAT DETECTION ===== -->
-    <div class="glass card">
-        <div class="section-title" style="justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
-            <span><i class="fa-solid fa-shield-halved" style="color:#ff6b6b"></i> Threat Detection — IP Scanner & Attacker Monitor</span>
-            <div style="display:flex; gap:0.6rem; align-items:center;">
-                <span id="threat-scan-info" style="font-size:0.75rem; color:var(--text-muted);"></span>
-                <button class="action-btn" onclick="loadThreats()" style="padding:0.35rem 0.9rem; font-size:0.8rem;">
-                    <i class="fa-solid fa-rotate"></i> Refresh
+            <div class="header-actions">
+                <div class="status-pill" id="nginx-status-pill">
+                    <span class="pulse-dot online" id="nginx-status-dot"></span>
+                    <span id="nginx-status-text">Memeriksa Nginx...</span>
+                </div>
+                <button class="btn-action btn-primary" id="btn-reload-nginx" title="Reload konfigurasi Nginx aman">
+                    <i class="fa-solid fa-rotate"></i> Reload
+                </button>
+                <button class="btn-action btn-danger" id="btn-restart-nginx" title="Restart service Nginx">
+                    <i class="fa-solid fa-power-off"></i> Restart
                 </button>
             </div>
         </div>
 
-        <!-- Summary stats -->
-        <div class="threat-stats">
-            <div class="threat-stat">
-                <div class="threat-stat-val" id="t-total">—</div>
-                <div class="threat-stat-label">Total Requests Scanned</div>
+        <!-- Overview Stat Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(35, 213, 171, 0.15); color: var(--accent-cyan);">
+                    <i class="fa-solid fa-globe"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-val" id="stat-total-vhosts">{{ sites|length }}</div>
+                    <div class="stat-label">Virtual Hosts Aktif</div>
+                </div>
             </div>
-            <div class="threat-stat">
-                <div class="threat-stat-val" id="t-threats">—</div>
-                <div class="threat-stat-label">Suspicious Requests</div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(35, 166, 213, 0.15); color: var(--accent-blue);">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-val" id="stat-ssl-count">—</div>
+                    <div class="stat-label">SSL Terproteksi</div>
+                </div>
             </div>
-            <div class="threat-stat">
-                <div class="threat-stat-val" id="t-ips">—</div>
-                <div class="threat-stat-label">Unique Threat IPs</div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(121, 40, 202, 0.15); color: #b784f5;">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-val" id="stat-today-req">—</div>
+                    <div class="stat-label">Permintaan Hari Ini</div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: rgba(248, 81, 73, 0.15); color: var(--danger);">
+                    <i class="fa-solid fa-shield-virus"></i>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-val" id="stat-blocked-count">—</div>
+                    <div class="stat-label">Ancaman / Bot Dicegah</div>
+                </div>
             </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- Navigation Tab Bar -->
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('tab-ips', this)">
-                <i class="fa-solid fa-network-wired"></i> Threat IPs
+            <button class="tab-btn active" data-tab="vhosts">
+                <i class="fa-solid fa-server"></i> Virtual Hosts & Nginx
             </button>
-            <button class="tab-btn" onclick="switchTab('tab-recent', this)">
-                <i class="fa-solid fa-clock-rotate-left"></i> Recent Activity
+            <button class="tab-btn" data-tab="traffic">
+                <i class="fa-solid fa-chart-pie"></i> Trafik & Analisis
             </button>
-            <button class="tab-btn" onclick="switchTab('tab-blocked', this)">
-                <i class="fa-solid fa-ban"></i> Blocked IPs
+            <button class="tab-btn" data-tab="shield">
+                <i class="fa-solid fa-user-shield"></i> Keamanan & Bot Shield
+            </button>
+            <button class="tab-btn" data-tab="ssl">
+                <i class="fa-solid fa-certificate"></i> SSL & Cadangan Web
             </button>
         </div>
 
-        <!-- Tab: Threat IPs -->
-        <div id="tab-ips" class="tab-content active">
-            <div id="threat-loading" style="text-align:center; padding:3rem; color:var(--text-muted);">
-                <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem; margin-bottom:1rem; display:block;"></i>
-                Scanning Nginx access log...
-            </div>
-            <div id="threat-ips-table" style="display:none; overflow-x:auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>IP Address</th>
-                            <th>Threat Type</th>
-                            <th>Requests</th>
-                            <th>Suspicious</th>
-                            <th>Sample Paths</th>
-                            <th>Last Seen</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="threat-ips-body"></tbody>
-                </table>
-                <div id="threat-ips-empty" style="display:none;" class="empty-state">
-                    <i class="fa-solid fa-shield-check" style="color:#4ecdc4; opacity:1;"></i>
-                    <p style="color:#4ecdc4; font-size:1rem;">No threats detected in recent logs</p>
+        <!-- TAB 1: Virtual Hosts & Nginx -->
+        <div class="tab-content active" id="tab-vhosts">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-list-check" style="color: var(--accent-cyan);"></i>
+                        Daftar Virtual Hosts (sites-enabled)
+                    </div>
+                    <div style="display: flex; gap: 0.6rem; align-items: center;">
+                        <div class="search-bar">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="vhost-search" placeholder="Cari domain atau target..." autocomplete="off">
+                        </div>
+                        <button class="btn-action" id="btn-refresh-vhosts">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="vhosts-table">
+                        <thead>
+                            <tr>
+                                <th>Domain / Server Name</th>
+                                <th>Port</th>
+                                <th>Target / Web Root</th>
+                                <th>Tipe Host</th>
+                                <th>SSL</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vhosts-tbody">
+                            <!-- Populated via websites.js -->
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <p>Memuat konfigurasi virtual host dari host...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- Tab: Recent Activity -->
-        <div id="tab-recent" class="tab-content">
-            <div style="overflow-x:auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>IP</th>
-                            <th>Method</th>
-                            <th>Path</th>
-                            <th>Status</th>
-                            <th>Threat Type</th>
-                            <th>User-Agent</th>
-                        </tr>
-                    </thead>
-                    <tbody id="recent-body">
-                        <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">Loading...</td></tr>
-                    </tbody>
-                </table>
+        <!-- TAB 2: Trafik & Analisis Real-Time -->
+        <div class="tab-content" id="tab-traffic">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-chart-simple" style="color: var(--accent-blue);"></i>
+                        Distribusi Lalu Lintas Hari Ini (Per Jam)
+                    </div>
+                    <button class="btn-action" id="btn-refresh-traffic">
+                        <i class="fa-solid fa-arrows-rotate"></i> Refresh Trafik
+                    </button>
+                </div>
+
+                <!-- 24H Flex Chart -->
+                <div class="chart-container" id="traffic-chart">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; text-align: center;">
+                        <div style="font-size: 0.78rem; color: var(--text-dim); text-transform: uppercase;">Pengunjung Unik</div>
+                        <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent-cyan); margin-top: 0.2rem;" id="traffic-unique-ips">—</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; text-align: center;">
+                        <div style="font-size: 0.78rem; color: var(--text-dim); text-transform: uppercase;">Rata-rata Durasi Sesi</div>
+                        <div style="font-size: 1.6rem; font-weight: 700; color: #ffe66d; margin-top: 0.2rem;" id="traffic-avg-duration">—</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; text-align: center;">
+                        <div style="font-size: 0.78rem; color: var(--text-dim); text-transform: uppercase;">Status HTTP (2xx / 3xx / 4xx / 5xx)</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-top: 0.4rem;" id="traffic-status-codes">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-fire" style="color: #ff6b6b;"></i>
+                        Top 5 URL Halaman Paling Sering Dikunjungi
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Path Halaman</th>
+                                <th style="width: 250px;">Volume Permintaan</th>
+                                <th style="width: 120px;">Jumlah</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-pages-tbody">
+                            <tr>
+                                <td colspan="3" class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <p>Menganalisis log akses web...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- Tab: Blocked IPs -->
-        <div id="tab-blocked" class="tab-content">
-            <div style="margin-bottom:1rem; display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
-                <input id="manual-block-ip" type="text" placeholder="Enter IP to block manually..."
-                    style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15); color:white;
-                           padding:0.5rem 1rem; border-radius:10px; font-family:inherit; font-size:0.85rem; flex:1; min-width:200px;">
-                <button class="action-btn" onclick="blockManualIP()" style="background:rgba(255,107,107,0.15); border-color:rgba(255,107,107,0.3); color:#ff6b6b;">
-                    <i class="fa-solid fa-ban"></i> Block IP
-                </button>
-                <button class="action-btn" onclick="loadBlockedIPs()" style="font-size:0.8rem; padding:0.4rem 0.8rem;">
-                    <i class="fa-solid fa-rotate"></i>
-                </button>
-            </div>
-            <div id="blocked-list">
-                <div style="text-align:center; color:var(--text-muted); padding:2rem;">Loading blocked IPs...</div>
-            </div>
-        </div>
-    </div>
-    <!-- ===== END THREAT DETECTION ===== -->
-
-</div>
-
-<div id="toast"></div>
-
-<script>
-// ---- Toast ----
-function showToast(msg, type='info') {
-    const colors = { success: '#4ecdc4', error: '#ff6b6b', info: '#23a6d5', warn: '#ffe66d' };
-    const icons  = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info', warn: 'fa-triangle-exclamation' };
-    const t = document.getElementById('toast');
-    t.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}" style="color:${colors[type]||colors.info}"></i> ${msg}`;
-    t.style.display = 'flex';
-    setTimeout(() => t.style.display = 'none', 3500);
-}
-
-// ---- Nginx Status ----
-async function checkNginxStatus() {
-    try {
-        const res = await fetch('/api/websites/nginx_status');
-        const data = await res.json();
-        const pill    = document.getElementById('nginx-status-pill');
-        const statVal = document.getElementById('nginx-stat-val');
-        const txt     = document.getElementById('nginx-status-text');
-        const dot     = pill.querySelector('span');
-        if (data.running) {
-            dot.style.background   = '#4ecdc4';
-            txt.textContent        = 'Nginx Running';
-            txt.style.color        = '#4ecdc4';
-            statVal.textContent    = 'Active';
-            statVal.style.color    = '#4ecdc4';
-        } else {
-            dot.style.background   = '#ff6b6b';
-            txt.textContent        = 'Nginx Stopped';
-            txt.style.color        = '#ff6b6b';
-            statVal.textContent    = 'Down';
-            statVal.style.color    = '#ff6b6b';
-        }
-    } catch(e) {}
-}
-
-async function reloadNginx() {
-    showToast('Reloading Nginx...', 'info');
-    try {
-        const res  = await fetch('/api/websites/reload_nginx', { method: 'POST' });
-        const data = await res.json();
-        showToast(data.success ? 'Nginx reloaded successfully' : 'Reload failed: ' + data.output,
-                  data.success ? 'success' : 'error');
-    } catch(e) { showToast('Request failed', 'error'); }
-}
-
-// ---- Tabs ----
-function switchTab(id, btn) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    btn.classList.add('active');
-    if (id === 'tab-blocked') loadBlockedIPs();
-}
-
-// ---- Threat Detection ----
-let threatData = null;
-
-function threatTagClass(type) {
-    if (type.includes('Scanner') || type.includes('Bot')) return 'scanner';
-    if (type.includes('Path'))  return 'path';
-    if (type.includes('4xx'))   return 'rate';
-    return '';
-}
-
-async function loadThreats() {
-    document.getElementById('threat-loading').style.display = 'block';
-    document.getElementById('threat-ips-table').style.display = 'none';
-    try {
-        const res  = await fetch('/api/websites/threats');
-        const data = await res.json();
-        threatData = data;
-
-        if (data.error) {
-            document.getElementById('threat-loading').innerHTML =
-                `<i class="fa-solid fa-circle-exclamation" style="color:#ff6b6b; font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
-                 ${data.error}`;
-            return;
-        }
-
-        // Update stats
-        document.getElementById('t-total').textContent   = (data.stats.total_requests || 0).toLocaleString();
-        document.getElementById('t-threats').textContent = (data.stats.total_threats   || 0).toLocaleString();
-        document.getElementById('t-ips').textContent     = (data.stats.unique_threat_ips || 0).toLocaleString();
-        document.getElementById('threat-scan-info').textContent =
-            `Scanned ${(data.lines_scanned||0).toLocaleString()} lines from ${data.log_file || 'access.log'}`;
-
-        // Threat IPs table
-        const tbody = document.getElementById('threat-ips-body');
-        tbody.innerHTML = '';
-        if (!data.threats || data.threats.length === 0) {
-            document.getElementById('threat-ips-empty').style.display = 'block';
-        } else {
-            document.getElementById('threat-ips-empty').style.display = 'none';
-            data.threats.forEach(t => {
-                const tags = (t.threat_types || []).map(tt =>
-                    `<span class="threat-tag ${threatTagClass(tt)}">${tt}</span>`).join('');
-                const paths = (t.sample_paths || []).map(p =>
-                    `<span class="path-chip" title="${p}">${p}</span>`).join('');
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-family:monospace; font-weight:600;">${t.ip}</td>
-                    <td>${tags}</td>
-                    <td style="text-align:center;">${t.total_requests}</td>
-                    <td style="text-align:center; color:#ff6b6b; font-weight:600;">${t.threat_requests}</td>
-                    <td style="max-width:220px;">${paths || '<span style="color:var(--text-muted)">—</span>'}</td>
-                    <td style="font-size:0.78rem; color:var(--text-muted);">${t.last_seen || '—'}</td>
-                    <td>
-                        <button class="block-btn" id="block-btn-${t.ip.replace(/\./g,'-')}"
-                            onclick="blockIP('${t.ip}', this)">
-                            <i class="fa-solid fa-ban"></i> Block
+        <!-- TAB 3: Keamanan & Bot Shield -->
+        <div class="tab-content" id="tab-shield">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; margin-bottom: 1.8rem;">
+                <div class="panel" style="margin-bottom: 0;">
+                    <div class="panel-title" style="margin-bottom: 1rem;">
+                        <i class="fa-solid fa-hand" style="color: var(--danger);"></i>
+                        Blokir IP Manual (Host iptables)
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem;">
+                        Masukkan alamat IP penyerang untuk langsung dimasukkan ke aturan <code>iptables DROP</code> pada kernel server host.
+                    </p>
+                    <form id="form-block-ip" style="display: flex; gap: 0.6rem;">
+                        <input type="text" id="input-block-ip" placeholder="Contoh: 198.51.100.45" required
+                            style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); color: #fff; padding: 0.6rem 1rem; border-radius: 10px; font-family: monospace; outline: none;">
+                        <button type="submit" class="btn-action btn-danger">
+                            <i class="fa-solid fa-ban"></i> Blokir IP
                         </button>
-                    </td>`;
-                tbody.appendChild(tr);
-            });
-        }
+                    </form>
+                </div>
 
-        // Recent activity table
-        const rbody = document.getElementById('recent-body');
-        rbody.innerHTML = '';
-        if (!data.recent || data.recent.length === 0) {
-            rbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:2rem;">No recent suspicious activity</td></tr>';
-        } else {
-            data.recent.forEach(r => {
-                const statusColor = r.status >= 500 ? '#ff6b6b' : r.status >= 400 ? '#ffe66d' : '#4ecdc4';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-size:0.78rem; color:var(--text-muted); white-space:nowrap;">${r.time}</td>
-                    <td style="font-family:monospace; font-size:0.85rem;">${r.ip}</td>
-                    <td><span style="background:rgba(35,166,213,0.15); color:#23a6d5; padding:1px 7px; border-radius:5px; font-size:0.75rem;">${r.method}</span></td>
-                    <td style="font-family:monospace; font-size:0.78rem; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.path}">${r.path}</td>
-                    <td><span style="color:${statusColor}; font-weight:600;">${r.status}</span></td>
-                    <td><span class="threat-tag ${threatTagClass(r.threat_type)}">${r.threat_type}</span></td>
-                    <td style="font-size:0.72rem; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.ua}">${r.ua}</td>`;
-                rbody.appendChild(tr);
-            });
-        }
+                <div class="panel" style="margin-bottom: 0;">
+                    <div class="panel-title" style="margin-bottom: 0.8rem;">
+                        <i class="fa-solid fa-shield" style="color: var(--warning);"></i>
+                        Status Keamanan Node Host
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.8rem; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                            <span style="font-size: 0.88rem; color: var(--text-dim);">Percobaan Login SSH Gagal (auth.log)</span>
+                            <span class="badge badge-danger" id="shield-failed-ssh">0 insiden</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.8rem; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                            <span style="font-size: 0.88rem; color: var(--text-dim);">IP Aktif Terblokir di iptables</span>
+                            <span class="badge badge-warning" id="shield-blocked-count">0 IP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-        document.getElementById('threat-loading').style.display = 'none';
-        document.getElementById('threat-ips-table').style.display = 'block';
+            <!-- Blocked IPs Table -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-list-ul" style="color: var(--danger);"></i>
+                        Daftar IP Terblokir di iptables
+                    </div>
+                    <button class="btn-action" id="btn-refresh-blocked">
+                        <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Alamat IP</th>
+                                <th>Target Rule</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="blocked-ips-tbody">
+                            <tr>
+                                <td colspan="3" class="empty-state">
+                                    <i class="fa-solid fa-check-circle" style="color: var(--success); opacity: 0.8;"></i>
+                                    <p>Tidak ada IP yang sedang terblokir di host iptables</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-    } catch(e) {
-        document.getElementById('threat-loading').innerHTML =
-            `<i class="fa-solid fa-circle-exclamation" style="color:#ff6b6b; font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
-             Failed to load threat data`;
-    }
-}
+            <!-- Recent Threats Table -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);"></i>
+                        Log Ancaman Terbaru & Scanner Terdeteksi
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Alamat IP</th>
+                                <th>Waktu</th>
+                                <th>Method & Path</th>
+                                <th>Tipe Ancaman</th>
+                                <th>User-Agent / Signature</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="threats-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <p>Memindai riwayat ancaman...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-async function blockIP(ip, btn) {
-    if (!confirm(`Block IP ${ip} via iptables?\nThis will drop all incoming traffic from this IP.`)) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    try {
-        const res  = await fetch('/api/websites/threats/block', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ip})
-        });
-        const data = await res.json();
-        if (data.success) {
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Blocked';
-            btn.classList.add('blocked');
-            showToast(`${ip} blocked successfully`, 'success');
-        } else {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-ban"></i> Block';
-            showToast('Block failed: ' + data.error, 'error');
-        }
-    } catch(e) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-ban"></i> Block';
-        showToast('Request failed', 'error');
-    }
-}
+        <!-- TAB 4: SSL & Cadangan Web -->
+        <div class="tab-content" id="tab-ssl">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-certificate" style="color: var(--accent-cyan);"></i>
+                        Pemantau Masa Berlaku Sertifikat SSL Lintas Domain
+                    </div>
+                    <button class="btn-action" id="btn-refresh-ssl">
+                        <i class="fa-solid fa-arrows-rotate"></i> Periksa Ulang SSL
+                    </button>
+                </div>
 
-async function blockManualIP() {
-    const ip = document.getElementById('manual-block-ip').value.trim();
-    if (!ip) { showToast('Enter an IP address first', 'warn'); return; }
-    await blockIP(ip, { innerHTML: '', disabled: false, classList: { add: ()=>{} } });
-    loadBlockedIPs();
-}
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nama Domain</th>
+                                <th>Status SSL</th>
+                                <th>Sisa Masa Berlaku</th>
+                                <th>Penerbit (CA)</th>
+                                <th>Berlaku Sampai</th>
+                                <th>Cadangan Web</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ssl-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                    <p>Memeriksa sertifikat SSL untuk seluruh domain aktif...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-async function loadBlockedIPs() {
-    const container = document.getElementById('blocked-list');
-    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading...</div>';
-    try {
-        const res  = await fetch('/api/websites/threats/blocked_ips');
-        const data = await res.json();
-        if (!data.blocked || data.blocked.length === 0) {
-            container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-shield-check" style="color:#4ecdc4; opacity:1;"></i><p style="color:#4ecdc4;">No IPs currently blocked</p></div>';
-            return;
-        }
-        container.innerHTML = `
-            <table>
-                <thead><tr><th>#</th><th>Blocked IP</th><th>Action</th></tr></thead>
-                <tbody>${data.blocked.map((ip, i) => `
-                    <tr>
-                        <td style="color:var(--text-muted); font-size:0.8rem;">${i+1}</td>
-                        <td style="font-family:monospace; font-weight:600;">${ip}</td>
-                        <td>
-                            <button class="block-btn blocked" onclick="unblockIP('${ip}', this)">
-                                <i class="fa-solid fa-lock-open"></i> Unblock
-                            </button>
-                        </td>
-                    </tr>`).join('')}
-                </tbody>
-            </table>`;
-    } catch(e) {
-        container.innerHTML = '<div style="color:#ff6b6b; padding:1rem;">Failed to load blocked IPs</div>';
-    }
-}
+    </div>
 
-async function unblockIP(ip, btn) {
-    if (!confirm(`Unblock IP ${ip}?`)) return;
-    btn.disabled = true;
-    try {
-        const res  = await fetch('/api/websites/threats/unblock', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ip})
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast(`${ip} unblocked`, 'success');
-            loadBlockedIPs();
-        } else {
-            btn.disabled = false;
-            showToast('Unblock failed: ' + data.error, 'error');
-        }
-    } catch(e) {
-        btn.disabled = false;
-        showToast('Request failed', 'error');
-    }
-}
+    <!-- Notification Toast -->
+    <div id="toast">
+        <i class="fa-solid fa-circle-info" id="toast-icon"></i>
+        <span id="toast-msg">Notifikasi</span>
+    </div>
 
-// ---- Init ----
-checkNginxStatus();
-setInterval(checkNginxStatus, 10000);
-loadThreats();
-</script>
+    <!-- Modular External JavaScript -->
+    <script src="{{ url_for('static', filename='websites.js') }}?v=1"></script>
 </body>
+
 </html>

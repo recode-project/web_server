@@ -1,4 +1,26 @@
+window.userRole = (document.body && document.body.dataset.userRole) || 'readonly';
+
+function showAdModal(feature) {
+    const m = document.getElementById('ad-modal');
+    const msg = document.getElementById('ad-message');
+    if (msg) msg.textContent = "Anda tidak memiliki akses untuk menu: " + feature + ". Silakan hubungi Administrator.";
+    if (m) m.classList.add('active');
+}
+
+function closeAdModal() {
+    const m = document.getElementById('ad-modal');
+    if (m) m.classList.remove('active');
+    window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Handle Access Denied Redirects
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('error') === 'access_denied') {
+        const feature = urlParams.get('feature') || 'Restricted Area';
+        setTimeout(() => showAdModal(feature), 100);
+    }
+
     // Clock
     setInterval(updateClock, 1000);
     updateClock();
@@ -49,11 +71,23 @@ document.querySelector('.cpu-color').closest('.widget-card').onclick = () => ope
 document.querySelector('.ram-color').closest('.widget-card').onclick = () => openDetail('ram');
 document.querySelector('.disk-color').closest('.widget-card').onclick = () => openDetail('disk');
 document.querySelector('.net-color').closest('.widget-card').onclick = () => openDetail('network');
+const powerWidgetCard = document.querySelector('.power-color') && document.querySelector('.power-color').closest('.widget-card');
+if (powerWidgetCard) powerWidgetCard.onclick = () => openDetail('power');
+
+document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && detailOverlay && !detailOverlay.classList.contains('hidden')) {
+        closeDetail();
+    }
+});
 
 let detailInterval = null;
 let lastNet = { sent: 0, recv: 0, time: 0 };
 
 function openDetail(type) {
+    if (detailInterval) {
+        clearInterval(detailInterval);
+        detailInterval = null;
+    }
     detailOverlay.classList.remove('hidden');
     detailOverlay.style.display = 'flex'; // Ensure flex
 
@@ -73,6 +107,10 @@ function openDetail(type) {
         detailTitle.textContent = 'Network Interfaces';
         fetchNetworkDetails();
         // Static info mostly, no interval needed or maybe slow poll
+    } else if (type === 'power') {
+        detailTitle.textContent = 'Energy & Power Analysis';
+        fetchPowerDetails();
+        detailInterval = setInterval(() => fetchPowerDetails(), 3000);
     }
 }
 
@@ -81,6 +119,7 @@ function refreshDetail() {
     if (title === 'CPU Usage') fetchProcesses('cpu');
     else if (title === 'Memory Usage') fetchProcesses('mem');
     else if (title === 'Storage Analysis') fetchDiskAnalysis();
+    else if (title === 'Energy & Power Analysis') fetchPowerDetails();
     else if (title === 'Network Interfaces') {
         if (typeof window.switchNetTab === 'function') {
             loadNetContent(); // Refresh current tab
@@ -215,21 +254,46 @@ function updateStats() {
                 if (document.getElementById('net-total')) document.getElementById('net-total').textContent = `${totalGB} GB`;
             }
 
-            // Power
+            // Power (Universal Currency, Tariff & Hardware Sensor Calibration)
             if (data.power) {
+                const p = data.power;
                 const elKwh = document.getElementById('power-kwh');
-                if (elKwh) elKwh.textContent = data.power.kwh;
+                if (elKwh) elKwh.textContent = p.kwh;
 
                 const elEst = document.getElementById('power-est');
-                if (elEst) elEst.textContent = `Est. based on ${data.power.watts_est}W`;
+                if (elEst) {
+                    let src = 'Est';
+                    if (p.source === 'rapl') src = 'Hardware RAPL';
+                    else if (p.source === 'power_supply') src = 'Battery/UPS';
+                    let wattText = `${p.watts_est}W (${src})`;
+                    if (p.battery && p.battery.capacity !== null && p.battery.capacity !== undefined) {
+                        wattText += ` • ${p.battery.capacity}%`;
+                    }
+                    elEst.textContent = wattText;
+                }
 
                 const elCost = document.getElementById('power-cost');
                 if (elCost) {
-                    let kwh = parseFloat(data.power.kwh);
-                    let cost = kwh * 1444.70;
-                    let costFormatted = cost.toLocaleString('id-ID', { maximumFractionDigits: 0 });
-                    if (cost > 0 && cost < 1) costFormatted = "< 1";
-                    elCost.textContent = `Rp ${costFormatted}`;
+                    const kwh = parseFloat(p.kwh) || 0;
+                    const tariff = p.tariff_per_kwh !== undefined ? parseFloat(p.tariff_per_kwh) : 1444.70;
+                    const cost = p.estimated_cost !== undefined ? parseFloat(p.estimated_cost) : (kwh * tariff);
+                    const symbol = (p.currency_symbol !== undefined ? String(p.currency_symbol) : 'Rp').trim();
+                    const locale = p.locale || 'id-ID';
+                    const decimals = Math.max(0, Math.min(4, parseInt(p.decimals !== undefined ? p.decimals : 0, 10) || 0));
+                    let costFormatted;
+                    if (decimals === 0 && cost > 0 && cost < 1) {
+                        costFormatted = "< 1";
+                    } else {
+                        try {
+                            costFormatted = cost.toLocaleString(locale, {
+                                minimumFractionDigits: decimals,
+                                maximumFractionDigits: decimals
+                            });
+                        } catch (e) {
+                            costFormatted = cost.toFixed(decimals);
+                        }
+                    }
+                    elCost.textContent = symbol ? `${symbol} ${costFormatted}` : costFormatted;
                 }
             }
 
@@ -488,6 +552,191 @@ function renderFileTable(items) {
     return html;
 }
 
+function _formatPowerCurrency(amount, powerCfg) {
+    const symbol = (powerCfg.currency_symbol !== undefined ? String(powerCfg.currency_symbol) : 'Rp').trim();
+    const locale = powerCfg.locale || 'id-ID';
+    const decimals = Math.max(0, Math.min(4, parseInt(powerCfg.decimals !== undefined ? powerCfg.decimals : 0, 10) || 0));
+    const val = Number(amount) || 0;
+    let formatted;
+    if (decimals === 0 && val > 0 && val < 1) {
+        formatted = '< 1';
+    } else {
+        try {
+            formatted = val.toLocaleString(locale, {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        } catch (e) {
+            formatted = val.toFixed(decimals);
+        }
+    }
+    return symbol ? `${symbol} ${formatted}` : formatted;
+}
+
+function _getPowerSourceLabel(src) {
+    if (src === 'rapl') return 'Hardware RAPL';
+    if (src === 'power_supply') return 'Battery / UPS Sensor';
+    return 'CPU Load Estimate';
+}
+
+function fetchPowerDetails() {
+    fetch('/api/stats')
+        .then(r => r.json())
+        .then(data => {
+            const p = data.power || {};
+            const watts = parseFloat(p.watts_est) || 0;
+            const kwhUsed = parseFloat(p.kwh) || 0;
+            const tariff = p.tariff_per_kwh !== undefined ? parseFloat(p.tariff_per_kwh) : 1444.70;
+            const totalCost = p.estimated_cost !== undefined ? parseFloat(p.estimated_cost) : (kwhUsed * tariff);
+            const sourceLabel = _getPowerSourceLabel(p.source);
+            const kw = watts / 1000;
+
+            const kwhHour = kw;
+            const kwhDay = kw * 24;
+            const kwhWeek = kw * 24 * 7;
+            const kwhMonth = kw * 24 * 30;
+            const kwhYear = kw * 24 * 365;
+
+            const psuRaw = parseFloat(p.psu_efficiency);
+            const psuPct = !isNaN(psuRaw) ? (psuRaw <= 1.05 ? Math.round(psuRaw * 100) : Math.round(psuRaw)) : 85;
+            const baseOverhead = p.base_overhead_watts !== undefined ? Number(p.base_overhead_watts).toFixed(1) : '9.5';
+            const sourceMode = p.power_source_mode || 'auto';
+            const currCode = p.currency_code || 'IDR';
+            const canManage = ['owner', 'admin'].includes(window.userRole);
+
+            let batteryRow = '';
+            if (p.battery && (p.battery.capacity !== null && p.battery.capacity !== undefined)) {
+                const batStatus = p.battery.status ? ` (${p.battery.status})` : '';
+                batteryRow = `
+                    <tr>
+                        <td>Status Baterai / UPS</td>
+                        <td style="font-family:monospace; color:#f8fafc">${p.battery.capacity}%${batStatus}</td>
+                    </tr>
+                `;
+            }
+
+            const cardStyle = 'background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:1rem;';
+            const labelStyle = 'font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem;';
+            const valStyle = 'font-size:1.35rem; font-weight:700; color:#f8fafc; font-variant-numeric:tabular-nums;';
+            const subStyle = 'font-size:0.78rem; color:#cbd5e1; margin-top:0.25rem;';
+
+            detailContent.innerHTML = `
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:0.85rem; margin-bottom:1.25rem;">
+                    <div style="${cardStyle}">
+                        <div style="${labelStyle}">Daya Aktif</div>
+                        <div style="${valStyle}">${watts.toFixed(1)} W</div>
+                        <div style="${subStyle}">${sourceLabel}</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${labelStyle}">Total Tercatat</div>
+                        <div style="${valStyle}">${kwhUsed.toFixed(4)} kWh</div>
+                        <div style="${subStyle}; color:#fbbf24;">${_formatPowerCurrency(totalCost, p)}</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${labelStyle}">Proyeksi Bulanan (30 Hari)</div>
+                        <div style="${valStyle}">${kwhMonth.toFixed(2)} kWh</div>
+                        <div style="${subStyle}; color:#86efac;">${_formatPowerCurrency(kwhMonth * tariff, p)}</div>
+                    </div>
+                    <div style="${cardStyle}">
+                        <div style="${labelStyle}">Tarif Listrik (${currCode})</div>
+                        <div style="${valStyle}">${_formatPowerCurrency(tariff, p)}</div>
+                        <div style="${subStyle}">per kWh</div>
+                    </div>
+                </div>
+
+                <h3 style="margin:0 0 0.65rem; font-size:0.95rem; color:#e2e8f0;">Proyeksi Pemakaian &amp; Biaya (Daya Saat Ini: ${watts.toFixed(1)} W)</h3>
+                <table class="data-table" style="margin-bottom:1.25rem;">
+                    <thead>
+                        <tr>
+                            <th>Periode</th>
+                            <th>Estimasi Energi</th>
+                            <th>Estimasi Biaya</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Per Jam (1 jam)</td>
+                            <td style="font-family:monospace">${kwhHour.toFixed(4)} kWh</td>
+                            <td style="font-family:monospace">${_formatPowerCurrency(kwhHour * tariff, p)}</td>
+                        </tr>
+                        <tr>
+                            <td>Harian (24 jam)</td>
+                            <td style="font-family:monospace">${kwhDay.toFixed(3)} kWh</td>
+                            <td style="font-family:monospace">${_formatPowerCurrency(kwhDay * tariff, p)}</td>
+                        </tr>
+                        <tr>
+                            <td>Mingguan (7 hari)</td>
+                            <td style="font-family:monospace">${kwhWeek.toFixed(2)} kWh</td>
+                            <td style="font-family:monospace">${_formatPowerCurrency(kwhWeek * tariff, p)}</td>
+                        </tr>
+                        <tr>
+                            <td>Bulanan (30 hari)</td>
+                            <td style="font-family:monospace; font-weight:600; color:#86efac;">${kwhMonth.toFixed(2)} kWh</td>
+                            <td style="font-family:monospace; font-weight:600; color:#fbbf24;">${_formatPowerCurrency(kwhMonth * tariff, p)}</td>
+                        </tr>
+                        <tr>
+                            <td>Tahunan (365 hari)</td>
+                            <td style="font-family:monospace">${kwhYear.toFixed(1)} kWh</td>
+                            <td style="font-family:monospace">${_formatPowerCurrency(kwhYear * tariff, p)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3 style="margin:0 0 0.65rem; font-size:0.95rem; color:#e2e8f0;">Parameter Sensor &amp; Kalibrasi</h3>
+                <table class="data-table" style="margin-bottom:1.25rem;">
+                    <tbody>
+                        <tr>
+                            <td>Sumber Sensor Aktif</td>
+                            <td style="font-family:monospace; color:#f8fafc">${sourceLabel} (${p.source || 'estimate'})</td>
+                        </tr>
+                        <tr>
+                            <td>Prioritas Sensor</td>
+                            <td style="font-family:monospace; color:#f8fafc">${sourceMode}</td>
+                        </tr>
+                        <tr>
+                            <td>Base System Overhead</td>
+                            <td style="font-family:monospace; color:#f8fafc">${baseOverhead} W</td>
+                        </tr>
+                        <tr>
+                            <td>Efisiensi PSU</td>
+                            <td style="font-family:monospace; color:#f8fafc">${psuPct}%</td>
+                        </tr>
+                        ${batteryRow}
+                    </tbody>
+                </table>
+
+                <div style="display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:flex-end; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.08);">
+                    <a href="/settings#energy-calibration-section" style="display:inline-flex; align-items:center; gap:0.45rem; padding:0.58rem 1rem; border-radius:8px; background:rgba(255,255,255,0.09); border:1px solid rgba(255,255,255,0.16); color:#fff; text-decoration:none; font-size:0.85rem; font-weight:500;">
+                        <i class="fa-solid fa-sliders"></i> Ubah Tarif &amp; Kalibrasi
+                    </a>
+                    ${canManage ? `
+                        <button type="button" onclick="resetEnergyFromDetail()" style="display:inline-flex; align-items:center; gap:0.45rem; padding:0.58rem 1rem; border-radius:8px; background:rgba(239,68,68,0.16); border:1px solid rgba(239,68,68,0.38); color:#fca5a5; cursor:pointer; font-size:0.85rem; font-weight:500; font-family:inherit;">
+                            <i class="fa-solid fa-rotate-left"></i> Reset Counter kWh
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        })
+        .catch(err => {
+            detailContent.innerHTML = `<div style="text-align:center; padding:2rem; color:#fca5a5;">Gagal memuat telemetri energi: ${err.message}</div>`;
+        });
+}
+
+function resetEnergyFromDetail() {
+    if (!confirm('Reset counter akumulasi kWh ke 0.0000 sekarang?')) return;
+    fetch('/api/energy/reset', { method: 'POST' })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success || res.status === 'ok' || res.kwh !== undefined) {
+                updateStats();
+                fetchPowerDetails();
+            } else {
+                alert(res.error || 'Gagal mereset counter kWh');
+            }
+        })
+        .catch(err => alert('Error reset counter kWh: ' + err.message));
+}
+
 // --- HOME AUTOMATION LOGIC ---
 let homeDevices = [];
 let homeWidgetRendered = false;
@@ -606,6 +855,11 @@ function loadDashboardApps() {
         .then(data => {
             if (data.items) {
                 renderDashboardApps(data.items);
+            }
+            const hidden = Array.isArray(data.hidden_modules) ? data.hidden_modules : [];
+            const webWidget = document.getElementById('web-shield-widget');
+            if (webWidget) {
+                webWidget.style.display = hidden.includes('websites') ? 'none' : '';
             }
         })
         .catch(console.error);
@@ -748,10 +1002,42 @@ async function updateWebMonitor() {
     }
 }
 
+async function updateBackupWidget() {
+    try {
+        const res = await fetch('/api/backup/summary');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success) return;
+
+        const summary = data.summary || {};
+        const countEl = document.getElementById('backup-widget-count');
+        const sizeEl = document.getElementById('backup-widget-size');
+        const statusEl = document.getElementById('backup-widget-status');
+
+        if (countEl) countEl.textContent = summary.total_backups || 0;
+        if (sizeEl) sizeEl.textContent = summary.total_size_formatted || '0 B';
+
+        if (statusEl) {
+            if (summary.total_backups > 0) {
+                const latest = summary.latest_backup;
+                statusEl.style.color = '#10b981';
+                statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>${latest ? latest.date : 'Tersedia'}</span>`;
+            } else {
+                statusEl.style.color = '#f59e0b';
+                statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>Belum ada</span>`;
+            }
+        }
+    } catch (err) {
+        console.error("Failed to update Backup Widget:", err);
+    }
+}
+
 // Add init logic
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboardApps();
     updateWebMonitor();
+    updateBackupWidget();
     setInterval(updateWebMonitor, 10000); // Polling every 10s
+    setInterval(updateBackupWidget, 30000); // Polling every 30s
 });
 

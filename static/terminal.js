@@ -41,7 +41,13 @@ const socket = io();
             if (fontSelect) {
                 fontSelect.value = String(currentFontSize);
             }
-            addTab(startPath, startCmd ? 'Command' : 'Terminal 1');
+            let initialTabName = 'Terminal 1';
+            if (lxdTarget) {
+                initialTabName = (lxdProject && lxdProject !== 'default') ? `LXD: ${lxdProject}/${lxdTarget}` : `LXD: ${lxdTarget}`;
+            } else if (startCmd) {
+                initialTabName = 'Command';
+            }
+            addTab(startPath, initialTabName);
             renderCustomCommands();
             initMobileInput();
 
@@ -79,10 +85,13 @@ const socket = io();
 
             tabBtn.classList.add('active');
 
-            // Create terminal wrap - aktifkan langsung di DOM agar bounding box memiliki dimensi valid
+            // Create terminal wrap with padding-free inner screen for exact FitAddon calculation
             const termWrap = document.createElement('div');
             termWrap.className = 'terminal-wrap active';
             termWrap.id = 'term-wrap-' + sessionId;
+            const termScreen = document.createElement('div');
+            termScreen.className = 'terminal-screen';
+            termWrap.appendChild(termScreen);
             document.getElementById('terminal-container').appendChild(termWrap);
 
             // Create xterm instance with custom theme
@@ -118,20 +127,30 @@ const socket = io();
 
             const fitAddon = new FitAddon.FitAddon();
             term.loadAddon(fitAddon);
-            term.open(termWrap);
-            try { fitAddon.fit(); } catch(e) {}
-            requestAnimationFrame(() => {
+            term.open(termScreen);
+
+            const fitAndSync = () => {
                 try {
+                    if (!termWrap.classList.contains('active')) return;
+                    if (termScreen.clientWidth < 40 || termScreen.clientHeight < 40) return;
                     fitAddon.fit();
                     term.refresh(0, term.rows - 1);
-                } catch(e) {}
-            });
-            setTimeout(() => {
-                try {
-                    fitAddon.fit();
-                    term.refresh(0, term.rows - 1);
-                } catch(e) {}
-            }, 80);
+                    if (terminals[sessionId]) {
+                        socket.emit('terminal_resize', {
+                            session_id: sessionId,
+                            rows: term.rows,
+                            cols: term.cols
+                        });
+                    }
+                } catch (e) {}
+            };
+
+            try { fitAddon.fit(); } catch (e) {}
+            requestAnimationFrame(fitAndSync);
+            setTimeout(fitAndSync, 120);
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(fitAndSync);
+            }
 
             // Di perangkat sentuh, tarik textarea helper xterm ke dalam
             // viewport dan bentangkan transparan di atas kanvas. Dengan begitu
@@ -148,18 +167,13 @@ const socket = io();
                 }
             }
 
-            // Handle resize
+            // Handle resize on padding-free screen element
+            let resizeTimer = null;
             const resizeObserver = new ResizeObserver(() => {
-                fitAddon.fit();
-                if (terminals[sessionId]) {
-                    socket.emit('terminal_resize', {
-                        session_id: sessionId,
-                        rows: term.rows,
-                        cols: term.cols
-                    });
-                }
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(fitAndSync, 30);
             });
-            resizeObserver.observe(termWrap);
+            resizeObserver.observe(termScreen);
 
             // Handle input
             term.onData(data => {
@@ -172,14 +186,16 @@ const socket = io();
             });
 
             // Store
-            terminals[sessionId] = { term, fitAddon, path, name: tabName };
+            terminals[sessionId] = { term, fitAddon, termScreen, fitAndSync, path, name: tabName };
 
-            // Start terminal on server
+            // Start terminal on server with initial rows/cols so PTY never spawns as 0x0
             socket.emit('start_terminal', {
                 session_id: sessionId,
                 path: path,
                 lxd_target: lxdTarget,
-                lxd_project: lxdProject
+                lxd_project: lxdProject,
+                rows: term.rows || 24,
+                cols: term.cols || 80
             });
 
             switchTab(sessionId);
@@ -209,17 +225,11 @@ const socket = io();
                     t.term.focus();
                 }
                 requestAnimationFrame(() => {
-                    try {
-                        t.fitAddon.fit();
-                        t.term.refresh(0, t.term.rows - 1);
-                    } catch(e) {}
+                    if (t.fitAndSync) t.fitAndSync();
                 });
                 setTimeout(() => {
-                    try {
-                        t.fitAddon.fit();
-                        t.term.refresh(0, t.term.rows - 1);
-                    } catch(e) {}
-                }, 80);
+                    if (t.fitAndSync) t.fitAndSync();
+                }, 100);
             }
         }
 
@@ -263,7 +273,7 @@ const socket = io();
          * Mode input mobile:
          *   'direct'   -> ketik langsung di dalam terminal (default)
          *   'fallback' -> pakai input bar terpisah di bawah terminal
-         * Disimpan di localStorage agar pilihan Tuan Eka bertahan.
+         * Disimpan di localStorage agar pilihan pengguna bertahan.
          */
         let mobileMode = localStorage.getItem('termMobileMode') || 'direct';
 
@@ -550,12 +560,22 @@ const socket = io();
         }
 
         function changeFontSize(size) {
-            currentFontSize = parseInt(size);
-            Object.values(terminals).forEach(t => {
+            currentFontSize = parseInt(size, 10);
+            Object.entries(terminals).forEach(([sid, t]) => {
                 t.term.options.fontSize = currentFontSize;
-                t.fitAddon.fit();
+                try {
+                    t.fitAddon.fit();
+                    t.term.refresh(0, t.term.rows - 1);
+                    socket.emit('terminal_resize', {
+                        session_id: sid,
+                        rows: t.term.rows,
+                        cols: t.term.cols
+                    });
+                } catch (e) {}
             });
         }
+
+        window.addEventListener('resize', refitActive);
 
         function toggleReadOnly(checked) {
             isReadOnly = checked;
@@ -565,10 +585,13 @@ const socket = io();
         // Custom Commands
         function renderCustomCommands() {
             const container = document.getElementById('custom-commands');
+            if (!container) return;
             if (customCommands.length === 0) {
                 container.innerHTML = '';
+                container.style.display = 'none';
                 return;
             }
+            container.style.display = 'flex';
 
             container.innerHTML = `
                 <span class="cmd-category-label" style="background:rgba(255,255,255,0.1); color:#888">

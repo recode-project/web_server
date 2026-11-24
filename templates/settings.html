@@ -11,9 +11,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -622,7 +619,7 @@
     </style>
 </head>
 
-<body>
+<body data-user-role="{{ session.get('role', 'readonly') }}">
     <div class="wallpaper"></div>
     <div class="container">
         <!-- Header -->
@@ -663,10 +660,17 @@
                         <div class="form-group">
                             <label>Timezone</label>
                             <select id="timezone">
-                                <option value="Asia/Jakarta">Asia/Jakarta (WIB)</option>
-                                <option value="Asia/Makassar">Asia/Makassar (WITA)</option>
-                                <option value="Asia/Jayapura">Asia/Jayapura (WIT)</option>
                                 <option value="UTC">UTC</option>
+                                <option value="Asia/Jakarta">Asia/Jakarta (WIB, UTC+7)</option>
+                                <option value="Asia/Makassar">Asia/Makassar (WITA, UTC+8)</option>
+                                <option value="Asia/Jayapura">Asia/Jayapura (WIT, UTC+9)</option>
+                                <option value="Asia/Singapore">Asia/Singapore (SGT, UTC+8)</option>
+                                <option value="Asia/Tokyo">Asia/Tokyo (JST, UTC+9)</option>
+                                <option value="Europe/London">Europe/London (GMT/BST)</option>
+                                <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+                                <option value="America/New_York">America/New_York (EST/EDT)</option>
+                                <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                                <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -847,6 +851,138 @@
                 </div>
             </div>
 
+            <!-- Energy & Power Calibration -->
+            <div class="card full-width" id="energy-calibration-section">
+                <div class="card-header">
+                    <i class="fa-solid fa-bolt" style="color:#f59e0b"></i>
+                    <h3>Energy &amp; Power Calibration</h3>
+                    <div style="margin-left:auto; font-size:0.8rem; color:var(--text-muted)">
+                        Active Sensor: <strong id="energy-live-sensor" style="color:var(--accent-cyan)">Detecting...</strong>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Currency &amp; Region Preset</label>
+                            <select id="energy-currency-preset" onchange="applyCurrencyPreset()">
+                                <option value="IDR">IDR (Rp) — Indonesia (PLN ~1444.70/kWh)</option>
+                                <option value="USD">USD ($) — United States (~$0.16/kWh)</option>
+                                <option value="EUR">EUR (€) — Europe (~€0.30/kWh)</option>
+                                <option value="GBP">GBP (£) — United Kingdom (~£0.25/kWh)</option>
+                                <option value="SGD">SGD (S$) — Singapore (~S$0.30/kWh)</option>
+                                <option value="MYR">MYR (RM) — Malaysia (~RM 0.57/kWh)</option>
+                                <option value="AUD">AUD (A$) — Australia (~A$0.32/kWh)</option>
+                                <option value="JPY">JPY (¥) — Japan (~¥31/kWh)</option>
+                                <option value="INR">INR (₹) — India (~₹8.00/kWh)</option>
+                                <option value="CUSTOM">Custom Currency</option>
+                            </select>
+                            <div class="form-hint">Choose a preset or customize currency symbol, locale, and electricity tariff below.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Electricity Tariff (per kWh)</label>
+                            <input type="number" id="energy-tariff" step="0.0001" min="0" placeholder="e.g. 1444.70 or 0.16">
+                            <div class="form-hint">Live Cost Preview: <strong id="energy-cost-preview" style="color:#f59e0b">--</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Currency Symbol</label>
+                            <input type="text" id="energy-currency-symbol" maxlength="10" placeholder="Rp, $, €, £">
+                        </div>
+                        <div class="form-group">
+                            <label>Currency Code</label>
+                            <input type="text" id="energy-currency-code" maxlength="8" placeholder="IDR, USD, EUR">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Number Formatting Locale</label>
+                            <input type="text" id="energy-locale" maxlength="16" placeholder="id-ID, en-US, de-DE">
+                        </div>
+                        <div class="form-group">
+                            <label>Cost Decimal Places</label>
+                            <select id="energy-decimals">
+                                <option value="0">0 (e.g. Rp 12.500 / ¥ 350)</option>
+                                <option value="2">2 (e.g. $ 4.25 / € 3.80)</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top:0.5rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.08)">
+                        <div class="form-group">
+                            <label>Hardware Power Source Priority</label>
+                            <select id="energy-source-mode">
+                                <option value="auto">Auto (RAPL -> Battery/UPS -> Model)</option>
+                                <option value="rapl">Intel/AMD RAPL Priority</option>
+                                <option value="power_supply">Linux power_supply (Battery/UPS) Priority</option>
+                                <option value="model">Software Estimation Model Only</option>
+                            </select>
+                            <div class="form-hint">Reads /sys/class/powercap (RAPL) and /sys/class/power_supply (Battery/UPS) automatically.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>PSU AC/DC Efficiency (%)</label>
+                            <input type="number" id="energy-psu-efficiency" min="50" max="100" step="1" placeholder="85">
+                            <div class="form-hint">Typical 80+ PSU: 82–92% (used to convert CPU/DC watts to wall-socket watts).</div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Base System Overhead (Watts)</label>
+                            <input type="number" id="energy-base-overhead" min="0" max="500" step="0.5" placeholder="9.5">
+                            <div class="form-hint">Non-CPU draw (motherboard, RAM, fans, SSD/HDD) added to RAPL CPU package watts.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Fallback Idle Power (Watts)</label>
+                            <input type="number" id="energy-idle-fallback" min="1" max="500" step="0.5" placeholder="12.0">
+                            <div class="form-hint">Baseline idle draw used only when neither RAPL nor Battery/UPS sensors are available.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn secondary" onclick="resetEnergyCounter()" {% if session.get('role') in
+                        ['readonly', 'operator' ] %}style="display:none" {% endif %}><i class="fa-solid fa-rotate-left"></i>
+                        Reset kWh Counter</button>
+                    <button class="btn primary" onclick="saveEnergy()" {% if session.get('role') in
+                        ['readonly', 'operator' ] %}style="display:none" {% endif %}><i class="fa-solid fa-save"></i>
+                        Save Energy Calibration</button>
+                </div>
+            </div>
+
+            <!-- Optional Modules & Feature Visibility -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <i class="fa-solid fa-cubes" style="color:#a855f7"></i>
+                    <h3>Optional Modules &amp; Visibility</h3>
+                    <div style="margin-left:auto; display:flex; gap:0.5rem">
+                        <button class="btn secondary" style="padding:0.35rem 0.7rem; font-size:0.78rem" onclick="loadModulesStatus(true)">
+                            <i class="fa-solid fa-rotate"></i> Refresh Detection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="toggle-row" style="margin-bottom:1rem; padding-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.08)">
+                        <div>
+                            <div class="toggle-label">Auto-Hide Uninstalled Optional Modules</div>
+                            <div class="toggle-desc">Automatically hide optional tiles (LXD, AdGuard, Samba, VPN, Websites, Recode) on the Dashboard if not installed on this server.</div>
+                        </div>
+                        <div class="toggle" id="toggle-auto-hide-modules" onclick="toggleAutoHideModules()"></div>
+                    </div>
+                    <div id="modules-visibility-list" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:0.85rem;">
+                        <div style="color:var(--text-muted); font-size:0.85rem; padding:1rem 0;">Detecting optional modules...</div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn primary" onclick="saveModules()" {% if session.get('role') in
+                        ['readonly', 'operator' ] %}style="display:none" {% endif %}><i class="fa-solid fa-save"></i>
+                        Save Module Visibility</button>
+                </div>
+            </div>
+
             <!-- Integrations (Service Control) -->
             <div class="card full-width">
                 <div class="card-header">
@@ -943,7 +1079,7 @@
         "id": "demo_temp",
         "name": "Suhu Server",
         "type": "sensor",
-        "topic": "test/eka/server/temp",
+        "topic": "home/server/temp",
         "unit": "°C",
         "icon": "fa-temperature-half"
     }
@@ -1000,7 +1136,7 @@
                             <button class="btn" onclick="checkUpdate()" id="btn-check-update">
                                 <i class="fa-solid fa-rotate"></i> Cek Pembaruan
                             </button>
-                            <a href="https://github.com/ekahr11/web_server" target="_blank" class="btn secondary">
+                            <a href="https://github.com/recode-project/web_server" target="_blank" class="btn secondary">
                                 <i class="fa-brands fa-github"></i> GitHub
                             </a>
                         </div>
@@ -1029,614 +1165,7 @@
         </div>
     </div>
 
-    <script>
-        let settings = {};
-        let selectedColor = 'blue';
-        let selectedDensity = 'comfortable';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadSettings();
-            loadServices();
-            loadVersion();
-        });
-
-        // ===== VERSION & UPDATE CHECKER =====
-        function loadVersion() {
-            fetch('/api/version')
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById('app-name').textContent = data.name || 'Eka Dashboard';
-                    document.getElementById('app-version').textContent = data.version || '?';
-                })
-                .catch(() => {
-                    document.getElementById('app-version').textContent = 'Error';
-                });
-        }
-
-        function checkUpdate() {
-            const btn = document.getElementById('btn-check-update');
-            const btnTop = document.getElementById('btn-update-top');
-            const statusEl = document.getElementById('update-status');
-            const statusTopEl = document.getElementById('update-status-top');
-            const bannerEl = document.getElementById('update-banner');
-
-            // Animasi loading
-            if(btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa...'; }
-            if(btnTop) { btnTop.disabled = true; btnTop.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa...'; }
-            if(statusEl) statusEl.innerHTML = '';
-            if(statusTopEl) statusTopEl.innerHTML = '';
-            if(bannerEl) bannerEl.style.display = 'none';
-
-            fetch('/api/check-update')
-                .then(r => r.json())
-                .then(data => {
-                    if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Cek Pembaruan'; }
-                    if(btnTop) { btnTop.disabled = false; btnTop.innerHTML = '<i class="fa-solid fa-rotate"></i> Check for Updates'; }
-
-                    if (data.error) {
-                        const errHtml = `<span style="color:#f85149"><i class="fa-solid fa-exclamation-circle"></i> ${data.error}</span>`;
-                        if(statusEl) statusEl.innerHTML = errHtml;
-                        if(statusTopEl) statusTopEl.innerHTML = errHtml;
-                        return;
-                    }
-
-                    if (data.update_available) {
-                        // Ada update!
-                        if(bannerEl) bannerEl.style.display = 'block';
-                        document.getElementById('update-info').textContent =
-                            `Versi ${data.latest_version} tersedia (Anda: ${data.current_version})`;
-                        document.getElementById('update-download-link').href = data.download_url || '#';
-
-                        if(statusEl) statusEl.innerHTML = '';
-                        if(statusTopEl) statusTopEl.innerHTML = '';
-                    } else {
-                        // Sudah versi terbaru
-                        const successHtml = `<span style="color:#3fb950"><i class="fa-solid fa-check-circle"></i> Anda sudah menggunakan versi terbaru!</span>`;
-                        if(statusEl) statusEl.innerHTML = successHtml;
-                        if(statusTopEl) statusTopEl.innerHTML = successHtml;
-                    }
-                })
-                .catch(err => {
-                    if(btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Cek Pembaruan'; }
-                    if(btnTop) { btnTop.disabled = false; btnTop.innerHTML = '<i class="fa-solid fa-rotate"></i> Check for Updates'; }
-                    const errHtml = `<span style="color:#f85149"><i class="fa-solid fa-exclamation-circle"></i> Gagal memeriksa update</span>`;
-                    if(statusEl) statusEl.innerHTML = errHtml;
-                    if(statusTopEl) statusTopEl.innerHTML = errHtml;
-                });
-        }
-
-        function performAutoUpdate() {
-            if (!confirm('Apakah Anda yakin ingin melakukan update otomatis? Dashboard akan berhenti sejenak selama proses berlangsung.')) {
-                return;
-            }
-
-            const btn = document.getElementById('btn-auto-update');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Mengunduh & Rebuild...';
-            }
-
-            fetch('/api/perform-update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    showMsg(data.message, 'success');
-                    // Automatically reload the page after 45 seconds to let docker rebuild
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 45000);
-                } else {
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Update Sekarang';
-                    }
-                    showMsg(data.error || 'Gagal memulai update', 'error');
-                }
-            })
-            .catch(err => {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Update Sekarang';
-                }
-                showMsg('Koneksi terputus. Ini normal jika container sedang di-restart.', 'info');
-                // Automatically try to reload
-                setTimeout(() => {
-                    window.location.reload();
-                }, 45000);
-            });
-        }
-        // ====================================
-
-        function loadServices() {
-            fetch('/api/services/status')
-                .then(r => r.json())
-                .then(data => {
-                    const tbody = document.getElementById('services-list');
-                    if (data.services && data.services.length > 0) {
-                        tbody.innerHTML = data.services.map(svc => `
-                            <tr style="border-bottom:1px solid rgba(255,255,255,0.05)">
-                                <td style="padding:1rem 1.2rem">
-                                    <div style="font-weight:500">${svc.name}</div>
-                                    <div style="font-size:0.75rem; color:#8b949e; margin-top:0.2rem">${svc.id}</div>
-                                </td>
-                                <td style="padding:1rem 1.2rem">
-                                    <span style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.2rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:600; background:${svc.active ? 'rgba(63,185,80,0.15)' : 'rgba(248,81,73,0.15)'}; color:${svc.active ? '#3fb950' : '#f85149'}">
-                                        <span style="width:6px; height:6px; border-radius:50%; background:currentColor"></span>
-                                        ${svc.status_text.toUpperCase()}
-                                    </span>
-                                </td>
-                                <td style="padding:1rem 1.2rem; text-align:right">
-                                    <div style="display:flex; gap:0.5rem; justify-content:flex-end">
-                                        ${svc.active ?
-                                `<button class="btn danger" onclick="controlService('${svc.id}', 'stop')" style="padding:0.3rem 0.6rem; font-size:0.75rem"><i class="fa-solid fa-stop"></i> Stop</button>
-                                             <button class="btn secondary" onclick="controlService('${svc.id}', 'restart')" style="padding:0.3rem 0.6rem; font-size:0.75rem"><i class="fa-solid fa-refresh"></i> Restart</button>` :
-                                `<button class="btn primary" onclick="controlService('${svc.id}', 'start')" style="padding:0.3rem 0.6rem; font-size:0.75rem"><i class="fa-solid fa-play"></i> Start</button>`
-                            }
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('');
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:2rem; color:#8b949e">No managed services found</td></tr>';
-                    }
-                })
-                .catch(() => {
-                    document.getElementById('services-list').innerHTML = '<tr><td colspan="3" style="text-align:center; padding:2rem; color:#f85149">Failed to load services</td></tr>';
-                });
-        }
-
-        function discoverServices() {
-            const tbody = document.getElementById('services-list');
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:2rem; color:#8b949e"><i class="fa-solid fa-spinner fa-spin"></i> Scanning host services... (may take a moment)</td></tr>';
-
-            fetch('/api/services/discover')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:2rem; color:#f85149">${data.error}</td></tr>`;
-                        return;
-                    }
-                    if (data.services && data.services.length > 0) {
-                        tbody.innerHTML = data.services.map(svc => `
-                            <tr style="border-bottom:1px solid rgba(255,255,255,0.05)">
-                                <td style="padding:0.8rem 1.2rem">
-                                    <label style="display:flex; align-items:center; gap:0.6rem; cursor:pointer">
-                                        <input type="checkbox" class="svc-checkbox" data-id="${svc.id}" data-name="${svc.name}">
-                                        <div>
-                                            <div style="font-weight:500">${svc.name}</div>
-                                            <div style="font-size:0.75rem; color:#8b949e">${svc.id}</div>
-                                        </div>
-                                    </label>
-                                </td>
-                                <td style="padding:0.8rem 1.2rem">
-                                    <span style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.2rem 0.6rem; border-radius:4px; font-size:0.7rem; font-weight:600; background:${svc.active ? 'rgba(63,185,80,0.15)' : 'rgba(248,81,73,0.15)'}; color:${svc.active ? '#3fb950' : '#f85149'}">
-                                        <span style="width:6px; height:6px; border-radius:50%; background:currentColor"></span>
-                                        ${svc.active ? 'RUNNING' : 'STOPPED'}
-                                    </span>
-                                    ${svc.enabled ? '<span style="margin-left:0.5rem; font-size:0.65rem; color:#8b949e">(enabled)</span>' : ''}
-                                </td>
-                                <td style="padding:0.8rem 1.2rem; text-align:right">
-                                    <div style="display:flex; gap:0.5rem; justify-content:flex-end">
-                                        ${svc.active ?
-                                `<button class="btn danger" onclick="controlService('${svc.id}', 'stop')" style="padding:0.2rem 0.5rem; font-size:0.7rem"><i class="fa-solid fa-stop"></i></button>
-                                             <button class="btn secondary" onclick="controlService('${svc.id}', 'restart')" style="padding:0.2rem 0.5rem; font-size:0.7rem"><i class="fa-solid fa-refresh"></i></button>` :
-                                `<button class="btn primary" onclick="controlService('${svc.id}', 'start')" style="padding:0.2rem 0.5rem; font-size:0.7rem"><i class="fa-solid fa-play"></i></button>`
-                            }
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('');
-
-                        // Add save button at the end (Only for Admin/Owner)
-                        if (window.userRole !== 'readonly' && window.userRole !== 'operator') {
-                            tbody.innerHTML += `<tr><td colspan="3" style="padding:1rem 1.2rem; text-align:right; background:rgba(255,255,255,0.02)">
-                                <button class="btn primary" onclick="saveSelectedServices()"><i class="fa-solid fa-save"></i> Save Selected to Dashboard</button>
-                            </td></tr>`;
-                        }
-                    } else {
-                        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:2rem; color:#8b949e">No services found</td></tr>';
-                    }
-                })
-                .catch(e => {
-                    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:2rem; color:#f85149">Scan failed: ${e}</td></tr>`;
-                });
-        }
-
-        function saveSelectedServices() {
-            const checkboxes = document.querySelectorAll('.svc-checkbox:checked');
-            const selected = Array.from(checkboxes).map(cb => ({
-                id: cb.dataset.id,
-                name: cb.dataset.name
-            }));
-
-            if (selected.length === 0) {
-                showMsg('Please select at least one service', 'error');
-                return;
-            }
-
-            // Save to settings
-            settings.services = selected;
-
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ services: selected })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        showMsg(`Saved ${selected.length} services to dashboard!`, 'success');
-                        loadServices(); // Switch back to normal view
-                    } else {
-                        showMsg('Failed to save', 'error');
-                    }
-                })
-                .catch(() => showMsg('Save failed', 'error'));
-        }
-
-        function controlService(serviceId, action) {
-            // Optimistic update
-            showMsg(`${action.charAt(0).toUpperCase() + action.slice(1)}ing service...`, 'info');
-
-            fetch('/api/services/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service: serviceId, action: action })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        showMsg(`Service ${action}ed successfully`, 'success');
-                        setTimeout(loadServices, 1000); // Reload after delay
-                    } else {
-                        showMsg(`Error: ${data.error}`, 'error');
-                    }
-                })
-                .catch(() => showMsg('Command failed', 'error'));
-        }
-
-        function loadSettings() {
-            fetch('/api/settings?_=' + new Date().getTime())
-                .then(r => r.json())
-                .then(data => {
-                    console.log('Settings data loaded:', data);
-                    settings = data;
-                    populateForm(data);
-                    applyPermissions();
-                })
-                .catch(e => {
-                    console.error("Failed to load settings:", e);
-                    showMsg("Connection Error", "error");
-                });
-        }
-
-        function applyPermissions() {
-            // Check if user has write access ('owner' or 'admin')
-            // 'readonly' and 'operator' only have 'view' permission for settings
-            if (['readonly', 'operator'].includes(window.userRole)) {
-                console.log("Read-only mode: Disabling inputs");
-
-                // 1. Disable standard form inputs
-                document.querySelectorAll('input, select, textarea').forEach(el => {
-                    el.disabled = true;
-                });
-
-                // 2. Hide all Primary (Save) buttons
-                document.querySelectorAll('.btn.primary').forEach(btn => {
-                    btn.style.display = 'none';
-                });
-
-                // 3. Disable custom interactive elements (Toggles, Cards, Colors)
-                const interactiveSelectors = [
-                    '.toggle',
-                    '.radio-card',
-                    '.color-option',
-                    '.svc-checkbox',
-                    '.btn.danger' // Also disable Reset/Stop buttons if any
-                ];
-
-                document.querySelectorAll(interactiveSelectors.join(', ')).forEach(el => {
-                    el.style.pointerEvents = 'none';
-                    el.style.opacity = '0.5';
-                    el.style.filter = 'grayscale(100%)';
-                    el.style.cursor = 'not-allowed';
-                });
-
-                // 4. Specific handling for Danger Zone (Reset Button)
-                // The 'resetSettings' button is .btn.danger, handled above.
-            }
-        }
-
-        function populateForm(s) {
-            console.log("Loading settings into form...", s);
-
-            // Safe execute helper
-            const runSafe = (label, fn) => {
-                try { fn(); }
-                catch (e) { console.error("Error loading " + label + ":", e); }
-            };
-
-            runSafe("General", () => {
-                if (!s.general) return;
-                const elName = document.getElementById('server-name');
-                if (elName) elName.value = s.general.server_name || '';
-
-                const elTz = document.getElementById('timezone');
-                if (elTz) elTz.value = s.general.timezone || 'Asia/Jakarta';
-
-                const elTime = document.getElementById('time-format');
-                if (elTime) elTime.value = s.general.time_format || '24h';
-
-                const elDate = document.getElementById('date-format');
-                if (elDate) elDate.value = s.general.date_format || 'DD/MM/YYYY';
-            });
-
-            runSafe("Appearance", () => {
-                if (!s.appearance) return;
-                if (s.appearance.accent_color) selectColor(s.appearance.accent_color);
-                if (s.appearance.density) selectDensity(s.appearance.density);
-            });
-
-            runSafe("Monitoring", () => {
-                if (!s.monitoring) return;
-                const elWall = document.getElementById('wallboard-interval');
-                if (elWall) elWall.value = s.monitoring.wallboard_interval || 2000;
-
-                const elMet = document.getElementById('metrics-interval');
-                if (elMet) elMet.value = s.monitoring.metrics_interval || 2000;
-
-                const elHist = document.getElementById('metrics-history');
-                if (elHist) elHist.value = s.monitoring.metrics_history_minutes || 60;
-
-                const elPage = document.getElementById('default-page');
-                if (elPage) elPage.value = s.monitoring.default_page || 'dashboard';
-            });
-
-            runSafe("Alerts", () => {
-                if (!s.alerts) return;
-                const elTog = document.getElementById('toggle-alerts');
-                if (elTog) elTog.classList.toggle('on', s.alerts.enabled === true);
-
-                const setVal = (id, val) => {
-                    const el = document.getElementById(id);
-                    if (el) el.value = val !== undefined ? val : 80;
-                };
-                setVal('cpu-warning', s.alerts.cpu_warning);
-                setVal('cpu-critical', s.alerts.cpu_critical);
-                setVal('ram-warning', s.alerts.ram_warning);
-                setVal('ram-critical', s.alerts.ram_critical);
-                setVal('disk-warning', s.alerts.disk_warning);
-                setVal('disk-critical', s.alerts.disk_critical);
-            });
-
-            runSafe("MQTT", () => {
-                if (!s.mqtt) return;
-                const enabled = s.mqtt.enabled === true;
-                const elTog = document.getElementById('toggle-mqtt');
-                if (elTog) elTog.classList.toggle('on', enabled);
-
-                const elArea = document.getElementById('mqtt-config-area');
-                if (elArea) elArea.style.display = enabled ? 'block' : 'none';
-
-                const setVal = (id, val) => {
-                    const el = document.getElementById(id);
-                    if (el) el.value = val || '';
-                };
-
-                setVal('mqtt-broker', s.mqtt.broker);
-                setVal('mqtt-port', s.mqtt.port || 1883);
-                setVal('mqtt-user', s.mqtt.user);
-                setVal('mqtt-pass', s.mqtt.password);
-
-                const elDev = document.getElementById('mqtt-devices');
-                if (elDev) elDev.value = JSON.stringify(s.mqtt.devices || [], null, 2);
-            });
-        }
-
-        function selectColor(color) {
-            selectedColor = color;
-            document.querySelectorAll('.color-option').forEach(c => c.classList.remove('active'));
-            document.querySelector(`.color-option.${color}`).classList.add('active');
-        }
-
-        function selectDensity(density) {
-            selectedDensity = density;
-            document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('active'));
-            document.getElementById('density-' + density).classList.add('active');
-        }
-
-        function toggleAlerts() {
-            document.getElementById('toggle-alerts').classList.toggle('on');
-        }
-
-        function toggleMqtt() {
-            const t = document.getElementById('toggle-mqtt');
-            t.classList.toggle('on');
-            document.getElementById('mqtt-config-area').style.display = t.classList.contains('on') ? 'block' : 'none';
-        }
-
-        function saveMqtt() {
-            let devices = [];
-            const rawJson = document.getElementById('mqtt-devices').value;
-
-            try {
-                devices = JSON.parse(rawJson);
-            } catch (e) {
-                alert('Invalid JSON in Devices Map:\n' + e.message);
-                return;
-            }
-
-            const payload = {
-                enabled: document.getElementById('toggle-mqtt').classList.contains('on'),
-                broker: document.getElementById('mqtt-broker').value,
-                port: parseInt(document.getElementById('mqtt-port').value) || 1883,
-                user: document.getElementById('mqtt-user').value,
-                password: document.getElementById('mqtt-pass').value,
-                devices: devices
-            };
-
-            saveSection('mqtt', payload);
-        }
-
-        function testMqtt() {
-            alert('Test connection feature is coming in the next update. Please save the config first.');
-        }
-
-        function saveGeneral() {
-            saveSection('general', {
-                server_name: document.getElementById('server-name').value,
-                timezone: document.getElementById('timezone').value,
-                time_format: document.getElementById('time-format').value,
-                date_format: document.getElementById('date-format').value
-            });
-        }
-
-        function saveAppearance() {
-            saveSection('appearance', {
-                accent_color: selectedColor,
-                density: selectedDensity
-            });
-        }
-
-        function saveMonitoring() {
-            saveSection('monitoring', {
-                wallboard_interval: parseInt(document.getElementById('wallboard-interval').value),
-                metrics_interval: parseInt(document.getElementById('metrics-interval').value),
-                metrics_history_minutes: parseInt(document.getElementById('metrics-history').value),
-                default_page: document.getElementById('default-page').value
-            });
-        }
-
-        function saveAlerts() {
-            saveSection('alerts', {
-                enabled: document.getElementById('toggle-alerts').classList.contains('on'),
-                cpu_warning: parseInt(document.getElementById('cpu-warning').value),
-                cpu_critical: parseInt(document.getElementById('cpu-critical').value),
-                ram_warning: parseInt(document.getElementById('ram-warning').value),
-                ram_critical: parseInt(document.getElementById('ram-critical').value),
-                disk_warning: parseInt(document.getElementById('disk-warning').value),
-                disk_critical: parseInt(document.getElementById('disk-critical').value)
-            });
-        }
-
-        function saveSection(section, data) {
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [section]: data })
-            })
-                .then(r => {
-                    // Handle Access Denied (403) specifically
-                    if (r.status === 403) {
-                        // Use our nice modal
-                        showAdModal(section + ' settings (Write Access)');
-                        // Stop the chain
-                        throw new Error("ACCESS_DENIED_HANDLED");
-                    }
-                    if (!r.ok) {
-                        return r.text().then(text => { throw new Error("Server Error " + r.status + ": " + text.substring(0, 50)); });
-                    }
-                    return r.json();
-                })
-                .then(result => {
-                    if (result.success) {
-                        showMsg('Settings saved successfully!', 'success');
-                        setTimeout(() => location.reload(), 1000);
-                    } else {
-                        showMsg(result.error || 'Failed to save', 'error');
-                    }
-                })
-                .catch(err => {
-                    if (err.message === "ACCESS_DENIED_HANDLED") return;
-                    console.error(err);
-                    showMsg(err.message || 'Connection Error', 'error');
-                });
-        }
-
-        function exportSettings() {
-            window.location.href = '/api/settings/export';
-        }
-
-        function importSettings(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    fetch('/api/settings/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
-                    })
-                        .then(r => r.json())
-                        .then(result => {
-                            if (result.success) {
-                                showMsg('Settings imported!', 'success');
-                                loadSettings();
-                            } else {
-                                showMsg(result.error || 'Import failed', 'error');
-                            }
-                        });
-                } catch (err) {
-                    showMsg('Invalid JSON file', 'error');
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        function resetSettings() {
-            if (!confirm('⚠️ This will reset ALL settings to defaults. Are you sure?')) return;
-
-            fetch('/api/settings/reset', { method: 'POST' })
-                .then(r => r.json())
-                .then(result => {
-                    if (result.success) {
-                        showMsg('Settings reset to defaults', 'success');
-                        loadSettings();
-                    }
-                });
-        }
-
-        function showMsg(text, type) {
-            const msg = document.getElementById('global-msg');
-            msg.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${text}`;
-            msg.className = 'msg ' + type;
-            setTimeout(() => msg.classList.add('hidden'), 3000);
-        }
-
-        // Initialize
-        loadSettings();
-
-        // Handle Access Denied Redirects
-        const urlParams = new URLSearchParams(window.location.search);
-
-        function showAdModal(feature) {
-            const m = document.getElementById('ad-modal');
-            const msg = document.getElementById('ad-message');
-            msg.textContent = "Anda tidak memiliki akses untuk menu: " + feature + ". Silakan hubungi Administrator.";
-            m.classList.add('active');
-        }
-
-        function closeAdModal() {
-            const m = document.getElementById('ad-modal');
-            m.classList.remove('active');
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-
-
-        if (urlParams.get('error') === 'access_denied') {
-            const feature = urlParams.get('feature') || 'Restricted Area';
-            setTimeout(() => {
-                showAdModal(feature);
-            }, 100);
-        }
-    </script>
+    <script src="/static/settings.js?v=2"></script>
     <!-- Access Denied Modal -->
     <div class="ad-overlay" id="ad-modal">
         <div class="ad-card">

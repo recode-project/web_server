@@ -4,60 +4,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jaringan - Server Dashboard</title>
+    <title>Network Manager — Eka Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
-    <script>
-        window.userRole = "{{ session.get('role', 'readonly') }}";
-    </script>
     <style>
-        .network-container {
-            padding: 1rem;
-            max-width: 1200px;
-            margin: 0 auto;
+        :root {
+            --glass-bg: rgba(30, 30, 40, 0.65);
+            --glass-card-hover: rgba(38, 38, 52, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-border-hover: rgba(255, 255, 255, 0.22);
+            --text-main: #ffffff;
+            --text-dim: #a0a0b0;
+
+            --accent-blue: #58a6ff;
+            --cpu-color: #ff6b6b;
+            --ram-color: #4ecdc4;
+            --disk-color: #ffe66d;
+            --net-color: #23a6d5;
+
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+
+            --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 8px;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
         }
 
-        .network-header {
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background: #0f0c29;
+            user-select: none;
+        }
+
+        /* Ambient Dynamic Wallpaper */
+        .wallpaper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            z-index: -1;
+            filter: brightness(0.48);
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 2rem 2.5rem 4rem 2.5rem;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        /* Header Bar */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateX(-3px);
+        }
+
+        .page-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .page-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-dim);
         }
 
         .btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
+            font-weight: 500;
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            transition: all 0.2s;
+            gap: 8px;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
 
         .btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.16);
+            border-color: var(--glass-border-hover);
         }
 
         .btn.primary {
-            background: #238636;
-            border-color: #238636;
+            background: rgba(35, 166, 213, 0.25);
+            border-color: rgba(35, 166, 213, 0.5);
+            color: #ffffff;
         }
 
         .btn.primary:hover {
-            background: #2ea043;
-        }
-
-        .btn.danger {
-            background: #da3633;
-            border-color: #da3633;
+            background: rgba(35, 166, 213, 0.4);
+            border-color: var(--net-color);
         }
 
         .btn:disabled {
@@ -65,468 +176,827 @@
             cursor: not-allowed;
         }
 
-        .cards-grid {
+        /* Overview Summary Grid (6 Items) */
+        .overview-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 1.2rem;
+            margin-bottom: 2rem;
         }
 
-        @media (max-width: 600px) {
-            .cards-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        .overview-card {
+            padding: 1.2rem;
             display: flex;
-            align-items: center;
-            gap: 0.8rem;
+            flex-direction: column;
+            gap: 6px;
+            border-radius: var(--radius-md);
         }
 
-        .card-header i {
-            font-size: 1.2rem;
-            color: #58a6ff;
-        }
-
-        .card-header h3 {
-            font-weight: 500;
-            font-size: 1rem;
-        }
-
-        .card-body {
-            padding: 1rem;
-        }
-
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.6rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .info-row:last-child {
-            border-bottom: none;
-        }
-
-        .info-label {
-            color: #8b949e;
-            font-size: 0.85rem;
-        }
-
-        .info-value {
-            font-weight: 500;
-            font-family: monospace;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #8b949e;
-            font-size: 0.85rem;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 0.6rem 0.8rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            color: #fff;
-            font-size: 0.9rem;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #58a6ff;
-        }
-
-        .card-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .interface-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .interface-item {
-            padding: 0.8rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .interface-item:hover {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .interface-icon {
-            width: 40px;
-            height: 40px;
-            background: rgba(88, 166, 255, 0.1);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #58a6ff;
-        }
-
-        .interface-info {
-            flex: 1;
-        }
-
-        .interface-name {
-            font-weight: 500;
-        }
-
-        .interface-ip {
-            font-family: monospace;
-            color: #3fb950;
-            font-size: 0.9rem;
-        }
-
-        .interface-status {
+        .overview-label {
             font-size: 0.75rem;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .interface-status.up {
-            background: rgba(63, 185, 80, 0.15);
-            color: #3fb950;
+        .overview-val {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffffff;
+            font-family: monospace;
+            word-break: break-all;
         }
 
-        .interface-status.down {
-            background: rgba(248, 81, 73, 0.15);
-            color: #f85149;
+        /* Tab Navigation Bar */
+        .tabs-nav-bar {
+            display: flex;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 6px;
+            border-radius: var(--radius-md);
+            margin-bottom: 1.8rem;
+            width: fit-content;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            flex-wrap: wrap;
         }
 
+        .tab-nav-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 9px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: inherit;
+        }
+
+        .tab-nav-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .tab-nav-btn.active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .tab-count-pill {
+            background: rgba(35, 166, 213, 0.25);
+            color: var(--net-color);
+            padding: 2px 7px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Global Notification Box */
         .msg {
-            padding: 0.8rem 1rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;
+            padding: 0.9rem 1.2rem;
+            border-radius: var(--radius-sm);
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
             display: none;
         }
 
         .msg.success {
-            display: block;
-            background: rgba(63, 185, 80, 0.15);
-            border: 1px solid rgba(63, 185, 80, 0.3);
+            background: rgba(63, 185, 80, 0.18);
+            border: 1px solid rgba(63, 185, 80, 0.4);
             color: #3fb950;
         }
 
         .msg.error {
-            display: block;
-            background: rgba(248, 81, 73, 0.15);
-            border: 1px solid rgba(248, 81, 73, 0.3);
+            background: rgba(248, 81, 73, 0.18);
+            border: 1px solid rgba(248, 81, 73, 0.4);
             color: #f85149;
         }
 
-        .warning-box {
-            padding: 1rem;
-            background: rgba(227, 179, 65, 0.1);
-            border: 1px solid rgba(227, 179, 65, 0.3);
-            border-radius: 8px;
-            color: #e3b341;
-            font-size: 0.85rem;
-            margin-bottom: 1rem;
+        /* Interface Cards Grid (Tab 1) */
+        .iface-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.4rem;
         }
 
-        .warning-box i {
-            margin-right: 0.5rem;
+        .iface-card {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .iface-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--glass-border-hover);
+            background: var(--glass-card-hover);
+        }
+
+        .iface-top {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .iface-icon-box {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .iface-icon-box.type-ethernet { background: rgba(35, 166, 213, 0.15); color: var(--net-color); }
+        .iface-icon-box.type-wifi { background: rgba(240, 136, 62, 0.15); color: #f0883e; }
+        .iface-icon-box.type-vpn { background: rgba(188, 140, 242, 0.15); color: #bc8cf2; }
+        .iface-icon-box.type-bridge { background: rgba(78, 205, 196, 0.15); color: var(--ram-color); }
+        .iface-icon-box.type-virtual { background: rgba(255, 255, 255, 0.08); color: var(--text-dim); }
+
+        .iface-title-wrap {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .iface-name {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .type-badge {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .status-pill.up {
+            background: rgba(63, 185, 80, 0.18);
+            border: 1px solid rgba(63, 185, 80, 0.4);
+            color: #3fb950;
+        }
+
+        .status-pill.down {
+            background: rgba(248, 81, 73, 0.18);
+            border: 1px solid rgba(248, 81, 73, 0.4);
+            color: #f85149;
+        }
+
+        .iface-details {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.9rem;
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .iface-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .iface-field .lbl { color: var(--text-dim); }
+        .iface-field .val { font-weight: 600; font-family: monospace; color: #ffffff; }
+        .iface-field .val.ip { color: var(--ram-color); }
+        .iface-field .val.mac { color: var(--text-dim); font-size: 0.8rem; }
+
+        .iface-traffic {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .traffic-box {
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .traffic-label {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+
+        .traffic-val {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #ffffff;
+            font-family: monospace;
+        }
+
+        .iface-warning-bar {
+            background: rgba(210, 153, 34, 0.12);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            color: #d29922;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Filter Controls & Tables (Tab 2 & 4) */
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-box {
+            position: relative;
+            min-width: 280px;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 8px 12px 8px 34px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: #ffffff;
+            font-size: 0.88rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--net-color);
+        }
+
+        .proto-radio-group {
+            display: flex;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+        }
+
+        .proto-label {
+            padding: 5px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: var(--text-dim);
+        }
+
+        .proto-label input { display: none; }
+        .proto-label:has(input:checked) {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: var(--radius-md);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 14px;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid var(--glass-border);
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 0.88rem;
+            vertical-align: middle;
+        }
+
+        td:first-child {
+            border-left: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+        }
+
+        td:last-child {
+            border-right: 1px solid var(--glass-border);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .port-num {
+            font-family: monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--net-color);
+        }
+
+        .proto-badge {
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+
+        .proto-badge.tcp { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+        .proto-badge.udp { background: rgba(240, 136, 62, 0.15); color: #f0883e; }
+
+        .ip-bind {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #ffffff;
+        }
+
+        .scope-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .scope-pill.public {
+            background: rgba(63, 185, 80, 0.12);
+            color: #3fb950;
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .scope-pill.local {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-dim);
+            border: 1px solid var(--glass-border);
+        }
+
+        .prog-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pid-badge {
+            background: rgba(255, 255, 255, 0.06);
+            font-family: monospace;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        /* Diagnostics & Tools (Tab 3) */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .tool-card {
+            padding: 1.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .tool-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .text-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .text-input:focus {
+            border-color: var(--net-color);
+        }
+
+        .diag-result-box {
+            background: rgba(10, 10, 15, 0.7);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 1.2rem;
+            font-size: 0.88rem;
+            display: none;
+        }
+
+        .diag-summary {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.8rem;
+            border-bottom: 1px solid var(--glass-border);
+            flex-wrap: wrap;
+        }
+
+        .diag-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .diag-metric .lbl { font-size: 0.75rem; color: var(--text-dim); }
+        .diag-metric .val { font-size: 1.1rem; font-weight: 700; color: #ffffff; }
+
+        .terminal-output {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            max-height: 180px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+
+        .resolved-ips-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .resolved-ip-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--ram-color);
+        }
+
+        /* Config & Routing (Tab 4) */
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .warning-box {
+            padding: 0.9rem 1.1rem;
+            background: rgba(210, 153, 34, 0.12);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            border-radius: var(--radius-sm);
+            color: #d29922;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .default-badge {
+            background: rgba(88, 166, 255, 0.2);
+            color: var(--accent-blue);
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 700;
+        }
+
+        .iface-pill {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 900px) {
+            .container { padding: 1.5rem 1rem 3rem 1rem; }
+            .tools-grid { grid-template-columns: 1fr; }
+            .config-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 
 <body>
+    <!-- Eka Dashboard Ambient Animated Wallpaper -->
     <div class="wallpaper"></div>
 
-    <div class="app-container network-container">
-        <!-- Header -->
-        <div class="network-header">
-            <button class="btn" onclick="window.location.href='/dashboard'"><i class="fa-solid fa-home"></i></button>
-            <h2 style="margin:0; font-weight:400; font-size:1.2rem">
-                <i class="fa-solid fa-network-wired" style="color:#58a6ff"></i> Konfigurasi Jaringan
-            </h2>
-            <div style="margin-left:auto; display:flex; gap:0.5rem">
-                <button class="btn" onclick="loadNetworkInfo()"><i class="fa-solid fa-rotate-right"></i>
-                    Refresh</button>
+    <div class="container">
+        <!-- Header Bar -->
+        <header class="page-header">
+            <div class="header-left">
+                <a href="/dashboard" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> Dashboard
+                </a>
+                <div class="page-title">
+                    <i class="fa-solid fa-network-wired" style="color:var(--net-color)"></i> Network Manager
+                </div>
+                <div class="page-subtitle">Topology, Interface Telemetry, Open Ports, Diagnostics &amp; Routing</div>
             </div>
-        </div>
+            <div style="display:flex; gap:0.6rem; align-items:center;">
+                <button class="btn" onclick="loadNetworkInfo(); loadPorts(); loadRoutes();">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+            </div>
+        </header>
 
         <div id="msg-box" class="msg"></div>
 
-        <div class="cards-grid">
-            <!-- Current Network Info -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-info-circle"></i>
-                    <h3>Informasi Jaringan Saat Ini</h3>
-                </div>
-                <div class="card-body">
-                    <div class="info-row">
-                        <span class="info-label">Hostname</span>
-                        <span class="info-value" id="current-hostname">Loading...</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">IP Address Utama</span>
-                        <span class="info-value" id="current-ip">Loading...</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Gateway</span>
-                        <span class="info-value" id="current-gateway">Loading...</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">DNS Server</span>
-                        <span class="info-value" id="current-dns">Loading...</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">MAC Address</span>
-                        <span class="info-value" id="current-mac">Loading...</span>
-                    </div>
-                </div>
+        <!-- Overview Quick Stats (6 Metrics) -->
+        <section class="overview-grid">
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-server" style="color:var(--accent-blue)"></i> Hostname</span>
+                <span class="overview-val" id="info-hostname">Memuat...</span>
             </div>
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-network-wired" style="color:var(--ram-color)"></i> IP Utama</span>
+                <span class="overview-val" id="info-primary-ip">Memuat...</span>
+            </div>
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-earth-americas" style="color:var(--cpu-color)"></i> IP Publik (WAN)</span>
+                <span class="overview-val" id="info-public-ip">Memuat...</span>
+            </div>
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-route" style="color:var(--disk-color)"></i> Default Gateway</span>
+                <span class="overview-val" id="info-gateway">Memuat...</span>
+            </div>
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-globe" style="color:var(--net-color)"></i> DNS Server</span>
+                <span class="overview-val" id="info-dns" style="font-size:1rem">Memuat...</span>
+            </div>
+            <div class="overview-card glass">
+                <span class="overview-label"><i class="fa-solid fa-fingerprint" style="color:var(--text-dim)"></i> Primary MAC</span>
+                <span class="overview-val" id="info-mac" style="font-size:0.95rem">Memuat...</span>
+            </div>
+        </section>
 
-            <!-- Network Interfaces -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-ethernet"></i>
-                    <h3>Interface Jaringan</h3>
+        <!-- Tab Navigation Bar -->
+        <nav class="tabs-nav-bar">
+            <button class="tab-nav-btn active" data-tab="overview" onclick="switchTab('overview', this)">
+                <i class="fa-solid fa-diagram-project"></i> Antarmuka (Interfaces)
+            </button>
+            <button class="tab-nav-btn" data-tab="ports" onclick="switchTab('ports', this)">
+                <i class="fa-solid fa-door-open"></i> Port &amp; Layanan Terbuka
+                <span class="tab-count-pill" id="total-ports-count">0</span>
+            </button>
+            <button class="tab-nav-btn" data-tab="tools" onclick="switchTab('tools', this)">
+                <i class="fa-solid fa-toolbox"></i> Diagnostik (Ping &amp; DNS)
+            </button>
+            <button class="tab-nav-btn" data-tab="config" onclick="switchTab('config', this)">
+                <i class="fa-solid fa-sliders"></i> Konfigurasi &amp; Routing
+            </button>
+        </nav>
+
+        <!-- ==================== TAB 1: INTERFACES ==================== -->
+        <section id="tab-overview" class="tab-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem; flex-wrap:wrap; gap:0.8rem">
+                <div style="font-weight:600; font-size:1.05rem; display:flex; align-items:center; gap:8px">
+                    <i class="fa-solid fa-network-wired" style="color:var(--net-color)"></i> Antarmuka Jaringan Aktif
                 </div>
-                <div class="card-body">
-                    <div class="interface-list" id="interface-list">
-                        <div style="text-align:center; padding:2rem; color:#8b949e">
-                            <i class="fa-solid fa-spinner fa-spin"></i> Memuat...
+                <button class="btn" id="btn-toggle-veth" onclick="toggleVethFilter()">
+                    <i class="fa-solid fa-filter"></i> <span id="veth-toggle-text">Tampilkan Semua (Termasuk Veth)</span>
+                </button>
+            </div>
+            <div class="iface-grid" id="interface-list">
+                <!-- Injected dynamically by network.js -->
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: OPEN PORTS ==================== -->
+        <section id="tab-ports" class="tab-section" style="display:none">
+            <div class="glass" style="padding:1.6rem">
+                <div class="filter-bar">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="port-search-input" class="search-input" placeholder="Cari port (misal: 80, 5000), proses, atau IP...">
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                        <div class="proto-radio-group">
+                            <label class="proto-label">
+                                <input type="radio" name="proto-filter" value="ALL" checked onchange="filterPorts()"> Semua
+                            </label>
+                            <label class="proto-label">
+                                <input type="radio" name="proto-filter" value="TCP" onchange="filterPorts()"> TCP
+                            </label>
+                            <label class="proto-label">
+                                <input type="radio" name="proto-filter" value="UDP" onchange="filterPorts()"> UDP
+                            </label>
                         </div>
+                        <button class="btn" onclick="loadPorts()">
+                            <i class="fa-solid fa-rotate-right"></i> Pindai Ulang
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Edit Hostname -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-server"></i>
-                    <h3>Ubah Hostname</h3>
+                <div class="table-wrap">
+                    <table id="ports-table">
+                        <thead>
+                            <tr>
+                                <th>Port</th>
+                                <th>Protokol</th>
+                                <th>Bind Address</th>
+                                <th>Akses Lingkup</th>
+                                <th>Program / Layanan</th>
+                                <th>PID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Injected dynamically by network.js -->
+                        </tbody>
+                    </table>
                 </div>
-                <div class="card-body">
+            </div>
+        </section>
+
+        <!-- ==================== TAB 3: DIAGNOSTICS ==================== -->
+        <section id="tab-tools" class="tab-section" style="display:none">
+            <div class="tools-grid">
+                <!-- Ping Test Tool -->
+                <div class="tool-card glass">
+                    <div class="tool-card-header">
+                        <i class="fa-solid fa-satellite-dish" style="color:var(--cpu-color)"></i> Ping Latency Test
+                    </div>
+                    <p style="font-size:0.85rem; color:var(--text-dim)">Uji konektivitas ICMP dan latensi respon ke IP/Domain dari server.</p>
+
+                    <div class="form-row">
+                        <input type="text" id="ping-target" class="text-input" placeholder="Contoh: 1.1.1.1 atau google.com" value="1.1.1.1">
+                        <select id="ping-count" class="text-input" style="max-width:110px">
+                            <option value="2">2 Paket</option>
+                            <option value="3" selected>3 Paket</option>
+                            <option value="5">5 Paket</option>
+                        </select>
+                        <button class="btn primary" id="btn-run-ping" onclick="runPing()">
+                            <i class="fa-solid fa-play"></i> Mulai Ping
+                        </button>
+                    </div>
+
+                    <div id="ping-result-box" class="diag-result-box"></div>
+                </div>
+
+                <!-- DNS Resolver Test -->
+                <div class="tool-card glass">
+                    <div class="tool-card-header">
+                        <i class="fa-solid fa-globe" style="color:var(--net-color)"></i> DNS Resolution Test
+                    </div>
+                    <p style="font-size:0.85rem; color:var(--text-dim)">Uji waktu resolusi dan daftar record IP yang dihasilkan DNS server.</p>
+
+                    <div class="form-row">
+                        <input type="text" id="dns-domain-input" class="text-input" placeholder="Contoh: example.com" value="example.com">
+                        <button class="btn primary" id="btn-run-dns" onclick="runDnsLookup()">
+                            <i class="fa-solid fa-magnifying-glass"></i> Uji DNS
+                        </button>
+                    </div>
+
+                    <div id="dns-result-box" class="diag-result-box"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 4: CONFIGURATION & ROUTING ==================== -->
+        <section id="tab-config" class="tab-section" style="display:none">
+            <div class="config-grid">
+                <!-- Hostname Card -->
+                <div class="tool-card glass">
+                    <div class="tool-card-header">
+                        <i class="fa-solid fa-server" style="color:var(--accent-blue)"></i> Ubah Hostname Server
+                    </div>
                     <div class="warning-box">
                         <i class="fa-solid fa-triangle-exclamation"></i>
-                        Mengubah hostname memerlukan restart sistem agar berlaku sepenuhnya.
+                        <span>Mengubah hostname memerlukan restart server agar seluruh daemon membaca nama baru.</span>
                     </div>
-                    <div class="form-group">
-                        <label>Hostname Baru</label>
-                        <input type="text" id="new-hostname" placeholder="contoh: my-server">
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                        <label style="font-size:0.8rem; color:var(--text-dim)">Nama Host Baru</label>
+                        <input type="text" id="new-hostname" class="text-input" placeholder="contoh: my-linux-server">
+                    </div>
+                    <div>
+                        <button class="btn primary" id="btn-update-hostname" onclick="updateHostname()" {% if session.get('role') not in ['owner', 'admin'] %}disabled{% endif %}>
+                            <i class="fa-solid fa-save"></i> Simpan Hostname
+                        </button>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button class="btn primary" onclick="updateHostname()" id="btn-update-hostname" {% if
-                        session.get('role') not in ['owner', 'admin' ] %}disabled{% endif %}>
-                        <i class="fa-solid fa-save"></i> Simpan Hostname
-                    </button>
+
+                <!-- DNS Card -->
+                <div class="tool-card glass">
+                    <div class="tool-card-header">
+                        <i class="fa-solid fa-network-wired" style="color:var(--ram-color)"></i> Konfigurasi DNS Resolver
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:12px">
+                        <div style="display:flex; flex-direction:column; gap:6px">
+                            <label style="font-size:0.8rem; color:var(--text-dim)">DNS Server Utama (Primary)</label>
+                            <input type="text" id="dns1" class="text-input" placeholder="8.8.8.8">
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px">
+                            <label style="font-size:0.8rem; color:var(--text-dim)">DNS Server Sekunder (Opsional)</label>
+                            <input type="text" id="dns2" class="text-input" placeholder="8.8.4.4">
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn primary" id="btn-update-dns" onclick="updateDns()" {% if session.get('role') not in ['owner', 'admin'] %}disabled{% endif %}>
+                            <i class="fa-solid fa-save"></i> Simpan DNS
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- DNS Configuration -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fa-solid fa-globe"></i>
-                    <h3>Konfigurasi DNS</h3>
-                </div>
-                <div class="card-body">
-                    <div class="form-group">
-                        <label>DNS Server 1</label>
-                        <input type="text" id="dns1" placeholder="8.8.8.8">
+            <!-- Routing Table Card -->
+            <div class="glass" style="padding:1.6rem">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem; flex-wrap:wrap; gap:1rem">
+                    <div style="font-size:1.1rem; font-weight:600; display:flex; align-items:center; gap:10px">
+                        <i class="fa-solid fa-route" style="color:var(--disk-color)"></i> Tabel Perutean Jaringan (Routing Table)
                     </div>
-                    <div class="form-group">
-                        <label>DNS Server 2 (Opsional)</label>
-                        <input type="text" id="dns2" placeholder="8.8.4.4">
-                    </div>
+                    <button class="btn" onclick="loadRoutes()"><i class="fa-solid fa-rotate-right"></i> Refresh Rute</button>
                 </div>
-                <div class="card-footer">
-                    <button class="btn primary" onclick="updateDns()" id="btn-update-dns" {% if session.get('role') not
-                        in ['owner', 'admin' ] %}disabled{% endif %}>
-                        <i class="fa-solid fa-save"></i> Simpan DNS
-                    </button>
+
+                <div class="table-wrap">
+                    <table id="routes-table">
+                        <thead>
+                            <tr>
+                                <th>Tujuan (Destination)</th>
+                                <th>Gateway</th>
+                                <th>Antarmuka (Dev)</th>
+                                <th>Protokol</th>
+                                <th>Metrik</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Injected dynamically by network.js -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 
+    <!-- Scripts -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            loadNetworkInfo();
-        });
-
-        function showMsg(msg, type) {
-            const el = document.getElementById('msg-box');
-            el.textContent = msg;
-            el.className = 'msg ' + type;
-            setTimeout(() => { el.className = 'msg'; }, 5000);
-        }
-
-        function loadNetworkInfo() {
-            fetch('/api/network/info')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                        return;
-                    }
-
-                    // Update current info
-                    document.getElementById('current-hostname').textContent = data.hostname || '-';
-                    document.getElementById('current-ip').textContent = data.primary_ip || '-';
-                    document.getElementById('current-gateway').textContent = data.gateway || '-';
-                    document.getElementById('current-dns').textContent = (data.dns || []).join(', ') || '-';
-                    document.getElementById('current-mac').textContent = data.primary_mac || '-';
-
-                    // Pre-fill form
-                    document.getElementById('new-hostname').value = data.hostname || '';
-                    if (data.dns && data.dns.length > 0) {
-                        document.getElementById('dns1').value = data.dns[0] || '';
-                        document.getElementById('dns2').value = data.dns[1] || '';
-                    }
-
-                    // Render interfaces
-                    renderInterfaces(data.interfaces || []);
-                })
-                .catch(err => {
-                    showMsg('Gagal memuat informasi jaringan', 'error');
-                });
-        }
-
-        function renderInterfaces(interfaces) {
-            const container = document.getElementById('interface-list');
-            if (interfaces.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding:2rem; color:#8b949e">Tidak ada interface ditemukan</div>';
-                return;
-            }
-
-            container.innerHTML = interfaces.map(iface => `
-                <div class="interface-item">
-                    <div class="interface-icon">
-                        <i class="fa-solid ${iface.type === 'wifi' ? 'fa-wifi' : 'fa-ethernet'}"></i>
-                    </div>
-                    <div class="interface-info">
-                        <div class="interface-name">${iface.name}</div>
-                        <div class="interface-ip">${iface.ip || 'Tidak ada IP'}</div>
-                    </div>
-                    <span class="interface-status ${iface.status}">${iface.status.toUpperCase()}</span>
-                </div>
-            `).join('');
-        }
-
-        function updateHostname() {
-            const hostname = document.getElementById('new-hostname').value.trim();
-            if (!hostname) {
-                showMsg('Hostname tidak boleh kosong', 'error');
-                return;
-            }
-
-            // Validasi hostname
-            if (!/^[a-zA-Z0-9-]+$/.test(hostname)) {
-                showMsg('Hostname hanya boleh berisi huruf, angka, dan tanda hubung', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-update-hostname');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
-
-            fetch('/api/network/hostname', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hostname: hostname })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save"></i> Simpan Hostname';
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Hostname berhasil diubah! Restart sistem untuk menerapkan sepenuhnya.', 'success');
-                        loadNetworkInfo();
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save"></i> Simpan Hostname';
-                    showMsg('Gagal mengubah hostname', 'error');
-                });
-        }
-
-        function updateDns() {
-            const dns1 = document.getElementById('dns1').value.trim();
-            const dns2 = document.getElementById('dns2').value.trim();
-
-            if (!dns1) {
-                showMsg('DNS Server 1 tidak boleh kosong', 'error');
-                return;
-            }
-
-            // Validasi IP
-            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-            if (!ipRegex.test(dns1)) {
-                showMsg('Format DNS Server 1 tidak valid', 'error');
-                return;
-            }
-            if (dns2 && !ipRegex.test(dns2)) {
-                showMsg('Format DNS Server 2 tidak valid', 'error');
-                return;
-            }
-
-            const btn = document.getElementById('btn-update-dns');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
-
-            const dnsServers = [dns1];
-            if (dns2) dnsServers.push(dns2);
-
-            fetch('/api/network/dns', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dns: dnsServers })
-            })
-                .then(r => r.json())
-                .then(data => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save"></i> Simpan DNS';
-
-                    if (data.error) {
-                        showMsg(data.error, 'error');
-                    } else {
-                        showMsg('Konfigurasi DNS berhasil disimpan!', 'success');
-                        loadNetworkInfo();
-                    }
-                })
-                .catch(err => {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save"></i> Simpan DNS';
-                    showMsg('Gagal menyimpan konfigurasi DNS', 'error');
-                });
-        }
+        window.userRole = "{{ session.get('role', 'readonly') }}";
     </script>
+    <script src="{{ url_for('static', filename='network.js') }}?v=1"></script>
 </body>
 
 </html>

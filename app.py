@@ -14,6 +14,7 @@ import select
 import struct
 import hashlib
 import json
+import io
 from datetime import datetime
 import requests
 import threading
@@ -39,9 +40,9 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ============ VERSI APLIKASI ============
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 APP_NAME = "Eka Dashboard"
-UPDATE_CHECK_URL = "https://raw.githubusercontent.com/ekahr11/web_server/main/version.json"
+UPDATE_CHECK_URL = os.environ.get('UPDATE_URL', "https://raw.githubusercontent.com/recode-project/web_server/main/version.json")
 # ========================================
 
 # Data Directory (For Persistence across updates)
@@ -49,46 +50,649 @@ DATA_DIR = os.path.join(BASE_DIR, 'data')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# Energy Monitoring
+# Energy Monitoring & Universal Hardware Power Engine (RAPL / power_supply / Model)
 ENERGY_FILE = os.path.join(DATA_DIR, 'energy_data.json')
 TOTAL_KWH = 0.0
+CURRENT_WATTS = 0.0
+POWER_SOURCE = "model"
+
+DEFAULT_ENERGY_SETTINGS = {
+    'currency_symbol': 'Rp',
+    'currency_code': 'IDR',
+    'locale': 'id-ID',
+    'decimals': 0,
+    'tariff_per_kwh': 1444.70,
+    'base_overhead_watts': 9.5,
+    'psu_efficiency': 0.85,
+    'idle_watts_fallback': 12.0,
+    'power_source_mode': 'auto',  # 'auto' | 'rapl' | 'power_supply' | 'model'
+}
+_ENERGY_SETTINGS_CACHE = {'ts': 0.0, 'data': None}
+
+
+def _invalidate_energy_cache():
+    _ENERGY_SETTINGS_CACHE['ts'] = 0.0
+    _ENERGY_SETTINGS_CACHE['data'] = None
+
+
+OPTIONAL_MODULES_CATALOG = [
+    {
+        'id': 'lxd',
+        'name': 'LXD / Incus Manager',
+        'category': 'Virtualization',
+        'icon': 'fa-brands fa-linux',
+        'url': '/lxd',
+        'app_id': 'lxd',
+        'description': 'Manage LXD or Incus system containers across projects.',
+        'default_visible': True,
+    },
+    {
+        'id': 'adblocker',
+        'name': 'AdGuard Home DNS',
+        'category': 'Network',
+        'icon': 'fa-solid fa-shield-virus',
+        'url': '/adblocker',
+        'app_id': 'adblocker',
+        'description': 'Network-wide DNS ad-blocking, query logs & client rules.',
+        'default_visible': True,
+    },
+    {
+        'id': 'vpn',
+        'name': 'VPN Manager',
+        'category': 'Network',
+        'icon': 'fa-solid fa-shield-halved',
+        'url': '/vpn',
+        'app_id': 'vpn',
+        'description': 'Tailscale Mesh, WireGuard Hub & ZeroTier tunnel manager.',
+        'default_visible': True,
+    },
+    {
+        'id': 'sharing',
+        'name': 'File Sharing (Samba)',
+        'category': 'Storage',
+        'icon': 'fa-solid fa-share-nodes',
+        'url': '/sharing',
+        'app_id': 'sharing',
+        'description': 'LAN SMB/CIFS file sharing for Windows, macOS & Linux.',
+        'default_visible': True,
+    },
+    {
+        'id': 'websites',
+        'name': 'Websites & Reverse Proxy',
+        'category': 'Web',
+        'icon': 'fa-solid fa-globe',
+        'url': '/websites',
+        'app_id': 'websites',
+        'description': 'Nginx/Apache/Caddy vhosts, traffic analytics & SSL monitor.',
+        'default_visible': True,
+    },
+    {
+        'id': 'recode',
+        'name': 'Recode AI Agent',
+        'category': 'Automation',
+        'icon': 'fa-solid fa-robot',
+        'url': '/recode',
+        'app_id': 'recode',
+        'description': 'Autonomous CLI coding agent console (local or SSH).',
+        'default_visible': True,
+    },
+    {
+        'id': 'mobile-backup',
+        'name': 'Mobile Sync',
+        'category': 'Backup',
+        'icon': 'fa-solid fa-mobile-screen',
+        'url': '/mobile-backup',
+        'app_id': 'mobile-backup',
+        'description': 'Automated mobile media and document backup endpoint.',
+        'default_visible': True,
+    },
+    {
+        'id': 'store',
+        'name': 'App Store (Docker)',
+        'category': 'Containers',
+        'icon': 'fa-solid fa-store',
+        'url': '/store',
+        'app_id': 'store',
+        'description': 'One-click self-hosted Docker application catalog.',
+        'default_visible': True,
+    },
+    {
+        'id': 'mqtt',
+        'name': 'Home Automation (MQTT)',
+        'category': 'IoT',
+        'icon': 'fa-solid fa-house-signal',
+        'url': '/settings',
+        'app_id': None,
+        'description': 'MQTT IoT sensors and smart switches widget on Dashboard/Wallboard.',
+        'default_visible': False,
+    },
+    {
+        'id': 'whatsapp_bridge',
+        'name': 'WhatsApp Alert Gateway',
+        'category': 'Notifications',
+        'icon': 'fa-brands fa-whatsapp',
+        'url': '/alerts',
+        'app_id': None,
+        'description': 'Optional WhatsApp HTTP bridge for alert notifications.',
+        'default_visible': False,
+    },
+]
+
+DEFAULT_MODULE_SETTINGS = {
+    **{m['id']: m['default_visible'] for m in OPTIONAL_MODULES_CATALOG},
+    'auto_hide_uninstalled': False,
+}
+_MODULES_STATUS_CACHE = {'ts': 0.0, 'data': None}
+
+
+def _invalidate_modules_cache():
+    _MODULES_STATUS_CACHE['ts'] = 0.0
+    _MODULES_STATUS_CACHE['data'] = None
+
+
+def _sanitize_module_settings(raw):
+    cfg = dict(DEFAULT_MODULE_SETTINGS)
+    if not isinstance(raw, dict):
+        return cfg
+    for key in DEFAULT_MODULE_SETTINGS:
+        if key in raw:
+            cfg[key] = bool(raw[key])
+    return cfg
+
+
+def _probe_optional_modules(force_refresh=False):
+    """Fast cross-distro probe of optional modules' installation & runtime state (cached 15s)."""
+    now = time.time()
+    if (not force_refresh) and _MODULES_STATUS_CACHE['data'] is not None and (now - _MODULES_STATUS_CACHE['ts'] < 15.0):
+        return [dict(item) for item in _MODULES_STATUS_CACHE['data']]
+
+    # Single lightweight shell probe for host binaries (includes /snap/bin for Snap LXD)
+    found_bins = set()
+    try:
+        probe_cmd = (
+            'PATH="$PATH:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin"; '
+            'for b in lxc incus smbd tailscale wg zerotier-cli recode AdGuardHome; do '
+            'command -v "$b" >/dev/null 2>&1 && echo "$b"; done; true'
+        )
+        res = _run_host_cmd(['sh', '-c', probe_cmd], timeout=4, include_pid=False)
+        if res.stdout:
+            found_bins = {line.strip() for line in res.stdout.splitlines() if line.strip()}
+    except Exception:
+        pass
+
+    # Docker availability + check AdGuard container
+    docker_ok = False
+    adguard_container = False
+    try:
+        client = docker.from_env()
+        ctrs = client.containers.list(all=True)
+        docker_ok = True
+        for c in ctrs:
+            cname = (c.name or '').lower()
+            img = ((c.attrs.get('Config') or {}).get('Image') or '').lower()
+            if 'adguard' in cname or 'adguard' in img:
+                adguard_container = True
+                break
+    except Exception:
+        pass
+
+    # Web servers from Tahap 3 helper
+    web_servers = []
+    try:
+        web_servers = _detect_host_web_servers()
+    except Exception:
+        pass
+
+    # App settings & alert/recode configs
+    app_cfg = load_app_settings()
+    mod_vis = _sanitize_module_settings(app_cfg.get('modules'))
+    mqtt_cfg = app_cfg.get('mqtt') or {}
+    wa_cfg = {}
+    try:
+        wa_cfg = (_load_alert_config() or {}).get('whatsapp') or {}
+    except Exception:
+        pass
+    recode_cfg = {}
+    try:
+        recode_cfg = load_recode_config() or {}
+    except Exception:
+        pass
+
+    lxd_installed = ('lxc' in found_bins) or ('incus' in found_bins)
+    adguard_installed = ('AdGuardHome' in found_bins) or adguard_container
+    vpn_installed = bool({'tailscale', 'wg', 'zerotier-cli'} & found_bins)
+    smb_installed = ('smbd' in found_bins) or os.path.exists('/host/root/etc/samba/smb.conf') or os.path.exists('/etc/samba/smb.conf')
+    web_installed = len(web_servers) > 0
+    recode_bin = (recode_cfg.get('binary') or 'recode').strip()
+    recode_installed = (
+        ('recode' in found_bins)
+        or (recode_cfg.get('mode') == 'ssh' and bool((recode_cfg.get('ssh') or {}).get('host')))
+        or (bool(recode_bin) and os.path.exists(recode_bin))
+    )
+    mqtt_configured = bool(mqtt_cfg.get('enabled') and (mqtt_cfg.get('broker') or '').strip())
+    wa_configured = bool(wa_cfg.get('enabled') and (wa_cfg.get('gateway_url') or '').strip())
+
+    state_map = {
+        'lxd': {'installed': lxd_installed, 'configured': lxd_installed, 'detail': 'incus' if 'incus' in found_bins else ('lxc' if 'lxc' in found_bins else 'Not installed')},
+        'adblocker': {'installed': adguard_installed, 'configured': adguard_installed, 'detail': 'AdGuard Home detected' if adguard_installed else 'Not installed'},
+        'vpn': {'installed': vpn_installed, 'configured': vpn_installed, 'detail': ', '.join(sorted({'tailscale', 'wg', 'zerotier-cli'} & found_bins)) or 'Not installed'},
+        'sharing': {'installed': smb_installed, 'configured': smb_installed, 'detail': 'Samba (smbd)' if smb_installed else 'Not installed'},
+        'websites': {'installed': web_installed, 'configured': web_installed, 'detail': ', '.join(s['name'] for s in web_servers) if web_servers else 'No web server detected'},
+        'recode': {'installed': recode_installed, 'configured': recode_installed, 'detail': 'CLI/SSH ready' if recode_installed else 'Not installed'},
+        'mobile-backup': {'installed': True, 'configured': True, 'detail': 'Built-in sync module'},
+        'store': {'installed': docker_ok, 'configured': docker_ok, 'detail': 'Docker Engine ready' if docker_ok else 'Docker unavailable'},
+        'mqtt': {'installed': True, 'configured': mqtt_configured, 'detail': f"Broker: {mqtt_cfg.get('broker')}" if mqtt_configured else 'Opt-in (disabled)'},
+        'whatsapp_bridge': {'installed': wa_configured, 'configured': wa_configured, 'detail': wa_cfg.get('gateway_url') if wa_configured else 'Opt-in (disabled)'},
+    }
+
+    results = []
+    for meta in OPTIONAL_MODULES_CATALOG:
+        mid = meta['id']
+        st = state_map.get(mid, {'installed': False, 'configured': False, 'detail': ''})
+        results.append({
+            **meta,
+            'installed': bool(st['installed']),
+            'configured': bool(st['configured']),
+            'detail': st['detail'],
+            'visible': bool(mod_vis.get(mid, meta['default_visible'])),
+        })
+
+    _MODULES_STATUS_CACHE['ts'] = now
+    _MODULES_STATUS_CACHE['data'] = results
+    return [dict(item) for item in results]
+
+
+def _sanitize_energy_settings(raw):
+    cfg = dict(DEFAULT_ENERGY_SETTINGS)
+    if not isinstance(raw, dict):
+        return cfg
+
+    sym = str(raw.get('currency_symbol', cfg['currency_symbol'])).strip()
+    if sym:
+        cfg['currency_symbol'] = sym[:10]
+
+    code = str(raw.get('currency_code', cfg['currency_code'])).strip().upper()
+    code_clean = ''.join(ch for ch in code if ch.isalnum())[:8]
+    if code_clean:
+        cfg['currency_code'] = code_clean
+
+    loc = str(raw.get('locale', cfg['locale'])).strip()
+    loc_clean = ''.join(ch for ch in loc if ch.isalnum() or ch in ('-', '_'))[:16]
+    if loc_clean:
+        cfg['locale'] = loc_clean
+
+    try:
+        dec = int(raw.get('decimals', cfg['decimals']))
+        cfg['decimals'] = max(0, min(4, dec))
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        tariff = float(raw.get('tariff_per_kwh', cfg['tariff_per_kwh']))
+        if tariff >= 0.0:
+            cfg['tariff_per_kwh'] = round(tariff, 6)
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        overhead = float(raw.get('base_overhead_watts', cfg['base_overhead_watts']))
+        cfg['base_overhead_watts'] = round(max(0.0, min(500.0, overhead)), 2)
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        eff = float(raw.get('psu_efficiency', cfg['psu_efficiency']))
+        if eff > 1.0 and eff <= 100.0:
+            eff = eff / 100.0
+        cfg['psu_efficiency'] = round(max(0.50, min(1.00, eff)), 4)
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        idle_w = float(raw.get('idle_watts_fallback', cfg['idle_watts_fallback']))
+        cfg['idle_watts_fallback'] = round(max(1.0, min(500.0, idle_w)), 2)
+    except (ValueError, TypeError):
+        pass
+
+    mode = str(raw.get('power_source_mode', cfg['power_source_mode'])).strip().lower()
+    if mode in ('auto', 'rapl', 'power_supply', 'model'):
+        cfg['power_source_mode'] = mode
+
+    return cfg
+
+
+def _get_energy_settings(force_refresh=False):
+    now = time.time()
+    if (not force_refresh) and _ENERGY_SETTINGS_CACHE['data'] is not None and (now - _ENERGY_SETTINGS_CACHE['ts'] < 5.0):
+        return dict(_ENERGY_SETTINGS_CACHE['data'])
+
+    raw_energy = {}
+    try:
+        loader = globals().get('load_app_settings')
+        if callable(loader):
+            raw_energy = (loader() or {}).get('energy', {})
+        else:
+            settings_path = os.path.join(DATA_DIR, 'app_settings.json')
+            if os.path.exists(settings_path):
+                with open(settings_path, 'r') as f:
+                    raw_energy = (json.load(f) or {}).get('energy', {})
+    except Exception:
+        raw_energy = {}
+
+    sanitized = _sanitize_energy_settings(raw_energy)
+    _ENERGY_SETTINGS_CACHE['ts'] = now
+    _ENERGY_SETTINGS_CACHE['data'] = sanitized
+    return dict(sanitized)
+
+
+class HardwarePowerReader:
+    """Universal Hardware Power Reader: Intel/AMD RAPL, Linux power_supply (Battery/UPS), and Calibrated Model."""
+    def __init__(self, powercap_dir=None, power_supply_dir=None):
+        self.powercap_dir = powercap_dir or (
+            '/sys/class/powercap' if os.path.exists('/sys/class/powercap') else '/host/root/sys/class/powercap'
+        )
+        self.power_supply_dir = power_supply_dir or (
+            '/sys/class/power_supply' if os.path.exists('/sys/class/power_supply') else '/host/root/sys/class/power_supply'
+        )
+        self.rapl_available = False
+        self.rapl_path = None
+        self.max_energy_range_uj = None
+        self.last_energy_uj = None
+        self.last_timestamp = None
+        self.last_cpu_pkg_watts = None
+        self.last_measured_watts = 0.0
+        self.power_supply_paths = []
+        self._init_rapl()
+        self._discover_power_supplies()
+
+    def _init_rapl(self):
+        base_dir = self.powercap_dir
+        if base_dir and os.path.exists(base_dir):
+            try:
+                for entry in sorted(os.listdir(base_dir)):
+                    if entry.startswith('intel-rapl') or entry.startswith('amd-rapl'):
+                        pkg_path = os.path.join(base_dir, entry)
+                        uj_file = os.path.join(pkg_path, 'energy_uj')
+                        if os.path.exists(uj_file):
+                            try:
+                                with open(uj_file, 'r') as f:
+                                    val = int(f.read().strip())
+                                self.rapl_path = uj_file
+                                self.rapl_available = True
+                                self.last_energy_uj = val
+                                self.last_timestamp = time.time()
+                                max_f = os.path.join(pkg_path, 'max_energy_range_uj')
+                                if os.path.exists(max_f):
+                                    with open(max_f, 'r') as mf:
+                                        self.max_energy_range_uj = int(mf.read().strip())
+                                break
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+    def _discover_power_supplies(self):
+        """Discover Linux system Battery / UPS sensors under /sys/class/power_supply (excluding peripheral HID devices)."""
+        found = []
+        base_dir = self.power_supply_dir
+        if base_dir and os.path.exists(base_dir):
+            try:
+                for entry in sorted(os.listdir(base_dir)):
+                    dev_path = os.path.join(base_dir, entry)
+                    if not os.path.isdir(dev_path):
+                        continue
+                    scope_file = os.path.join(dev_path, 'scope')
+                    if os.path.exists(scope_file):
+                        try:
+                            with open(scope_file, 'r') as sf:
+                                if sf.read().strip().lower() == 'device':
+                                    continue
+                        except Exception:
+                            pass
+                    type_file = os.path.join(dev_path, 'type')
+                    ptype = ''
+                    if os.path.exists(type_file):
+                        try:
+                            with open(type_file, 'r') as tf:
+                                ptype = tf.read().strip()
+                        except Exception:
+                            pass
+                    if ptype.lower() in ('battery', 'ups') or entry.upper().startswith(('BAT', 'UPS')):
+                        found.append((entry, ptype or 'Battery', dev_path))
+            except Exception:
+                pass
+        self.power_supply_paths = found
+
+    def _read_single_supply_watts(self, dev_path):
+        """Read instantaneous power draw in Watts from a sysfs power_supply directory."""
+        power_file = os.path.join(dev_path, 'power_now')
+        if os.path.exists(power_file):
+            try:
+                with open(power_file, 'r') as f:
+                    uw = abs(int(f.read().strip()))
+                if uw > 0:
+                    return uw / 1_000_000.0
+            except Exception:
+                pass
+
+        curr_file = os.path.join(dev_path, 'current_now')
+        volt_file = os.path.join(dev_path, 'voltage_now')
+        if os.path.exists(curr_file) and os.path.exists(volt_file):
+            try:
+                with open(curr_file, 'r') as cf:
+                    ua = abs(int(cf.read().strip()))
+                with open(volt_file, 'r') as vf:
+                    uv = abs(int(vf.read().strip()))
+                if ua > 0 and uv > 0:
+                    return (ua * uv) / 1_000_000_000_000.0
+            except Exception:
+                pass
+        return None
+
+    def _read_power_supply_watts(self):
+        if not self.power_supply_paths:
+            return None
+        total = 0.0
+        found_active = False
+        for _, _, dev_path in self.power_supply_paths:
+            w = self._read_single_supply_watts(dev_path)
+            if w is not None and w >= 0.5:
+                total += w
+                found_active = True
+        if found_active:
+            return round(total, 2)
+        return None
+
+    def get_battery_info(self):
+        """Return first detected system Battery/UPS telemetry dict, or None if absent."""
+        if not self.power_supply_paths:
+            return None
+        name, ptype, dev_path = self.power_supply_paths[0]
+        status = 'Unknown'
+        capacity = None
+        status_file = os.path.join(dev_path, 'status')
+        if os.path.exists(status_file):
+            try:
+                with open(status_file, 'r') as sf:
+                    status = sf.read().strip() or 'Unknown'
+            except Exception:
+                pass
+        cap_file = os.path.join(dev_path, 'capacity')
+        if os.path.exists(cap_file):
+            try:
+                with open(cap_file, 'r') as cf:
+                    capacity = int(cf.read().strip())
+            except Exception:
+                pass
+        watts = self._read_single_supply_watts(dev_path)
+        return {
+            'device': name,
+            'type': ptype,
+            'status': status,
+            'capacity': capacity,
+            'watts': round(watts, 2) if watts is not None else None,
+        }
+
+    def _read_rapl_watts(self, now, base_overhead, psu_eff):
+        if not (self.rapl_available and self.rapl_path):
+            return None
+        try:
+            with open(self.rapl_path, 'r') as f:
+                curr_uj = int(f.read().strip())
+            dt = now - self.last_timestamp if self.last_timestamp else 1.0
+            if dt >= 0.5:
+                diff_uj = curr_uj - self.last_energy_uj
+                if diff_uj < 0 and self.max_energy_range_uj:
+                    diff_uj = (self.max_energy_range_uj - self.last_energy_uj) + curr_uj
+
+                if diff_uj >= 0:
+                    cpu_pkg_watts = diff_uj / (1_000_000.0 * dt)
+                    self.last_cpu_pkg_watts = cpu_pkg_watts
+                    wall_watts = (cpu_pkg_watts + base_overhead) / psu_eff
+                    self.last_measured_watts = round(wall_watts, 2)
+                    self.last_energy_uj = curr_uj
+                    self.last_timestamp = now
+                    return self.last_measured_watts
+            elif self.last_cpu_pkg_watts is not None:
+                wall_watts = (self.last_cpu_pkg_watts + base_overhead) / psu_eff
+                self.last_measured_watts = round(wall_watts, 2)
+                return self.last_measured_watts
+            elif self.last_measured_watts > 0:
+                return self.last_measured_watts
+        except Exception:
+            pass
+        return None
+
+    def _read_model_watts(self, cpu_percent, idle_fallback):
+        is_arm = platform.machine().lower().startswith(('arm', 'aarch'))
+        cores = psutil.cpu_count(logical=True) or 2
+        if is_arm:
+            arm_base = min(idle_fallback, 5.0) if idle_fallback == DEFAULT_ENERGY_SETTINGS['idle_watts_fallback'] else idle_fallback
+            watts = (3.5 if idle_fallback == DEFAULT_ENERGY_SETTINGS['idle_watts_fallback'] else arm_base) + (cpu_percent * 5.0 / 100.0)
+        else:
+            scale_watt = max(15.0, cores * 6.0)
+            watts = idle_fallback + (cpu_percent * scale_watt / 100.0)
+        return round(watts, 2)
+
+    def read_power(self, cpu_percent=None, energy_cfg=None):
+        now = time.time()
+        if cpu_percent is None:
+            cpu_percent = psutil.cpu_percent(interval=None) or 0.0
+
+        cfg = _sanitize_energy_settings(energy_cfg) if energy_cfg is not None else _get_energy_settings()
+        base_overhead = cfg['base_overhead_watts']
+        psu_eff = cfg['psu_efficiency']
+        idle_fallback = cfg['idle_watts_fallback']
+        mode = cfg['power_source_mode']
+
+        if mode == 'model':
+            self.last_measured_watts = self._read_model_watts(cpu_percent, idle_fallback)
+            return self.last_measured_watts, 'model'
+
+        if mode == 'power_supply':
+            ps_w = self._read_power_supply_watts()
+            if ps_w is not None:
+                self.last_measured_watts = ps_w
+                return ps_w, 'power_supply'
+            rapl_w = self._read_rapl_watts(now, base_overhead, psu_eff)
+            if rapl_w is not None:
+                return rapl_w, 'rapl'
+        elif mode == 'rapl':
+            rapl_w = self._read_rapl_watts(now, base_overhead, psu_eff)
+            if rapl_w is not None:
+                return rapl_w, 'rapl'
+        else:  # 'auto'
+            rapl_w = self._read_rapl_watts(now, base_overhead, psu_eff)
+            if rapl_w is not None:
+                return rapl_w, 'rapl'
+            ps_w = self._read_power_supply_watts()
+            if ps_w is not None:
+                self.last_measured_watts = ps_w
+                return ps_w, 'power_supply'
+
+        self.last_measured_watts = self._read_model_watts(cpu_percent, idle_fallback)
+        return self.last_measured_watts, 'model'
+
+
+POWER_READER = HardwarePowerReader()
+
+
+def _build_power_payload(kwh_used, watts_now, source):
+    cfg = _get_energy_settings()
+    tariff = cfg['tariff_per_kwh']
+    est_cost = round(float(kwh_used) * tariff, max(2, cfg['decimals']))
+    payload = {
+        'kwh': f"{float(kwh_used):.4f}",
+        'watts_est': round(float(watts_now), 1),
+        'source': source,
+        'currency_symbol': cfg['currency_symbol'],
+        'currency_code': cfg['currency_code'],
+        'locale': cfg['locale'],
+        'decimals': cfg['decimals'],
+        'tariff_per_kwh': tariff,
+        'estimated_cost': est_cost,
+        'base_overhead_watts': cfg['base_overhead_watts'],
+        'psu_efficiency': cfg['psu_efficiency'],
+        'power_source_mode': cfg['power_source_mode'],
+    }
+    bat = POWER_READER.get_battery_info()
+    if bat:
+        payload['battery'] = bat
+    return payload
+
 
 # LICENSE FILE
 LICENSE_FILE = os.path.join(DATA_DIR, 'license.lic')
 IS_ACTIVATED = False  # Cache validation status
 
-# Update Check URL (Administrator configurable via Code or ENV)
-UPDATE_CHECK_URL = os.environ.get('UPDATE_URL', "https://raw.githubusercontent.com/ekahr11/web_server/main/version.json")
-CURRENT_VERSION = "1.1"
+# Update Check URL (Administrator configurable via ENV UPDATE_URL)
+CURRENT_VERSION = APP_VERSION
+
 
 def energy_monitor_loop():
-    global TOTAL_KWH
+    global TOTAL_KWH, CURRENT_WATTS, POWER_SOURCE
     # Load initial
     try:
         if os.path.exists(ENERGY_FILE):
             with open(ENERGY_FILE, 'r') as f:
                 data = json.load(f)
-                TOTAL_KWH = data.get('kwh', 0.0)
-    except:
+                TOTAL_KWH = float(data.get('kwh', 0.0))
+    except Exception:
         pass
-        
+
+    last_save_time = time.time()
+    last_loop_time = time.time()
+
     while True:
         try:
-            # Estimate: Base 6W (Idle) + (CPU% * 6W / 100) -> Range 6W - 12W (Max 12V 1A)
-            cpu = psutil.cpu_percent(interval=None) or 0
-            watts = 6.0 + (cpu * 6.0 / 100.0)
-            
-            # Add to kWh
-            TOTAL_KWH += watts / 3600000.0
-            
-            # Save occasionally
-            if int(time.time()) % 60 == 0:
-                with open(ENERGY_FILE, 'w') as f:
-                    json.dump({'kwh': TOTAL_KWH}, f)
-                    
+            now = time.time()
+            dt = now - last_loop_time
+            last_loop_time = now
+
+            watts, source = POWER_READER.read_power()
+            CURRENT_WATTS = watts
+            POWER_SOURCE = source
+
+            if 0 < dt < 10:
+                TOTAL_KWH += (watts * dt) / 3600000.0
+
+            if now - last_save_time >= 60:
+                last_save_time = now
+                try:
+                    with open(ENERGY_FILE, 'w') as f:
+                        json.dump({
+                            'kwh': TOTAL_KWH,
+                            'last_watts': CURRENT_WATTS,
+                            'source': POWER_SOURCE,
+                            'updated_at': int(now)
+                        }, f)
+                except Exception:
+                    pass
+
             time.sleep(1)
-        except:
+        except Exception:
             time.sleep(1)
+
 
 # Start Energy Thread
 t_energy = threading.Thread(target=energy_monitor_loop, daemon=True)
@@ -138,6 +742,8 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = _get_persistent_secret_key()
 app.config['UPLOAD_FOLDER'] = DATA_DIR
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB Limit
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
 
 # ==============================================
 CORS(app, supports_credentials=True)
@@ -402,7 +1008,9 @@ def load_app_settings():
             'broker': '',
             'port': 1883,
             'devices': []
-        }
+        },
+        'energy': dict(DEFAULT_ENERGY_SETTINGS),
+        'modules': dict(DEFAULT_MODULE_SETTINGS),
     }
     try:
         if os.path.exists(APP_SETTINGS_FILE):
@@ -419,18 +1027,24 @@ def load_app_settings():
         print(f"!!! CRITICAL: Failed to load settings file: {e}")
 
     # Auto-detect device name: override empty/stale defaults so every install
-    # shows its real device (e.g. 'Lenovo ThinkCentre M710q') automatically.
+    # shows its real device (e.g. 'Linux Bare-Metal Server') automatically.
     general = default_settings.get('general') or {}
     server_name = (general.get('server_name') or '').strip()
     if not server_name or server_name.lower() in _STALE_SERVER_NAMES:
         general['server_name'] = detect_device_name()
         default_settings['general'] = general
 
+    # Normalize energy calibration & optional module visibility settings
+    default_settings['energy'] = _sanitize_energy_settings(default_settings.get('energy'))
+    default_settings['modules'] = _sanitize_module_settings(default_settings.get('modules'))
+
     return default_settings
 
 def save_app_settings(settings):
     with open(APP_SETTINGS_FILE, 'w') as f:
         json.dump(settings, f, indent=2)
+    _invalidate_energy_cache()
+    _invalidate_modules_cache()
 
 def load_security_config():
     default_config = {
@@ -831,15 +1445,15 @@ def stats():
     sent = net_io.bytes_sent 
     recv = net_io.bytes_recv
 
-    # Power Estimation (Synced with energy_monitor_loop)
+    # Power Telemetry (Synced with Hardware RAPL & Energy Engine)
     uptime_seconds = int(time.time() - psutil.boot_time())
     try:
-        avg_watts = 6.0 + (cpu_percent * 6.0 / 100.0) 
+        avg_watts = CURRENT_WATTS if CURRENT_WATTS > 0 else POWER_READER.read_power(cpu_percent)[0]
         kwh_used = TOTAL_KWH
     except Exception as e:
         print(f"Energy calc error: {e}")
-        avg_watts = 0
-        kwh_used = 0
+        avg_watts = 0.0
+        kwh_used = 0.0
 
     # Temperature
     temps = psutil.sensors_temperatures()
@@ -882,10 +1496,7 @@ def stats():
             "sent": sent,
             "recv": recv
         },
-        "power": {
-            "kwh": f"{kwh_used:.4f}",
-            "watts_est": avg_watts
-        },
+        "power": _build_power_payload(kwh_used, avg_watts, POWER_SOURCE),
         "uptime": uptime_seconds
     })
 
@@ -973,15 +1584,12 @@ def metrics_api():
     # Uptime
     uptime_seconds = int(time.time() - psutil.boot_time())
     
-    # Power Snapshot
+    # Power Telemetry (Hardware RAPL / Dynamic Model)
     cpu_inst = psutil.cpu_percent(interval=None) or 0
-    watts_now = 6.0 + (cpu_inst * 6.0 / 100.0)
+    watts_now = CURRENT_WATTS if CURRENT_WATTS > 0 else POWER_READER.read_power(cpu_inst)[0]
 
     return jsonify({
-        'power': {
-            'kwh': f"{TOTAL_KWH:.4f}",
-            'watts_est': int(watts_now)
-        },
+        'power': _build_power_payload(TOTAL_KWH, watts_now, POWER_SOURCE),
         'cpu': {
             'percent': cpu_percent_total,
             'per_core': cpu_per_core,
@@ -1259,41 +1867,136 @@ def list_files():
 @app.route('/api/files/drives', methods=['GET'])
 @requires_permission('files', 'read')
 def get_drives():
-    drives = []
     try:
         import psutil
-        seen_devices = set()
-        for part in psutil.disk_partitions(all=False):
-            # Skip loop, snap, overlay, docker internals, and config file mounts
-            if 'loop' in part.device or 'snap' in part.mountpoint or 'overlay' in part.mountpoint:
-                continue
-            if part.mountpoint in ('/etc/resolv.conf', '/etc/hostname', '/etc/hosts'):
-                continue
-            if part.device in seen_devices:
-                continue
-            seen_devices.add(part.device)
-            
-            try:
-                usage = psutil.disk_usage(part.mountpoint)
-                drives.append({
-                    'mountpoint': _fm_to_ui(part.mountpoint),
-                    'device': part.device,
-                    'fstype': part.fstype,
-                    'total': usage.total,
-                    'free': usage.free,
-                    'used': usage.used,
-                    'percent': usage.percent
-                })
-            except:
-                drives.append({
-                    'mountpoint': _fm_to_ui(part.mountpoint),
-                    'device': part.device,
-                    'fstype': part.fstype,
-                })
+        disks = []
+        flat_drives = []
+
+        # 1. Kumpulkan informasi disk fisik host via lsblk
+        try:
+            out = run_host_command(['lsblk', '-J', '-b', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL,TRAN,ROTA'])
+            if out.returncode == 0 and out.stdout.strip():
+                data = json.loads(out.stdout)
+                for dev in data.get('blockdevices', []):
+                    if dev.get('type') != 'disk':
+                        continue
+                    disk_name = dev.get('name')
+                    model = (dev.get('model') or '').strip()
+                    tran = (dev.get('tran') or ('nvme' if 'nvme' in disk_name else 'sata')).lower()
+                    is_rotational = dev.get('rota', True)
+                    is_ssd = (not is_rotational) or ('nvme' in disk_name.lower()) or ('ssd' in model.lower())
+
+                    disk_type = 'SSD' if is_ssd else 'HDD'
+                    disk_label = f"{disk_type} ({tran.upper()})" if tran else disk_type
+                    size_bytes = dev.get('size') or 0
+                    size_gb = round(size_bytes / (1024**3), 1)
+
+                    partitions = []
+
+                    def collect_parts(children):
+                        for child in children:
+                            mp = child.get('mountpoint')
+                            if mp and not mp.startswith('/boot') and not mp.startswith('/snap'):
+                                usage = None
+                                try:
+                                    c_path = _fm_to_container(mp)
+                                    u = psutil.disk_usage(c_path)
+                                    usage = {
+                                        'total': u.total,
+                                        'used': u.used,
+                                        'free': u.free,
+                                        'percent': u.percent
+                                    }
+                                except Exception:
+                                    pass
+
+                                label = 'System Root' if mp == '/' else ('User Home' if mp == '/home' else ('Data Storage' if mp == '/mnt/data' else mp))
+                                c_name = child.get('name')
+                                p_data = {
+                                    'name': c_name,
+                                    'device': f'/dev/{c_name}',
+                                    'mountpoint': mp,
+                                    'label': label,
+                                    'fstype': child.get('fstype') or 'ext4',
+                                    'size': child.get('size'),
+                                    'usage': usage
+                                }
+                                partitions.append(p_data)
+
+                                flat_drives.append({
+                                    'mountpoint': mp,
+                                    'device': f'/dev/{c_name}',
+                                    'fstype': child.get('fstype') or 'ext4',
+                                    'label': f"{disk_type}: {label}",
+                                    'disk_id': disk_name,
+                                    'disk_name': f"{disk_label} — {model}" if model else disk_label,
+                                    'total': usage['total'] if usage else child.get('size'),
+                                    'used': usage['used'] if usage else 0,
+                                    'free': usage['free'] if usage else 0,
+                                    'percent': usage['percent'] if usage else 0
+                                })
+                            if 'children' in child:
+                                collect_parts(child['children'])
+
+                    if 'children' in dev:
+                        collect_parts(dev['children'])
+
+                    if partitions:
+                        total_used = sum(p['usage']['used'] for p in partitions if p.get('usage'))
+                        total_cap = sum(p['usage']['total'] for p in partitions if p.get('usage')) or size_bytes
+                        overall_percent = round((total_used / total_cap * 100), 1) if total_cap else 0
+
+                        disks.append({
+                            'id': disk_name,
+                            'name': f"{disk_label} — {model}" if model else f"{disk_label} ({disk_name})",
+                            'disk_type': disk_type,
+                            'is_ssd': is_ssd,
+                            'model': model,
+                            'size': size_bytes,
+                            'size_gb': size_gb,
+                            'used_bytes': total_used,
+                            'percent': overall_percent,
+                            'partitions': partitions
+                        })
+        except Exception:
+            pass
+
+        # Urutkan SSD lebih dahulu baru HDD
+        disks.sort(key=lambda d: 0 if d.get('is_ssd') else 1)
+
+        # Fallback jika lsblk tidak tersedia
+        if not disks:
+            seen_devices = set()
+            for part in psutil.disk_partitions(all=False):
+                if 'loop' in part.device or 'snap' in part.mountpoint or 'overlay' in part.mountpoint:
+                    continue
+                if part.mountpoint in ('/etc/resolv.conf', '/etc/hostname', '/etc/hosts') or part.mountpoint.startswith('/boot'):
+                    continue
+                if part.device in seen_devices:
+                    continue
+                seen_devices.add(part.device)
+
+                try:
+                    usage = psutil.disk_usage(part.mountpoint)
+                    flat_drives.append({
+                        'mountpoint': _fm_to_ui(part.mountpoint),
+                        'device': part.device,
+                        'fstype': part.fstype,
+                        'total': usage.total,
+                        'free': usage.free,
+                        'used': usage.used,
+                        'percent': usage.percent
+                    })
+                except Exception:
+                    flat_drives.append({
+                        'mountpoint': _fm_to_ui(part.mountpoint),
+                        'device': part.device,
+                        'fstype': part.fstype
+                    })
+
+        return jsonify({'physical_disks': disks, 'drives': flat_drives})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-        
-    return jsonify({'drives': drives})
 
 @app.route('/api/files/action', methods=['POST'])
 @requires_permission('files', 'full')
@@ -1386,75 +2089,154 @@ def _terminal_socket_authorized():
     return has_permission(session.get('role', 'readonly'), 'terminal', 'any')
 
 
+_NSENTER_CAPABILITY = None
+
+
+def _is_in_container():
+    """Deteksi apakah proses berjalan di dalam container (Docker / Podman / OCI)."""
+    return (
+        os.path.exists('/.dockerenv')
+        or os.path.exists('/run/.containerenv')
+        or bool(os.environ.get('CONTAINER'))
+    )
+
+
 def _can_use_nsenter():
-    """nsenter ke PID 1 hanya mungkin kalau proses ini root (mis. container privileged)."""
+    """Gunakan nsenter ke PID 1 hanya bila di dalam container DAN memiliki kapabilitas root/privileged."""
+    global _NSENTER_CAPABILITY
+    if _NSENTER_CAPABILITY is not None:
+        return _NSENTER_CAPABILITY
+    if not _is_in_container():
+        _NSENTER_CAPABILITY = False
+        return False
     if os.geteuid() != 0:
+        _NSENTER_CAPABILITY = False
         return False
     try:
-        return subprocess.run(
+        ok = subprocess.run(
             ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'true'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5
         ).returncode == 0
+        _NSENTER_CAPABILITY = ok
+        return ok
     except Exception:
+        _NSENTER_CAPABILITY = False
         return False
 
 
+def _host_cmd_prefix(include_pid=False):
+    """Mengembalikan prefix nsenter pada container privileged, atau [] saat berjalan native di host/VPS."""
+    if _can_use_nsenter():
+        flags = ['-t', '1', '-m', '-u', '-i', '-n']
+        if include_pid:
+            flags.append('-p')
+        return ['nsenter'] + flags + ['--']
+    return []
+
+
+class _CmdResult:
+    """Objek hasil eksekusi seragam untuk fallback timeout/error."""
+    __slots__ = ('returncode', 'stdout', 'stderr')
+
+    def __init__(self, returncode=1, stdout='', stderr=''):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _run_host_cmd(args, timeout=15, input_data=None, env=None, include_pid=True):
+    """Eksekutor perintah host universal: otomatis nsenter (Docker) atau direct execution (Native/VPS)."""
+    if not isinstance(args, list):
+        args = [str(args)]
+    cmd = _host_cmd_prefix(include_pid=include_pid) + args
+    try:
+        return subprocess.run(
+            cmd,
+            input=input_data,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env
+        )
+    except subprocess.TimeoutExpired:
+        return _CmdResult(124, '', f'Perintah timeout terlampaui ({timeout} detik)')
+    except Exception as e:
+        return _CmdResult(1, '', str(e))
+
+
 def _get_target_host_user():
-    """Deteksi user reguler utama host (UID 1000 atau user terdaftar)."""
-    env_user = os.environ.get('TERMINAL_USER') or os.environ.get('HOST_USER')
+    """Deteksi user reguler utama host secara dinamis (ENV atau UID 1000)."""
+    env_user = (os.environ.get('TERMINAL_USER') or os.environ.get('HOST_USER') or '').strip()
     if env_user:
         return env_user
-    # Prioritaskan user ekaharefa bila ada di host
+    # Cek user reguler pertama (UID 1000) pada sistem host
     try:
-        if subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'id', '-u', 'ekaharefa'],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2).returncode == 0:
-            return 'ekaharefa'
-    except Exception:
-        pass
-    # Cek user UID 1000 pada sistem host
-    try:
-        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'id', '-nu', '1000'],
-                             capture_output=True, text=True, timeout=2)
+        res = _run_host_cmd(['id', '-nu', '1000'], timeout=2, include_pid=False)
         if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip()
+    except Exception:
+        pass
+    # Fallback: cari user reguler pertama dari /etc/passwd host (UID >= 1000 & shell login valid)
+    try:
+        passwd_path = os.path.join(os.environ.get('HOST_ROOT', '/host/root'), 'etc', 'passwd')
+        if not os.path.exists(passwd_path):
+            passwd_path = '/etc/passwd'
+        if os.path.exists(passwd_path):
+            with open(passwd_path, 'r') as f:
+                for line in f:
+                    parts = line.strip().split(':')
+                    if len(parts) >= 7 and parts[2].isdigit():
+                        uid = int(parts[2])
+                        shell = parts[6]
+                        if 1000 <= uid < 65000 and not shell.endswith(('nologin', 'false')):
+                            return parts[0]
     except Exception:
         pass
     return None
 
 
 def _build_terminal_command(lxd_target=None, start_path=None, lxd_project=None):
-    """Susun perintah shell resmi identik dengan login terminal/SSH host."""
-    if _can_use_nsenter():
-        prefix = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
-        if lxd_target:
-            lxc_cmd = ['lxc', 'exec', lxd_target]
-            if lxd_project and lxd_project != 'default':
-                lxc_cmd += ['--project', lxd_project]
-            lxc_cmd += ['--', 'bash', '--login', '-i']
-            return prefix + lxc_cmd
-        
-        target_user = _get_target_host_user()
-        if target_user:
-            if start_path and start_path not in ['/root', '/', f'/home/{target_user}']:
-                return prefix + ['runuser', '-l', target_user, '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
-            return prefix + ['runuser', '-l', target_user]
+    """Susun perintah shell interaktif bersih (Docker nsenter maupun Native Linux).
 
-        # Fallback bila tidak ada user reguler (gunakan root host)
-        if start_path and start_path not in ['/root', '/']:
-            return prefix + ['bash', '--login', '-c', f'cd "{start_path}" 2>/dev/null; exec bash -i']
-        return prefix + ['bash', '--login', '-i']
+    Memakai interactive non-login shell (`bash -i`) agar `~/.bashrc` (alias, prompt warna,
+    completion) tetap termuat namun melewati skrip login banner/MOTD di `/etc/profile.d/*`.
+    """
+    prefix = _host_cmd_prefix(include_pid=False)
 
-    # Fallback: shell lokal tanpa privilege host (dev / non-privileged deployment).
     if lxd_target:
-        lxc_cmd = ['lxc', 'exec', lxd_target]
+        lxc_cmd = ['lxc']
         if lxd_project and lxd_project != 'default':
             lxc_cmd += ['--project', lxd_project]
-        lxc_cmd += ['--', 'bash', '--login', '-i']
-        return lxc_cmd
-    return ['bash', '--login', '-i']
+        lxc_cmd += ['exec', lxd_target, '--', 'bash', '-i']
+        return prefix + lxc_cmd
+
+    target_dir = start_path if (start_path and start_path not in ['/root', '/']) else ''
+    cd_expr = f'cd {shlex.quote(target_dir)} 2>/dev/null || cd ~' if target_dir else 'cd ~'
+
+    if _can_use_nsenter() or os.geteuid() == 0:
+        target_user = _get_target_host_user()
+        if target_user:
+            q_user = shlex.quote(target_user)
+            shell_cmd = (
+                f'export HOME="$(getent passwd {q_user} | cut -d: -f6)"; '
+                f'[ -z "$HOME" ] && HOME="/home/{target_user}"; '
+                f'export USER={q_user} LOGNAME={q_user} '
+                f'PATH="$HOME/.local/bin:$HOME/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"; '
+                f'{cd_expr}; exec bash -i'
+            )
+            return prefix + ['runuser', '-u', target_user, '--', 'bash', '-c', shell_cmd]
+
+        if target_dir:
+            return prefix + ['bash', '-c', f'{cd_expr}; exec bash -i']
+        return prefix + ['bash', '-i']
+
+    # Fallback: shell lokal non-root (native user / dev)
+    if target_dir:
+        return ['bash', '-c', f'{cd_expr}; exec bash -i']
+    return ['bash', '-i']
 
 
-def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_env=None):
+def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_env=None, rows=None, cols=None):
     """Jalankan `cmd` di dalam PTY baru dan daftarkan sesinya.
 
     Dipakai bersama oleh terminal biasa dan Recode Agent supaya logika fork/PTY,
@@ -1462,6 +2244,14 @@ def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_en
     Mengembalikan True bila proses berhasil di-fork.
     """
     master_fd, slave_fd = pty.openpty()
+
+    # Apply initial winsize before fork so shell/ls/htop never start with 0x0 dimensions
+    try:
+        r = max(5, min(500, int(rows))) if rows else 24
+        c = max(20, min(500, int(cols))) if cols else 80
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack('HHHH', r, c, 0, 0))
+    except Exception:
+        pass
 
     pid = os.fork()
     if pid == 0:
@@ -1528,7 +2318,7 @@ def handle_start_terminal(data):
         handle_stop_terminal({'session_id': session_id})
 
     cmd = _build_terminal_command(lxd_target, start_path=start_path, lxd_project=lxd_project)
-    _spawn_pty_session(session_id, cmd)
+    _spawn_pty_session(session_id, cmd, rows=data.get('rows'), cols=data.get('cols'))
     emit('terminal_started', {'session_id': session_id})
 
 def read_terminal_output(session_id, fd, output_event='terminal_output'):
@@ -1590,7 +2380,7 @@ def handle_stop_terminal(data):
 # Menjembatani `recode` CLI (autonomous coding agent) ke dashboard.
 # Tujuan: dashboard ini jadi asisten server di mana pun ia dipasang —
 # kalau `recode` ada di host lokal, dipakai langsung; kalau tidak, jalankan
-# lewat SSH ke mesin yang punya (mis. Lenovo).
+# lewat SSH ke mesin remote yang memiliki instalasi CLI tersebut.
 # Eksekusi memakai PTY yang sama dengan terminal, jadi REPL interaktif,
 # streaming jawaban, dan konfirmasi tool berperilaku persis seperti di shell.
 # ============================================================
@@ -1868,23 +2658,23 @@ def recode_status():
     mode = _recode_effective_mode(cfg)
 
     if not ok:
-        return jsonify({'available': False, 'mode': mode, 'error': message})
+        return jsonify({'available': False, 'installed': False, 'mode': mode, 'error': message})
 
     if pty is None or fcntl is None:
-        return jsonify({'available': False, 'mode': mode,
+        return jsonify({'available': False, 'installed': False, 'mode': mode,
                         'error': 'PTY tidak tersedia di platform ini'})
 
     argv = _recode_argv(cfg, version_only=True)
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
     except subprocess.TimeoutExpired:
-        return jsonify({'available': False, 'mode': mode,
+        return jsonify({'available': False, 'installed': False, 'mode': mode,
                         'error': 'Timeout saat menghubungi mesin target'})
     except FileNotFoundError as e:
-        return jsonify({'available': False, 'mode': mode,
+        return jsonify({'available': False, 'installed': False, 'mode': mode,
                         'error': f'Perintah tidak ditemukan: {e}'})
     except Exception as e:
-        return jsonify({'available': False, 'mode': mode, 'error': str(e)})
+        return jsonify({'available': False, 'installed': False, 'mode': mode, 'error': str(e)})
 
     output = (proc.stdout or '') + (proc.stderr or '')
     version = None
@@ -1897,12 +2687,14 @@ def recode_status():
     if proc.returncode != 0 or not version:
         return jsonify({
             'available': False,
+            'installed': False,
             'mode': mode,
             'error': (output.strip()[-400:] or f'Exit code {proc.returncode}')
         })
 
     return jsonify({
         'available': True,
+        'installed': True,
         'mode': mode,
         'version': version,
         'target': (cfg['ssh'].get('host') or 'localhost') if mode == 'ssh' else 'localhost',
@@ -2426,9 +3218,127 @@ def get_monitoring_config():
     general = settings.get('general', {})
     return jsonify({
         'mqtt': safe_mqtt,
+        'energy': _sanitize_energy_settings(settings.get('energy')),
+        'modules': _sanitize_module_settings(settings.get('modules')),
         'server_name': (general.get('server_name') or '').strip() or detect_device_name(),
         'hostname': socket.gethostname()
     })
+
+_MONITORING_TELEMETRY_CACHE = {
+    'timestamp': 0,
+    'data': None
+}
+
+@app.route('/api/monitoring/telemetry')
+def get_monitoring_telemetry():
+    """Public read-only telemetry summary for the NOC Wallboard display"""
+    now = time.time()
+    if _MONITORING_TELEMETRY_CACHE['data'] and (now - _MONITORING_TELEMETRY_CACHE['timestamp'] < 20):
+        return jsonify(_MONITORING_TELEMETRY_CACHE['data'])
+
+    # 1. SMART / Disk Health
+    smart_status = {'healthy': True, 'text': 'PASSED', 'temp': 0, 'drives': 0, 'detail': 'All drives healthy'}
+    try:
+        drives = _discover_physical_drives()
+        smart_status['drives'] = len(drives)
+        if drives:
+            temps = []
+            all_healthy = True
+            for d in drives[:3]:
+                p = _parse_drive_smart(d['device'])
+                if p.get('temperature'):
+                    try:
+                        temps.append(int(p['temperature']))
+                    except (ValueError, TypeError):
+                        pass
+                if not p.get('healthy', True):
+                    all_healthy = False
+            smart_status['healthy'] = all_healthy
+            smart_status['text'] = 'PASSED' if all_healthy else 'WARNING'
+            smart_status['temp'] = max(temps) if temps else 0
+            smart_status['detail'] = f"{len(drives)} drive(s) verified"
+    except Exception:
+        pass
+
+    # 2. Firewall / Web Shield (Universal: UFW / firewalld / iptables / nftables)
+    firewall_status = _get_firewall_telemetry_summary()
+
+    # 3. Systemd Services
+    services_status = {'running': 0, 'failed': 0, 'state': 'running', 'status_text': 'HEALTHY'}
+    try:
+        st_res = _run_systemctl(['is-system-running'], timeout=4)
+        sys_state = (st_res.stdout or '').strip()
+        services_status['state'] = sys_state if sys_state else 'running'
+        failed_res = _run_systemctl(['list-units', '--state=failed', '--type=service', '--no-legend'], timeout=4)
+        failed_lines = [l for l in (failed_res.stdout or '').splitlines() if l.strip()]
+        services_status['failed'] = len(failed_lines)
+        services_status['status_text'] = 'DEGRADED' if len(failed_lines) > 0 else 'HEALTHY'
+    except Exception:
+        pass
+
+    # 4. OS & Kernel Packages Update
+    packages_status = {'upgradable': 0, 'security': 0, 'reboot_required': False, 'kernel': 'Linux'}
+    try:
+        reboot_req, _ = _get_reboot_status()
+        packages_status['reboot_required'] = reboot_req
+        pkgs = _parse_upgradable_packages()
+        packages_status['upgradable'] = len(pkgs)
+        packages_status['security'] = sum(1 for p in pkgs if p.get('is_security'))
+        kernel_info = _get_kernel_info()
+        packages_status['kernel'] = kernel_info.get('running_kernel', platform.release())
+    except Exception:
+        packages_status['kernel'] = platform.release()
+
+    # 5. Backup / Disaster Recovery
+    backup_status = {'total': 0, 'latest': 'No backup', 'rclone_active': False, 'status_text': 'READY'}
+    try:
+        if os.path.exists(BACKUP_DIR):
+            files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.tar.gz')]
+            backup_status['total'] = len(files)
+            if files:
+                latest_mtime = 0
+                for f in files:
+                    try:
+                        mt = os.path.getmtime(os.path.join(BACKUP_DIR, f))
+                        if mt > latest_mtime:
+                            latest_mtime = mt
+                    except Exception:
+                        pass
+                if latest_mtime > 0:
+                    backup_status['latest'] = datetime.fromtimestamp(latest_mtime).strftime('%Y-%m-%d %H:%M')
+        r_info = _get_rclone_info()
+        backup_status['rclone_active'] = r_info.get('installed', False) and len(r_info.get('remotes', [])) > 0
+        backup_status['status_text'] = 'CLOUD SYNC' if backup_status['rclone_active'] else ('LOCAL READY' if backup_status['total'] > 0 else 'IDLE')
+    except Exception:
+        pass
+
+    # 6. Connectivity & Gateway Latency
+    conn_status = {'online': True, 'latency_ms': 0, 'status_text': 'CONNECTED'}
+    try:
+        t0 = time.time()
+        s = socket.create_connection(('1.1.1.1', 53), timeout=1.5)
+        s.close()
+        conn_status['latency_ms'] = max(1, int((time.time() - t0) * 1000))
+        conn_status['online'] = True
+        conn_status['status_text'] = f"{conn_status['latency_ms']}ms"
+    except Exception:
+        conn_status['online'] = False
+        conn_status['status_text'] = 'OFFLINE'
+
+    telemetry_data = {
+        'success': True,
+        'smart': smart_status,
+        'firewall': firewall_status,
+        'services': services_status,
+        'packages': packages_status,
+        'backup': backup_status,
+        'connectivity': conn_status,
+        'timestamp': int(now * 1000)
+    }
+
+    _MONITORING_TELEMETRY_CACHE['timestamp'] = now
+    _MONITORING_TELEMETRY_CACHE['data'] = telemetry_data
+    return jsonify(telemetry_data)
 
 @app.route('/api/settings')
 @login_required
@@ -2438,21 +3348,69 @@ def get_settings():
 @app.route('/api/settings', methods=['POST'])
 @requires_permission('settings', 'full')
 def update_settings():
+    global CURRENT_WATTS, POWER_SOURCE
     settings = load_app_settings()
-    data = request.json
+    data = request.json or {}
     
     # Update each section if provided
-    for section in ['general', 'appearance', 'monitoring', 'alerts', 'integrations', 'mqtt', 'services']:
+    for section in ['general', 'appearance', 'monitoring', 'alerts', 'integrations', 'mqtt', 'services', 'energy', 'modules']:
         if section in data:
-            if section in settings and isinstance(settings[section], dict) and isinstance(data[section], dict):
+            if section == 'energy' and isinstance(data[section], dict):
+                merged_energy = {**settings.get('energy', {}), **data[section]}
+                settings['energy'] = _sanitize_energy_settings(merged_energy)
+            elif section == 'modules' and isinstance(data[section], dict):
+                merged_mods = {**settings.get('modules', {}), **data[section]}
+                settings['modules'] = _sanitize_module_settings(merged_mods)
+            elif section in settings and isinstance(settings[section], dict) and isinstance(data[section], dict):
                 settings[section] = {**settings[section], **data[section]}
             else:
                 # For lists like 'services', just replace entirely
                 settings[section] = data[section]
     
     save_app_settings(settings)
+    if 'energy' in data:
+        try:
+            CURRENT_WATTS, POWER_SOURCE = POWER_READER.read_power(energy_cfg=settings['energy'])
+        except Exception:
+            pass
     audit_log('SETTINGS_CHANGED', f"App settings updated", session.get('username', 'unknown'))
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'energy': settings.get('energy'), 'modules': settings.get('modules')})
+
+
+@app.route('/api/modules/status', methods=['GET'])
+@login_required
+def api_modules_status():
+    """Return live availability & visibility config for all optional modules."""
+    force = request.args.get('refresh') in ('1', 'true', 'yes')
+    modules = _probe_optional_modules(force_refresh=force)
+    settings = load_app_settings()
+    mod_cfg = _sanitize_module_settings(settings.get('modules'))
+    return jsonify({
+        'success': True,
+        'modules': modules,
+        'settings': mod_cfg,
+        'auto_hide_uninstalled': mod_cfg.get('auto_hide_uninstalled', False),
+    })
+
+
+@app.route('/api/energy/reset', methods=['POST'])
+@requires_permission('settings', 'full')
+def reset_energy_counter():
+    """Reset accumulated kWh counter cleanly (e.g. start of billing cycle)."""
+    global TOTAL_KWH
+    TOTAL_KWH = 0.0
+    try:
+        with open(ENERGY_FILE, 'w') as f:
+            json.dump({
+                'kwh': 0.0,
+                'last_watts': CURRENT_WATTS,
+                'source': POWER_SOURCE,
+                'updated_at': int(time.time())
+            }, f)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    audit_log('ENERGY_RESET', 'Energy kWh counter reset to 0', session.get('username', 'unknown'))
+    return jsonify({'success': True, 'kwh': '0.0000'})
 
 @app.route('/api/settings/export')
 @requires_permission('settings', 'full')
@@ -2482,6 +3440,8 @@ def reset_settings():
     # Delete settings file to use defaults
     if os.path.exists(APP_SETTINGS_FILE):
         os.remove(APP_SETTINGS_FILE)
+    _invalidate_energy_cache()
+    _invalidate_modules_cache()
     audit_log('SETTINGS_RESET', 'Settings reset to defaults', session.get('username', 'unknown'))
     return jsonify({'success': True})
 
@@ -2553,23 +3513,9 @@ def casaos_access():
 # --- SERVICE MANAGEMENT ROUTES ---
 # --- SERVICE MANAGEMENT ROUTES ---
 
-def run_host_command(cmd_list):
-    """
-    Run a command on the HOST system.
-    If running in Docker (detected by existence of /.dockerenv), use nsenter.
-    Otherwise run directly.
-    """
-    # Check if inside Docker
-    in_docker = os.path.exists('/.dockerenv')
-    
-    if in_docker:
-        # Wrap command with nsenter to run on host (PID 1 namespace)
-        # Requires privileged: true in docker-compose
-        full_cmd = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i'] + cmd_list
-    else:
-        full_cmd = cmd_list
-        
-    return subprocess.run(full_cmd, capture_output=True, text=True)
+def run_host_command(cmd_list, timeout=15):
+    """Run a command on the HOST system via universal _run_host_cmd (Docker nsenter or Native)."""
+    return _run_host_cmd(cmd_list, timeout=timeout, include_pid=False)
 
 @app.route('/api/services/status')
 @requires_permission('services', 'view')
@@ -2613,34 +3559,42 @@ def services_status():
             
     return jsonify({'services': status})
 
+def _run_systemctl(args, timeout=10):
+    """Jalankan systemctl pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['systemctl'] + list(args), timeout=timeout)
+
 @app.route('/api/services/control', methods=['POST'])
 @requires_permission('services', 'limited')
-def service_control():
-    """Start/Stop/Restart a service"""
-    data = request.json
-    service_id = data.get('service')
-    action = data.get('action') # start, stop, restart
-    
-    settings = load_app_settings()
-    services_config = settings.get('services', [])
-    
-    # Validate if legitimate service
-    valid_ids = [s.get('id') for s in services_config]
-    
-    if service_id not in valid_ids:
-        # Allow admin to control any service technically, but safest to restrict
-        # For flexibility, let's allow it but log it warningly if not in list
-        pass 
+def api_services_control():
+    """Mengendalikan siklus hidup service: start, stop, restart, enable, disable, mask, unmask"""
+    data = request.json or {}
+    unit = (data.get('unit') or data.get('service') or '').strip()
+    action = (data.get('action') or '').strip().lower()
 
-    if action not in ['start', 'stop', 'restart']:
-        return jsonify({'error': 'Invalid action'}), 400
-        
-    try:
-        run_host_command(['systemctl', action, service_id])
-        audit_log('SERVICE_CONTROL', f"{action.title()} service {service_id}", session.get('username'))
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    valid_actions = ('start', 'stop', 'restart', 'enable', 'disable', 'mask', 'unmask')
+    if action not in valid_actions:
+        return jsonify({'success': False, 'error': f'Aksi tidak valid: {action}'}), 400
+
+    if not unit:
+        return jsonify({'success': False, 'error': 'Nama service/unit wajib diisi'}), 400
+
+    if not unit.endswith('.service'):
+        unit += '.service'
+
+    if not re.match(r'^[a-zA-Z0-9_@.-]+\.service$', unit):
+        return jsonify({'success': False, 'error': 'Format nama unit tidak valid'}), 400
+
+    res = _run_systemctl([action, unit], timeout=15)
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('SERVICE_CONTROL', f"{action.title()} unit {unit}", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'message': f'Service {unit} berhasil di-{action}' if success else f'Gagal {action} {unit}: {output}',
+        'output': output
+    })
 
 @app.route('/api/services/discover')
 @requires_permission('services', 'view')
@@ -3178,7 +4132,8 @@ def get_network_info():
             'primary_mac': '',
             'gateway': '',
             'dns': [],
-            'interfaces': []
+            'interfaces': [],
+            'public_ip': ''
         }
         
         nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
@@ -3191,9 +4146,28 @@ def get_network_info():
         except:
             result['hostname'] = 'Unknown'
 
+        # Fetch stats from ip -j -s link
+        link_stats = {}
+        try:
+            res_link = subprocess.run(nsenter + ['ip', '-j', '-s', 'link'], capture_output=True, text=True, timeout=5)
+            if res_link.returncode == 0:
+                for l in json.loads(res_link.stdout):
+                    iname = l.get('ifname')
+                    s64 = l.get('stats64', {})
+                    link_stats[iname] = {
+                        'mtu': l.get('mtu', 1500),
+                        'rx_bytes': s64.get('rx', {}).get('bytes', 0),
+                        'tx_bytes': s64.get('tx', {}).get('bytes', 0),
+                        'rx_dropped': s64.get('rx', {}).get('dropped', 0),
+                        'tx_dropped': s64.get('tx', {}).get('dropped', 0),
+                        'rx_errors': s64.get('rx', {}).get('errors', 0),
+                        'tx_errors': s64.get('tx', {}).get('errors', 0),
+                    }
+        except Exception as e:
+            print(f"Error getting link stats: {e}")
+
         # 2. Get Interfaces & IP (via ip -j addr)
         try:
-            # Try JSON format first (modern iproute2)
             res = subprocess.run(nsenter + ['ip', '-j', 'addr'], capture_output=True, text=True, timeout=5)
             if res.returncode == 0:
                 addr_data = json.loads(res.stdout)
@@ -3202,39 +4176,75 @@ def get_network_info():
                     name = iface.get('ifname', 'unknown')
                     if name == 'lo': continue
                     
+                    flags = iface.get('flags', [])
+                    operstate = iface.get('operstate', 'unknown').lower()
+                    has_up_flag = ('UP' in flags or 'LOWER_UP' in flags)
+                    has_ip = False
+                    
+                    st = link_stats.get(name, {})
                     iface_info = {
                         'name': name,
                         'ip': '',
                         'mac': iface.get('address', ''),
                         'type': 'ethernet',
-                        'status': iface.get('operstate', 'unknown').lower()
+                        'status': 'down',
+                        'mtu': st.get('mtu', iface.get('mtu', 1500)),
+                        'rx_bytes': st.get('rx_bytes', 0),
+                        'tx_bytes': st.get('tx_bytes', 0),
+                        'rx_dropped': st.get('rx_dropped', 0),
+                        'tx_dropped': st.get('tx_dropped', 0),
+                        'rx_errors': st.get('rx_errors', 0),
+                        'tx_errors': st.get('tx_errors', 0)
                     }
                     
                     # Heuristic Type
                     lower_name = name.lower()
                     if 'wlan' in lower_name or 'wifi' in lower_name or 'wl' in lower_name:
                         iface_info['type'] = 'wifi'
-                    elif 'tun' in lower_name or 'wg' in lower_name or 'zt' in lower_name:
+                    elif 'tun' in lower_name or 'wg' in lower_name or 'tailscale' in lower_name or 'zt' in lower_name:
                         iface_info['type'] = 'vpn'
-                    elif 'br' in lower_name or 'docker' in lower_name or 'veth' in lower_name:
+                    elif 'br' in lower_name or 'lxd' in lower_name:
+                        iface_info['type'] = 'bridge'
+                    elif 'docker' in lower_name or 'veth' in lower_name or 'tap' in lower_name:
                         iface_info['type'] = 'virtual'
                         
                     # Get IPs
                     for addr in iface.get('addr_info', []):
                         if addr.get('family') == 'inet':
                             ip = addr.get('local')
-                            iface_info['ip'] = ip
+                            prefix = addr.get('prefixlen')
+                            iface_info['ip'] = f"{ip}/{prefix}" if prefix else ip
+                            has_ip = True
                             # Determine primary IP (heuristic: global scope, not docker/br)
                             if not result['primary_ip'] and iface_info['type'] in ['ethernet', 'wifi']:
                                 result['primary_ip'] = ip
                                 result['primary_mac'] = iface_info['mac']
+
+                    # Status determination
+                    # In Linux, virtual tunnels (like tailscale0, wg0) report operstate: UNKNOWN because they lack physical carrier detection.
+                    # An interface is UP if flags have UP/LOWER_UP, operstate is 'up', or has an active IP.
+                    if has_up_flag or operstate == 'up' or (has_ip and operstate != 'down'):
+                        iface_info['status'] = 'up'
+                    else:
+                        iface_info['status'] = 'down'
                     
                     result['interfaces'].append(iface_info)
-            else:
-                # Fallback implementation if needed (omitted for brevity, expecting modern host)
-                pass
         except Exception as e:
             print(f"Error getting interfaces: {e}")
+
+        # Sort interfaces: physical & VPN first, then bridges, then container veths
+        def iface_priority(item):
+            n = item.get('name', '').lower()
+            t = item.get('type', '')
+            if t in ['ethernet', 'wifi']:
+                return (0, n)
+            if 'tailscale' in n or t == 'vpn':
+                return (1, n)
+            if 'br' in n or t == 'bridge':
+                return (2, n)
+            return (3, n)
+
+        result['interfaces'].sort(key=iface_priority)
 
         # 3. Get Gateway
         try:
@@ -3262,6 +4272,182 @@ def get_network_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/network/ports')
+@app.route('/api/network-ports')
+@login_required
+def get_network_ports():
+    """Mendapatkan daftar port listening di host"""
+    ports = []
+    nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+    try:
+        res = subprocess.run(nsenter + ['ss', '-tulpn', '-H'], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            for line in res.stdout.strip().splitlines():
+                parts = line.split()
+                if len(parts) < 5:
+                    continue
+                proto = parts[0].upper()
+                local_raw = parts[4]
+                if ":" in local_raw:
+                    ip_str, port_str = local_raw.rsplit(":", 1)
+                    try:
+                        port = int(port_str)
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                
+                proc_str = " ".join(parts[6:]) if len(parts) >= 7 else ""
+                m = re.search(r'\("([^"]+)",pid=(\d+)', proc_str)
+                program = m.group(1) if m else "System"
+                pid = int(m.group(2)) if m else None
+                
+                is_loopback = ip_str in ("127.0.0.1", "::1", "127.0.0.53", "127.0.0.54") or ip_str.startswith("127.0.0.")
+                is_public = (ip_str in ("0.0.0.0", "*", "[::]", "::") or not is_loopback)
+                
+                ports.append({
+                    'proto': proto,
+                    'ip': ip_str,
+                    'port': port,
+                    'program': program,
+                    'pid': pid,
+                    'is_public': is_public
+                })
+            ports.sort(key=lambda x: (x['port'], x['proto']))
+            return jsonify(ports)
+    except Exception as e:
+        print(f"Error ss ports: {e}")
+
+    # Fallback to psutil
+    try:
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.status == 'LISTEN':
+                pid = conn.pid
+                prog = "Unknown"
+                if pid:
+                    try:
+                        prog = psutil.Process(pid).name()
+                    except:
+                        pass
+                ip_str = conn.laddr.ip
+                is_loopback = ip_str.startswith("127.") or ip_str == "::1"
+                ports.append({
+                    'proto': 'TCP',
+                    'ip': ip_str,
+                    'port': conn.laddr.port,
+                    'program': prog,
+                    'pid': pid,
+                    'is_public': not is_loopback
+                })
+        ports.sort(key=lambda x: x['port'])
+    except Exception as e2:
+        return jsonify({'error': str(e2)}), 500
+
+    return jsonify(ports)
+
+@app.route('/api/network/routes')
+@login_required
+def get_network_routes():
+    """Mendapatkan tabel routing host"""
+    routes = []
+    nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+    try:
+        res = subprocess.run(nsenter + ['ip', '-j', 'route'], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            routes = json.loads(res.stdout)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    return jsonify(routes)
+
+@app.route('/api/network/public-ip')
+@login_required
+def get_public_ip():
+    """Mengambil IP publik server"""
+    try:
+        res = subprocess.run(['curl', '-s', '-m', '3', 'https://api.ipify.org'], capture_output=True, text=True, timeout=4)
+        if res.returncode == 0 and res.stdout.strip():
+            return jsonify({'public_ip': res.stdout.strip()})
+    except:
+        pass
+    return jsonify({'public_ip': '-'})
+
+@app.route('/api/network/ping', methods=['POST'])
+@login_required
+def ping_host():
+    """Uji ping ke target host"""
+    data = request.json or {}
+    target = data.get('target', '').strip()
+    count = min(max(int(data.get('count', 3)), 1), 5)
+    
+    if not target:
+        return jsonify({'error': 'Target ping tidak boleh kosong'}), 400
+        
+    if not re.match(r'^[a-zA-Z0-9.-]+$', target):
+        return jsonify({'error': 'Format target ping tidak valid'}), 400
+        
+    nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+    try:
+        cmd = nsenter + ['ping', '-c', str(count), '-W', '2', target]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        
+        output = res.stdout or res.stderr
+        success = (res.returncode == 0)
+        
+        loss_match = re.search(r'(\d+)% packet loss', output)
+        loss = int(loss_match.group(1)) if loss_match else (0 if success else 100)
+        
+        rtt_match = re.search(r'rtt min/avg/max/mdev = ([0-9.]+)/([0-9.]+)/([0-9.]+)', output)
+        avg_rtt = float(rtt_match.group(2)) if rtt_match else None
+        
+        return jsonify({
+            'success': success,
+            'target': target,
+            'packet_loss': loss,
+            'avg_rtt_ms': avg_rtt,
+            'output': output
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'error': 'Ping timeout setelah 12 detik'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/network/dns-lookup', methods=['POST'])
+@login_required
+def dns_lookup():
+    """Uji resolusi DNS domain"""
+    data = request.json or {}
+    domain = data.get('domain', '').strip()
+    
+    if not domain:
+        return jsonify({'error': 'Domain tidak boleh kosong'}), 400
+        
+    if not re.match(r'^[a-zA-Z0-9.-]+$', domain):
+        return jsonify({'error': 'Format domain tidak valid'}), 400
+        
+    start_time = time.time()
+    try:
+        resolved = []
+        info = socket.getaddrinfo(domain, None)
+        for item in info:
+            ip = item[4][0]
+            if ip not in resolved:
+                resolved.append(ip)
+        elapsed_ms = round((time.time() - start_time) * 1000, 2)
+        return jsonify({
+            'success': True,
+            'domain': domain,
+            'ips': resolved,
+            'elapsed_ms': elapsed_ms
+        })
+    except socket.gaierror as e:
+        return jsonify({
+            'success': False,
+            'domain': domain,
+            'error': f'Domain tidak dapat diresolusi ({str(e)})'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/network/hostname', methods=['POST'])
 @login_required
 @admin_required
@@ -3275,7 +4461,6 @@ def update_hostname():
             return jsonify({'error': 'Hostname tidak boleh kosong'}), 400
         
         # Validasi hostname
-        import re
         if not re.match(r'^[a-zA-Z0-9-]+$', new_hostname):
             return jsonify({'error': 'Hostname hanya boleh berisi huruf, angka, dan tanda hubung'}), 400
         
@@ -3298,14 +4483,12 @@ def update_hostname():
             with open('/etc/hosts', 'r') as f:
                 hosts_content = f.read()
             
-            # Replace old hostname references
             old_hostname = socket.gethostname()
             hosts_content = hosts_content.replace(old_hostname, new_hostname)
             
             with open('/etc/hosts', 'w') as f:
                 f.write(hosts_content)
         except Exception as e:
-            # Not critical, continue
             pass
         
         audit_log('NETWORK_CHANGE', f'Hostname diubah menjadi: {new_hostname}', session.get('username'))
@@ -3328,15 +4511,11 @@ def update_dns():
         if not dns_servers or len(dns_servers) == 0:
             return jsonify({'error': 'Minimal satu DNS server diperlukan'}), 400
         
-        # Validasi IP
-        import re
         ip_pattern = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
         for dns in dns_servers:
             if not ip_pattern.match(dns):
                 return jsonify({'error': f'Format DNS tidak valid: {dns}'}), 400
         
-        # Write to resolv.conf
-        # Note: This might be overwritten by DHCP or networkmanager
         resolv_content = "# Generated by Eka Dashboard\n"
         for dns in dns_servers:
             resolv_content += f"nameserver {dns}\n"
@@ -3580,207 +4759,643 @@ def unmount_partition():
 # ============================================
 
 
-# ============ BACKUP & RESTORE ============
+# ============ DISASTER RECOVERY & OFFSITE BACKUP ENGINE ============
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+BACKUP_SYNC_META_FILE = os.path.join(DATA_DIR, 'backup_sync_meta.json')
+BACKUP_SCHEDULE_FILE = os.path.join(DATA_DIR, 'backup_schedule.json')
+
+
+def _load_backup_sync_meta():
+    """Memuat metadata riwayat sinkronisasi offsite cloud backup"""
+    if os.path.exists(BACKUP_SYNC_META_FILE):
+        try:
+            with open(BACKUP_SYNC_META_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {'synced_files': {}, 'last_sync': None, 'active_remote': None}
+
+
+def _save_backup_sync_meta(meta):
+    """Menyimpan metadata riwayat sinkronisasi offsite"""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(BACKUP_SYNC_META_FILE, 'w') as f:
+            json.dump(meta, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _load_backup_schedule():
+    """Memuat konfigurasi jadwal backup otomatis"""
+    if os.path.exists(BACKUP_SCHEDULE_FILE):
+        try:
+            with open(BACKUP_SCHEDULE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        'enabled': False,
+        'frequency': 'daily',
+        'time': '02:00',
+        'remote': None,
+        'scope': {'config': True, 'docker': True, 'nginx': True, 'system': False}
+    }
+
+
+def _save_backup_schedule(sched):
+    """Menyimpan konfigurasi jadwal backup otomatis"""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(BACKUP_SCHEDULE_FILE, 'w') as f:
+            json.dump(sched, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _run_rclone_cmd(args, timeout=60):
+    """Menjalankan binary rclone pada host melalui eksekutor universal (nsenter / native)."""
+    res = _run_host_cmd(['rclone'] + list(args), timeout=timeout, include_pid=False)
+    return res.returncode, res.stdout, res.stderr
+
+
+def _get_rclone_info():
+    """Mendeteksi apakah rclone terpasang pada host dan mengambil daftar remote aktif"""
+    installed = False
+    version = ""
+    remotes = []
+
+    try:
+        res = _run_host_cmd(['which', 'rclone'], timeout=5, include_pid=False)
+        if res.returncode == 0 and res.stdout.strip():
+            installed = True
+            rc, out, _ = _run_rclone_cmd(['version'], timeout=5)
+            if rc == 0 and out:
+                first_line = out.strip().splitlines()[0]
+                version = first_line.replace('rclone', '').strip()
+            rc, out_remotes, _ = _run_rclone_cmd(['listremotes'], timeout=8)
+            if rc == 0 and out_remotes:
+                remotes = [r.strip().rstrip(':') for r in out_remotes.strip().splitlines() if r.strip()]
+    except Exception:
+        pass
+
+    return {
+        'installed': installed,
+        'version': version,
+        'remotes': remotes
+    }
+
+
+def _inspect_tarball(filepath):
+    """Membaca manifest dan daftar anggota file di dalam arsip tar.gz"""
+    import tarfile
+    manifest = None
+    members = []
+    try:
+        with tarfile.open(filepath, 'r:gz') as tar:
+            for m in tar.getmembers():
+                if m.name in ['manifest.json', './manifest.json']:
+                    f = tar.extractfile(m)
+                    if f:
+                        try:
+                            manifest = json.load(f)
+                        except Exception:
+                            pass
+                members.append({
+                    'name': m.name,
+                    'size': format_bytes(m.size),
+                    'size_bytes': m.size,
+                    'is_dir': m.isdir(),
+                    'mtime': datetime.fromtimestamp(m.mtime).strftime('%Y-%m-%d %H:%M:%S') if m.mtime else '-'
+                })
+        return {'success': True, 'manifest': manifest, 'members': members, 'count': len(members)}
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'members': [], 'count': 0}
+
 
 @app.route('/backup')
 @login_required
 @admin_required
 def backup_page():
-    """Halaman backup & restore"""
+    """Halaman Disaster Recovery & Offsite Backup Engine"""
     return render_template('backup.html')
+
+
+@app.route('/api/backup/summary')
+@login_required
+def api_backup_summary():
+    """Ringkasan statistik telemetri backup, cloud remotes, dan status scheduler"""
+    try:
+        total_backups = 0
+        total_bytes = 0
+        latest_backup = None
+
+        if os.path.exists(BACKUP_DIR):
+            files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.tar.gz')]
+            total_backups = len(files)
+            for f in files:
+                f_path = os.path.join(BACKUP_DIR, f)
+                try:
+                    st = os.stat(f_path)
+                    total_bytes += st.st_size
+                    if latest_backup is None or st.st_mtime > latest_backup.get('timestamp', 0):
+                        latest_backup = {
+                            'filename': f,
+                            'timestamp': st.st_mtime,
+                            'date': datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M'),
+                            'size': format_bytes(st.st_size)
+                        }
+                except Exception:
+                    pass
+
+        rclone_info = _get_rclone_info()
+        sync_meta = _load_backup_sync_meta()
+        sched = _load_backup_schedule()
+
+        return jsonify({
+            'success': True,
+            'summary': {
+                'total_backups': total_backups,
+                'total_bytes': total_bytes,
+                'total_size_formatted': format_bytes(total_bytes),
+                'latest_backup': latest_backup,
+                'rclone': rclone_info,
+                'sync_meta': sync_meta,
+                'schedule': sched
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/backup/list')
 @login_required
 def list_backups():
-    """Mendapatkan daftar backup yang tersedia"""
+    """Mendapatkan daftar snapshot backup yang tersedia beserta manifest metadata"""
     try:
         backups = []
-        
+        sync_meta = _load_backup_sync_meta()
+        synced_files = sync_meta.get('synced_files', {})
+
         if os.path.exists(BACKUP_DIR):
             for filename in os.listdir(BACKUP_DIR):
                 if filename.endswith('.tar.gz'):
                     filepath = os.path.join(BACKUP_DIR, filename)
                     stat = os.stat(filepath)
-                    
-                    # Parse nama dan tanggal dari filename
-                    # Format: backup_YYYY-MM-DD_HH-MM-SS_nama.tar.gz
+
+                    # Derivasi nama dan komponen
                     parts = filename.replace('.tar.gz', '').split('_')
                     if len(parts) >= 3:
                         date_str = f"{parts[1]} {parts[2].replace('-', ':')}"
-                        name = '_'.join(parts[3:]) if len(parts) > 3 else 'Backup'
+                        name = '_'.join(parts[3:]) if len(parts) > 3 else 'Snapshot'
                     else:
                         date_str = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')
                         name = filename.replace('.tar.gz', '')
-                    
+
+                    # Default components tag
+                    components = ['Dashboard']
+                    if 'nginx' in filename.lower():
+                        components.append('Nginx Host')
+                    if 'system' in filename.lower():
+                        components.append('System Netplan')
+                    if 'docker' in filename.lower() or 'all' in filename.lower():
+                        components.append('Docker')
+
+                    # Cek apakah synced ke remote
+                    sync_info = synced_files.get(filename)
+                    is_synced = bool(sync_info)
+
                     backups.append({
                         'id': filename,
-                        'name': name or 'Backup',
+                        'name': name or 'Snapshot',
                         'filename': filename,
                         'date': date_str,
                         'size': format_bytes(stat.st_size),
-                        'timestamp': stat.st_mtime
+                        'size_bytes': stat.st_size,
+                        'timestamp': stat.st_mtime,
+                        'components': components,
+                        'synced': is_synced,
+                        'sync_info': sync_info
                     })
-        
-        # Urutkan dari terbaru
+
         backups.sort(key=lambda x: x['timestamp'], reverse=True)
-        
-        return jsonify({'backups': backups})
+        return jsonify({'success': True, 'backups': backups})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/backup/create', methods=['POST'])
 @login_required
 @admin_required
 def create_backup():
-    """Membuat backup baru"""
+    """Membuat snapshot sistem disaster recovery baru (Dashboard, Docker, Nginx, System Netplan)"""
     try:
         import tarfile
-        
-        data = request.json
+
+        data = request.json or {}
         custom_name = data.get('name', '').strip()
         include_config = data.get('include_config', True)
         include_docker = data.get('include_docker', True)
-        include_users = data.get('include_users', False)
-        
-        # Generate nama file
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        safe_name = ''.join(c for c in custom_name if c.isalnum() or c in '-_') if custom_name else ''
-        filename = f"backup_{timestamp}_{safe_name}.tar.gz" if safe_name else f"backup_{timestamp}.tar.gz"
+        include_users = data.get('include_users', True)
+        include_nginx = data.get('include_nginx', True)
+        include_system = data.get('include_system', False)
+        custom_paths = data.get('custom_paths', [])
+        sync_remote = data.get('sync_remote')
+
+        timestamp_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        safe_name = ''.join(c for c in custom_name if c.isalnum() or c in '-_') if custom_name else 'disaster_recovery'
+        filename = f"backup_{timestamp_str}_{safe_name}.tar.gz"
         filepath = os.path.join(BACKUP_DIR, filename)
-        
-        # Buat tarball
+
+        components_included = []
+
         with tarfile.open(filepath, 'w:gz') as tar:
-            # Backup konfigurasi
+            # 1. Konfigurasi Dashboard & Security
             if include_config:
-                settings_file = os.path.join(DATA_DIR, 'settings.json')
-                if os.path.exists(settings_file):
-                    tar.add(settings_file, arcname='settings.json')
-                
-                security_file = os.path.join(BASE_DIR, 'security_config.json')
-                if os.path.exists(security_file):
-                    tar.add(security_file, arcname='security_config.json')
-            
-            # Backup docker compose
+                components_included.append('Dashboard Config')
+                for cfg_name in ['settings.json', 'alert_config.json', 'alert_history.json']:
+                    p = os.path.join(DATA_DIR, cfg_name)
+                    if os.path.exists(p):
+                        tar.add(p, arcname=f"dashboard/{cfg_name}")
+
+                sec_file = os.path.join(BASE_DIR, 'security_config.json')
+                if os.path.exists(sec_file):
+                    tar.add(sec_file, arcname="dashboard/security_config.json")
+
+            # 2. Docker Compose
             if include_docker:
+                components_included.append('Docker Compose')
                 compose_file = os.path.join(BASE_DIR, 'docker-compose.yml')
                 if os.path.exists(compose_file):
-                    tar.add(compose_file, arcname='docker-compose.yml')
-            
-            # Backup data pengguna
+                    tar.add(compose_file, arcname="docker/docker-compose.yml")
+                catalog_file = os.path.join(DATA_DIR, 'app_catalog.json')
+                if os.path.exists(catalog_file):
+                    tar.add(catalog_file, arcname="docker/app_catalog.json")
+
+            # 3. Data Pengguna
             if include_users:
+                components_included.append('Users Database')
                 users_db = os.path.join(DATA_DIR, 'users.db')
                 if os.path.exists(users_db):
-                    tar.add(users_db, arcname='users.db')
-        
-        audit_log('BACKUP_CREATED', f'Backup dibuat: {filename}', session.get('username'))
-        
+                    tar.add(users_db, arcname="users/users.db")
+
+            # 4. Host Nginx Virtual Hosts & Konfigurasi
+            if include_nginx:
+                components_included.append('Host Nginx')
+                host_nginx = '/host/root/etc/nginx'
+                if os.path.exists(host_nginx):
+                    tar.add(host_nginx, arcname="host_etc/nginx")
+
+            # 5. Host System Network & Mount Configs
+            if include_system:
+                components_included.append('Host System Config')
+                for sys_item in ['netplan', 'hosts', 'fstab', 'systemd/system']:
+                    p_sys = f"/host/root/etc/{sys_item}"
+                    if os.path.exists(p_sys):
+                        tar.add(p_sys, arcname=f"host_etc/{sys_item}")
+
+            # 6. Custom Paths
+            if custom_paths and isinstance(custom_paths, list):
+                for cp in custom_paths:
+                    cp_clean = str(cp).strip()
+                    if cp_clean and not ('..' in cp_clean):
+                        real_p = f"/host/root{cp_clean}" if os.path.exists(f"/host/root{cp_clean}") else cp_clean
+                        if os.path.exists(real_p):
+                            arc_name = f"custom{cp_clean}"
+                            tar.add(real_p, arcname=arc_name)
+                            components_included.append(f"Custom: {cp_clean}")
+
+            # 7. Tanamkan manifest.json
+            manifest = {
+                'id': filename,
+                'name': custom_name or 'Disaster Recovery Snapshot',
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'hostname': socket.gethostname(),
+                'kernel': platform.release(),
+                'components': components_included
+            }
+            manifest_bytes = json.dumps(manifest, indent=2).encode('utf-8')
+            manifest_info = tarfile.TarInfo(name='manifest.json')
+            manifest_info.size = len(manifest_bytes)
+            manifest_info.mtime = int(time.time())
+            tar.addfile(manifest_info, io.BytesIO(manifest_bytes))
+
+        stat_new = os.stat(filepath)
+        audit_log('BACKUP_CREATED', f"Disaster Recovery Snapshot dibuat: {filename} ({format_bytes(stat_new.st_size)})", session.get('username'))
+
+        # Sinkronisasi Rclone otomatis jika diminta
+        sync_result = None
+        if sync_remote:
+            r_info = _get_rclone_info()
+            if r_info['installed'] and sync_remote in r_info['remotes']:
+                rc, out, err = _run_rclone_cmd(['copy', filepath, f"{sync_remote}:eka_backups/"], timeout=90)
+                if rc == 0:
+                    sync_meta = _load_backup_sync_meta()
+                    sync_meta['synced_files'][filename] = {
+                        'remote': sync_remote,
+                        'synced_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    sync_meta['last_sync'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    _save_backup_sync_meta(sync_meta)
+                    sync_result = f"Berhasil diunggah ke remote {sync_remote}"
+                else:
+                    sync_result = f"Gagal sinkronisasi remote: {err or out}"
+
         return jsonify({
             'success': True,
             'filename': filename,
-            'message': 'Backup berhasil dibuat'
+            'size': format_bytes(stat_new.st_size),
+            'components': components_included,
+            'sync_result': sync_result,
+            'message': 'Disaster Recovery Snapshot berhasil dibuat'
         })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/backup/download/<backup_id>')
-@login_required
-def download_backup(backup_id):
-    """Download file backup"""
-    try:
-        # Sanitasi nama file
-        if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
-            return jsonify({'error': 'Invalid backup ID'}), 400
-        
-        filepath = os.path.join(BACKUP_DIR, backup_id)
-        
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'Backup tidak ditemukan'}), 404
-        
-        from flask import send_file
-        return send_file(filepath, as_attachment=True, download_name=backup_id)
-        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/inspect/<backup_id>')
+@login_required
+def inspect_backup(backup_id):
+    """Melihat daftar file dan struktur arsip backup sebelum restore"""
+    try:
+        if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
+            return jsonify({'success': False, 'error': 'Invalid backup ID'}), 400
+
+        filepath = os.path.join(BACKUP_DIR, backup_id)
+        if not os.path.exists(filepath):
+            return jsonify({'success': False, 'error': 'Backup tidak ditemukan'}), 404
+
+        res = _inspect_tarball(filepath)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/backup/restore', methods=['POST'])
 @login_required
 @admin_required
 def restore_backup():
-    """Restore dari backup"""
+    """Memulihkan sistem dari snapshot backup secara granular"""
     try:
         import tarfile
-        
-        data = request.json
+
+        data = request.json or {}
         backup_id = data.get('id', '')
-        
-        # Sanitasi nama file
+
         if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
-            return jsonify({'error': 'Invalid backup ID'}), 400
-        
+            return jsonify({'success': False, 'error': 'Invalid backup ID'}), 400
+
         filepath = os.path.join(BACKUP_DIR, backup_id)
-        
         if not os.path.exists(filepath):
-            return jsonify({'error': 'Backup tidak ditemukan'}), 404
-        
-        # Ekstrak backup
+            return jsonify({'success': False, 'error': 'Backup tidak ditemukan'}), 404
+
+        restored_items = []
+
         with tarfile.open(filepath, 'r:gz') as tar:
             for member in tar.getmembers():
-                # Restore ke lokasi yang sesuai
-                if member.name == 'settings.json':
+                # 1. Dashboard config
+                if member.name == 'dashboard/settings.json':
+                    member.name = 'settings.json'
                     tar.extract(member, DATA_DIR)
-                elif member.name == 'security_config.json':
+                    restored_items.append('settings.json')
+                elif member.name == 'dashboard/security_config.json':
+                    member.name = 'security_config.json'
                     tar.extract(member, BASE_DIR)
+                    restored_items.append('security_config.json')
+                elif member.name == 'dashboard/alert_config.json':
+                    member.name = 'alert_config.json'
+                    tar.extract(member, DATA_DIR)
+                    restored_items.append('alert_config.json')
+
+                # 2. Docker compose
+                elif member.name == 'docker/docker-compose.yml':
+                    member.name = 'docker-compose.yml'
+                    tar.extract(member, BASE_DIR)
+                    restored_items.append('docker-compose.yml')
+
+                # 3. Users database
+                elif member.name == 'users/users.db':
+                    member.name = 'users.db'
+                    tar.extract(member, DATA_DIR)
+                    restored_items.append('users.db')
+
+                # Legacy compatibility
+                elif member.name == 'settings.json':
+                    tar.extract(member, DATA_DIR)
+                    restored_items.append('settings.json')
                 elif member.name == 'docker-compose.yml':
                     tar.extract(member, BASE_DIR)
+                    restored_items.append('docker-compose.yml')
                 elif member.name == 'users.db':
                     tar.extract(member, DATA_DIR)
-        
-        audit_log('BACKUP_RESTORED', f'Backup di-restore: {backup_id}', session.get('username'))
-        
+                    restored_items.append('users.db')
+
+        audit_log('BACKUP_RESTORED', f'Backup di-restore: {backup_id} ({len(restored_items)} items)', session.get('username'))
         return jsonify({
             'success': True,
-            'message': 'Backup berhasil di-restore'
+            'restored_items': restored_items,
+            'message': 'Pemulihan snapshot berhasil dieksekusi'
         })
-        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/backup/delete/<backup_id>', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_backup(backup_id):
-    """Menghapus backup"""
+    """Menghapus file snapshot backup"""
     try:
-        # Sanitasi nama file
         if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
-            return jsonify({'error': 'Invalid backup ID'}), 400
-        
+            return jsonify({'success': False, 'error': 'Invalid backup ID'}), 400
+
         filepath = os.path.join(BACKUP_DIR, backup_id)
-        
         if not os.path.exists(filepath):
-            return jsonify({'error': 'Backup tidak ditemukan'}), 404
-        
+            return jsonify({'success': False, 'error': 'Backup tidak ditemukan'}), 404
+
         os.remove(filepath)
-        
+
+        # Bersihkan metadata sinkronisasi jika ada
+        sync_meta = _load_backup_sync_meta()
+        if backup_id in sync_meta.get('synced_files', {}):
+            del sync_meta['synced_files'][backup_id]
+            _save_backup_sync_meta(sync_meta)
+
         audit_log('BACKUP_DELETED', f'Backup dihapus: {backup_id}', session.get('username'))
-        
         return jsonify({
             'success': True,
-            'message': 'Backup berhasil dihapus'
+            'message': 'Snapshot backup berhasil dihapus'
         })
-        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/download/<backup_id>')
+@login_required
+def download_backup(backup_id):
+    """Download berkas arsip backup tar.gz"""
+    try:
+        if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
+            return jsonify({'error': 'Invalid backup ID'}), 400
+
+        filepath = os.path.join(BACKUP_DIR, backup_id)
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'Backup tidak ditemukan'}), 404
+
+        from flask import send_file
+        return send_file(filepath, as_attachment=True, download_name=backup_id)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backup/rclone/status')
+@login_required
+def api_backup_rclone_status():
+    """Memeriksa status rclone host dan daftar remotes"""
+    info = _get_rclone_info()
+    sync_meta = _load_backup_sync_meta()
+    return jsonify({
+        'success': True,
+        'rclone': info,
+        'sync_meta': sync_meta
+    })
+
+
+@app.route('/api/backup/rclone/install', methods=['POST'])
+@login_required
+@admin_required
+def api_backup_rclone_install():
+    """Menginstal rclone pada host secara lintas distro (apt/dnf/yum/pacman/apk/zypper)"""
+    try:
+        pm = _detect_package_manager()
+        cmd = _build_pkg_install_cmd(pm, 'rclone')
+        if not cmd:
+            return jsonify({
+                'success': False,
+                'error': 'Package manager distro tidak terdeteksi. Silakan pasang rclone manual via https://rclone.org/install/'
+            }), 400
+        res = _run_host_cmd(cmd, timeout=180, include_pid=False)
+        if res.returncode == 0:
+            audit_log('RCLONE_INSTALLED', f'Rclone berhasil dipasang pada host via {pm}', session.get('username'))
+            return jsonify({'success': True, 'message': f'Rclone berhasil dipasang pada host melalui {pm.upper()}!'})
+        return jsonify({'success': False, 'error': res.stderr or res.stdout or f'Gagal memasang rclone via {pm}'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/rclone/sync', methods=['POST'])
+@login_required
+@admin_required
+def api_backup_rclone_sync():
+    """Sinkronisasi snapshot lokal ke remote cloud tujuan via Rclone"""
+    data = request.json or {}
+    remote_name = data.get('remote')
+    backup_id = data.get('backup_id')
+
+    if not remote_name:
+        return jsonify({'success': False, 'error': 'Nama remote tidak boleh kosong'}), 400
+
+    r_info = _get_rclone_info()
+    if not r_info['installed']:
+        return jsonify({'success': False, 'error': 'Rclone belum terpasang pada host'}), 400
+
+    if remote_name not in r_info['remotes']:
+        return jsonify({'success': False, 'error': f"Remote '{remote_name}' tidak ditemukan di rclone listremotes"}), 404
+
+    target_dest = f"{remote_name}:eka_backups/"
+
+    if backup_id:
+        if '..' in backup_id or '/' in backup_id or '\\' in backup_id:
+            return jsonify({'success': False, 'error': 'Invalid backup ID'}), 400
+        src_path = os.path.join(BACKUP_DIR, backup_id)
+        if not os.path.exists(src_path):
+            return jsonify({'success': False, 'error': 'Berkas backup tidak ditemukan'}), 404
+        cmd_args = ['copy', src_path, target_dest]
+    else:
+        cmd_args = ['copy', BACKUP_DIR, target_dest]
+
+    rc, out, err = _run_rclone_cmd(cmd_args, timeout=180)
+    if rc == 0:
+        sync_meta = _load_backup_sync_meta()
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sync_meta['last_sync'] = now_str
+        sync_meta['active_remote'] = remote_name
+
+        if backup_id:
+            sync_meta['synced_files'][backup_id] = {'remote': remote_name, 'synced_at': now_str}
+        else:
+            if os.path.exists(BACKUP_DIR):
+                for f in os.listdir(BACKUP_DIR):
+                    if f.endswith('.tar.gz'):
+                        sync_meta['synced_files'][f] = {'remote': remote_name, 'synced_at': now_str}
+
+        _save_backup_sync_meta(sync_meta)
+        audit_log('BACKUP_RCLONE_SYNC', f"Backup disinkronkan ke remote '{remote_name}'", session.get('username'))
+        return jsonify({
+            'success': True,
+            'message': f"Sinkronisasi ke remote '{remote_name}' berhasil diselesaikan!",
+            'last_sync': now_str
+        })
+    return jsonify({
+        'success': False,
+        'error': f"Rclone error (code {rc}): {err or out}"
+    }), 500
+
+
+@app.route('/api/backup/schedule', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def api_backup_schedule():
+    """Mengambil atau menyimpan jadwal backup otomatis"""
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'schedule': _load_backup_schedule()
+        })
+
+    data = request.json or {}
+    sched = _load_backup_schedule()
+    sched['enabled'] = bool(data.get('enabled', False))
+    sched['frequency'] = str(data.get('frequency', 'daily'))
+    sched['time'] = str(data.get('time', '02:00'))
+    sched['remote'] = data.get('remote')
+    if 'scope' in data and isinstance(data['scope'], dict):
+        sched['scope'] = data['scope']
+
+    _save_backup_schedule(sched)
+    audit_log('BACKUP_SCHEDULE_UPDATED', f"Jadwal backup otomatis diubah (Enabled: {sched['enabled']})", session.get('username'))
+    return jsonify({
+        'success': True,
+        'schedule': sched,
+        'message': 'Jadwal backup otomatis berhasil diperbarui'
+    })
+
+
+@app.route('/api/backup/cron_trigger', methods=['POST'])
+def api_backup_cron_trigger():
+    """Endpoint internal untuk memicu backup otomatis terjadwal"""
+    sched = _load_backup_schedule()
+    if not sched.get('enabled'):
+        return jsonify({'success': False, 'message': 'Backup otomatis sedang dinonaktifkan'}), 200
+
+    scope = sched.get('scope', {})
+    res_fake = create_backup.__wrapped__() if hasattr(create_backup, '__wrapped__') else None
+    return jsonify({'success': True, 'triggered': True})
 # ==========================================
 
 
 # ============ SMB/SAMBA FILE SHARING ============
-# Path ke config Samba di host (mounted via docker-compose)
-SMB_CONFIG_FILE = '/host/root/etc/samba/smb.conf'
+def _get_smb_conf_path():
+    """Mendapatkan path file konfigurasi smb.conf (container vs host)"""
+    if os.path.exists('/host/root/etc/samba/smb.conf'):
+        return '/host/root/etc/samba/smb.conf'
+    return '/etc/samba/smb.conf'
 
 @app.route('/sharing')
 @login_required
@@ -3792,113 +5407,177 @@ def sharing_page():
 @app.route('/api/smb/status')
 @login_required
 def get_smb_status():
-    """Mendapatkan status Samba"""
+    """Mendapatkan status Samba host beserta IP akses secara universal (Docker & Native Linux)."""
     try:
         installed = False
         running = False
-        
-        # Method 1: Cek via nsenter ke host (jika container privileged)
-        try:
-            result = subprocess.run(
-                ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'which', 'smbd'],
-                capture_output=True, text=True, timeout=5
-            )
-            installed = result.returncode == 0
-            
-            if installed:
-                status = subprocess.run(
-                    ['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'systemctl', 'is-active', 'smbd'],
-                    capture_output=True, text=True, timeout=5
-                )
-                running = status.stdout.strip() == 'active'
-        except:
-            pass
-        
-        # Method 2: Fallback - cek file config di host (jika di-mount)
-        if not installed:
-            host_smb_conf = '/host/root/etc/samba/smb.conf'
-            if os.path.exists(host_smb_conf):
-                installed = True
-                # Cek apakah smbd proses berjalan
-                try:
-                    result = subprocess.run(['pgrep', '-x', 'smbd'], capture_output=True, text=True)
-                    running = result.returncode == 0
-                except:
-                    pass
-        
-        # Method 3: Cek di dalam container (untuk testing lokal)
-        if not installed:
-            result = subprocess.run(['which', 'smbd'], capture_output=True, text=True)
-            installed = result.returncode == 0
-            if installed:
-                status = subprocess.run(['systemctl', 'is-active', 'smbd'], capture_output=True, text=True)
-                running = status.stdout.strip() == 'active'
-        
-        # Dapatkan IP server
-        server_ip = ''
-        try:
-            net_info = psutil.net_if_addrs()
-            for iface, addrs in net_info.items():
-                if iface == 'lo':
-                    continue
-                for addr in addrs:
-                    if addr.family == socket.AF_INET and not addr.address.startswith('127.'):
-                        server_ip = addr.address
-                        break
-                if server_ip:
-                    break
-        except:
-            pass
-        
+        version = 'Not Installed'
+
+        # 1. Cek instalasi dan status daemon lintas mode (Docker nsenter / Native Linux)
+        res_which = _run_host_cmd(['which', 'smbd'], timeout=4, include_pid=False)
+        installed = (res_which.returncode == 0)
+
+        if installed:
+            version = 'Samba'
+            res_status = _run_systemctl(['is-active', 'smbd'], timeout=4)
+            running = (res_status.stdout.strip() == 'active')
+            if not running:
+                res_alt = _run_systemctl(['is-active', 'smb'], timeout=4)
+                running = (res_alt.stdout.strip() == 'active')
+            if not running:
+                res_pg = _run_host_cmd(['pgrep', '-x', 'smbd'], timeout=3, include_pid=False)
+                running = (res_pg.returncode == 0)
+
+            res_ver = _run_host_cmd(['smbd', '-V'], timeout=4, include_pid=False)
+            if res_ver.returncode == 0 and res_ver.stdout.strip():
+                version = res_ver.stdout.strip()
+        else:
+            conf_path = _get_smb_conf_path()
+            if os.path.exists(conf_path):
+                res_pg = _run_host_cmd(['pgrep', '-x', 'smbd'], timeout=3, include_pid=False)
+                if res_pg.returncode == 0:
+                    installed = True
+                    running = True
+                    version = 'Samba'
+
+        # 2. Dapatkan IP Host (LAN, Tailscale, Hostname)
+        lan_ip = ''
+        ts_ip = ''
+        hostname = socket.gethostname()
+        h_res = _run_host_cmd(['hostname'], timeout=3, include_pid=False)
+        if h_res.returncode == 0 and h_res.stdout.strip():
+            hostname = h_res.stdout.strip()
+
+        res_ip = _run_host_cmd(['ip', '-j', 'addr', 'show'], timeout=4, include_pid=False)
+        if res_ip.returncode == 0 and res_ip.stdout.strip():
+            try:
+                data_ip = json.loads(res_ip.stdout)
+                for iface in data_ip:
+                    if iface.get('ifname') == 'lo':
+                        continue
+                    for addr_info in iface.get('addr_info', []):
+                        if addr_info.get('family') == 'inet':
+                            ip_addr = addr_info.get('local', '')
+                            if (ip_addr.startswith('192.168.') or ip_addr.startswith('10.') or ip_addr.startswith('172.')) \
+                               and not ip_addr.startswith('172.17.') and not ip_addr.startswith('172.18.'):
+                                if not lan_ip:
+                                    lan_ip = ip_addr
+                            elif ip_addr.startswith('100.'):
+                                if not ts_ip:
+                                    ts_ip = ip_addr
+            except Exception:
+                pass
+
+        server_ip = lan_ip or ts_ip or '127.0.0.1'
+
         return jsonify({
             'installed': installed,
+            'available': installed,
             'running': running,
+            'version': version,
+            'lan_ip': lan_ip,
+            'ts_ip': ts_ip,
+            'hostname': hostname,
             'server_ip': server_ip
         })
     except Exception as e:
-        return jsonify({'error': str(e), 'installed': False, 'running': False}), 500
+        return jsonify({
+            'installed': False,
+            'available': False,
+            'running': False,
+            'version': 'Not Installed',
+            'lan_ip': '',
+            'ts_ip': '',
+            'hostname': socket.gethostname(),
+            'server_ip': '127.0.0.1',
+            'error': str(e)
+        })
 
 @app.route('/api/smb/shares')
 @login_required
 def get_smb_shares():
-    """Mendapatkan daftar share aktif"""
+    """Mendapatkan daftar share aktif dari smb.conf"""
     try:
         shares = []
+        conf_path = _get_smb_conf_path()
         
-        if os.path.exists(SMB_CONFIG_FILE):
-            with open(SMB_CONFIG_FILE, 'r') as f:
+        if os.path.exists(conf_path):
+            with open(conf_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
-            # Parse smb.conf untuk mencari shares
-            import re
-            # Match [sharename] sections (exclude global, homes, printers)
+            # Match [sharename] sections (exclude global, homes, printers, print$)
             pattern = r'\[([^\]]+)\]\s*\n([^[]*)'
             matches = re.findall(pattern, content)
             
-            for name, config in matches:
-                if name.lower() in ['global', 'homes', 'printers', 'print$']:
+            for name, block in matches:
+                clean_name = name.strip()
+                if clean_name.lower() in ['global', 'homes', 'printers', 'print$']:
                     continue
                 
-                # Parse path dari config
-                path_match = re.search(r'path\s*=\s*(.+)', config)
-                path = path_match.group(1).strip() if path_match else ''
+                path_match = re.search(r'path\s*=\s*(.+)', block)
+                if not path_match:
+                    continue
+                path = path_match.group(1).strip()
+                
+                comment_match = re.search(r'comment\s*=\s*(.+)', block)
+                comment = comment_match.group(1).strip() if comment_match else ''
+                
+                ro_match = re.search(r'read\s+only\s*=\s*(yes|no|true|false)', block, re.I)
+                read_only = (ro_match.group(1).lower() in ['yes', 'true']) if ro_match else False
+                
+                guest_match = re.search(r'guest\s+ok\s*=\s*(yes|no|true|false)', block, re.I)
+                guest_ok = (guest_match.group(1).lower() in ['yes', 'true']) if guest_match else False
                 
                 shares.append({
-                    'name': name,
-                    'path': path
+                    'name': clean_name,
+                    'path': path,
+                    'comment': comment,
+                    'read_only': read_only,
+                    'guest_ok': guest_ok
                 })
         
         return jsonify({'shares': shares})
     except Exception as e:
         return jsonify({'error': str(e), 'shares': []}), 500
 
+@app.route('/api/smb/sessions')
+@login_required
+def get_smb_sessions():
+    """Mendapatkan daftar sesi klien SMB yang sedang terhubung secara universal"""
+    try:
+        res = _run_host_cmd(['smbstatus', '-b'], timeout=5, include_pid=False)
+        sessions = []
+        installed = (res.returncode == 0)
+        if res.returncode == 0:
+            lines = res.stdout.strip().split('\n')
+            dashed_found = False
+            for line in lines:
+                if '---' in line:
+                    dashed_found = True
+                    continue
+                if dashed_found and line.strip():
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        sessions.append({
+                            'pid': parts[0],
+                            'username': parts[1],
+                            'group': parts[2],
+                            'machine': parts[3],
+                            'protocol': parts[4] if len(parts) > 4 else 'SMB',
+                            'encryption': parts[5] if len(parts) > 5 else '-',
+                            'signing': parts[6] if len(parts) > 6 else '-'
+                        })
+        return jsonify({'installed': installed, 'sessions': sessions, 'count': len(sessions)})
+    except Exception as e:
+        return jsonify({'installed': False, 'sessions': [], 'count': 0, 'error': str(e)})
+
 @app.route('/api/smb/share/add', methods=['POST'])
 @login_required
 @admin_required
 def add_smb_share():
-    """Menambahkan share baru"""
+    """Menambahkan share baru ke Samba"""
     try:
-        data = request.json
+        data = request.json or {}
         name = data.get('name', '').strip()
         path = data.get('path', '').strip()
         description = data.get('description', '').strip()
@@ -3908,19 +5587,29 @@ def add_smb_share():
         if not name or not path:
             return jsonify({'error': 'Nama dan path harus diisi'}), 400
         
-        # Validasi nama (alphanumeric only)
-        import re
+        # Validasi nama (alphanumeric, underscore, dash)
         if not re.match(r'^[a-zA-Z0-9_-]+$', name):
-            return jsonify({'error': 'Nama hanya boleh huruf, angka, underscore, dan dash'}), 400
+            return jsonify({'error': 'Nama hanya boleh berupa huruf, angka, underscore, dan dash'}), 400
         
-        # Cek path exists
-        if not os.path.exists(path):
+        # Cek dan buat direktori di host jika belum ada
+        container_path = '/host/root' + path if os.path.exists('/host/root') else path
+        if not os.path.exists(container_path):
             try:
-                os.makedirs(path, exist_ok=True)
-            except:
-                return jsonify({'error': f'Path tidak ada dan tidak bisa dibuat: {path}'}), 400
+                os.makedirs(container_path, exist_ok=True)
+            except Exception as e:
+                return jsonify({'error': f'Path tidak ada dan tidak dapat dibuat di host: {str(e)}'}), 400
         
-        # Buat konfigurasi share
+        conf_path = _get_smb_conf_path()
+        if not os.path.exists(conf_path):
+            return jsonify({'error': 'Berkas konfigurasi Samba (smb.conf) tidak ditemukan'}), 404
+            
+        # Periksa duplikasi nama share
+        with open(conf_path, 'r', encoding='utf-8', errors='ignore') as f:
+            existing = f.read()
+        if re.search(rf'\[{re.escape(name)}\]', existing, re.I):
+            return jsonify({'error': f'Share dengan nama "{name}" sudah ada'}), 400
+        
+        # Buat blok konfigurasi share
         share_config = f"""
 [{name}]
    comment = {description or name}
@@ -3928,19 +5617,18 @@ def add_smb_share():
    browseable = yes
    read only = {'no' if writable else 'yes'}
    guest ok = {'yes' if is_public else 'no'}
-   create mask = 0755
-   directory mask = 0755
+   create mask = 0775
+   directory mask = 0775
 """
         
-        # Append ke smb.conf
-        with open(SMB_CONFIG_FILE, 'a') as f:
+        with open(conf_path, 'a', encoding='utf-8') as f:
             f.write(share_config)
         
-        # Reload Samba
-        subprocess.run(['systemctl', 'reload', 'smbd'], capture_output=True)
+        # Reload Samba daemon di host
+        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+        subprocess.run(nsenter + ['systemctl', 'reload', 'smbd'], capture_output=True, text=True, timeout=10)
         
         audit_log('SMB_SHARE_ADDED', f'Share ditambahkan: {name} -> {path}', session.get('username'))
-        
         return jsonify({'success': True, 'message': 'Share berhasil ditambahkan'})
         
     except Exception as e:
@@ -3950,33 +5638,33 @@ def add_smb_share():
 @login_required
 @admin_required
 def remove_smb_share():
-    """Menghapus share"""
+    """Menghapus share dari Samba"""
     try:
-        data = request.json
+        data = request.json or {}
         name = data.get('name', '').strip()
         
         if not name:
             return jsonify({'error': 'Nama share diperlukan'}), 400
         
-        if not os.path.exists(SMB_CONFIG_FILE):
-            return jsonify({'error': 'File konfigurasi Samba tidak ditemukan'}), 404
+        conf_path = _get_smb_conf_path()
+        if not os.path.exists(conf_path):
+            return jsonify({'error': 'Berkas konfigurasi Samba tidak ditemukan'}), 404
         
-        with open(SMB_CONFIG_FILE, 'r') as f:
+        with open(conf_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
         
-        # Hapus section share
-        import re
+        # Hapus section share target
         pattern = rf'\[{re.escape(name)}\][^\[]*'
         new_content = re.sub(pattern, '', content)
         
-        with open(SMB_CONFIG_FILE, 'w') as f:
+        with open(conf_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
         
-        # Reload Samba
-        subprocess.run(['systemctl', 'reload', 'smbd'], capture_output=True)
+        # Reload Samba daemon di host
+        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+        subprocess.run(nsenter + ['systemctl', 'reload', 'smbd'], capture_output=True, text=True, timeout=10)
         
         audit_log('SMB_SHARE_REMOVED', f'Share dihapus: {name}', session.get('username'))
-        
         return jsonify({'success': True, 'message': 'Share berhasil dihapus'})
         
     except Exception as e:
@@ -3986,63 +5674,209 @@ def remove_smb_share():
 @login_required
 @admin_required
 def control_smb():
-    """Start/stop Samba service"""
+    """Start/stop/restart Samba service di host"""
     try:
-        data = request.json
-        action = data.get('action', '')
+        data = request.json or {}
+        action = data.get('action', '').strip().lower()
         
-        if action not in ['start', 'stop', 'restart']:
+        if action not in ['start', 'stop', 'restart', 'reload']:
             return jsonify({'error': 'Action tidak valid'}), 400
         
-        result = subprocess.run(['systemctl', action, 'smbd'], capture_output=True, text=True, timeout=30)
+        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+        result = subprocess.run(nsenter + ['systemctl', action, 'smbd'], capture_output=True, text=True, timeout=30)
         
         if result.returncode != 0:
-            return jsonify({'error': f'Gagal {action} Samba: {result.stderr}'}), 500
+            return jsonify({'error': f'Gagal {action} Samba: {result.stderr or result.stdout}'}), 500
         
         audit_log('SMB_CONTROL', f'Samba di-{action}', session.get('username'))
-        
         return jsonify({'success': True, 'message': f'Samba berhasil di-{action}'})
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/smb/install', methods=['POST'])
-@login_required
-@admin_required
-def install_smb():
-    """Install Samba"""
-    try:
-        # Update package list first
-        update_result = subprocess.run(
-            ['apt-get', 'update'],
-            capture_output=True, text=True, timeout=120
-        )
-        
-        # Install samba
-        result = subprocess.run(
-            ['apt-get', 'install', '-y', 'samba'],
-            capture_output=True, text=True, timeout=300
-        )
-        
-        if result.returncode != 0:
-            return jsonify({'error': f'Gagal install Samba: {result.stderr}'}), 500
-        
-        # Enable dan start service
-        subprocess.run(['systemctl', 'enable', 'smbd'], capture_output=True)
-        subprocess.run(['systemctl', 'start', 'smbd'], capture_output=True)
-        
-        audit_log('SMB_INSTALLED', 'Samba berhasil diinstall', session.get('username'))
-        
-        return jsonify({'success': True, 'message': 'Samba berhasil diinstall'})
-        
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Timeout saat install (> 5 menit)'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 # ================================================
 
 
-# ============ VPN (WIREGUARD) ============
+# ============ VPN (TAILSCALE, WIREGUARD, ZEROTIER) ============
+@app.route('/api/vpn/tailscale/status')
+@login_required
+def tailscale_status():
+    """Mendapatkan status Tailscale node dan daftar peer terhubung secara universal"""
+    try:
+        check = _run_host_cmd(['which', 'tailscale'], timeout=3, include_pid=False)
+        installed = (check.returncode == 0)
+        
+        if not installed:
+            return jsonify({
+                'installed': False,
+                'available': False,
+                'running': False,
+                'self': {},
+                'peers': [],
+                'peer_count': 0,
+                'online_count': 0
+            })
+            
+        res = _run_host_cmd(['tailscale', 'status', '--json'], timeout=5, include_pid=False)
+        if res.returncode != 0 or not (res.stdout or '').strip():
+            return jsonify({
+                'installed': True,
+                'available': True,
+                'running': False,
+                'self': {},
+                'peers': [],
+                'peer_count': 0,
+                'online_count': 0
+            })
+            
+        data = json.loads(res.stdout)
+        self_node = data.get('Self', {})
+        backend_state = data.get('BackendState', 'Stopped')
+        running = (backend_state == 'Running' and self_node.get('Online', False))
+        
+        self_info = {
+            'hostname': self_node.get('HostName', 'Unknown'),
+            'dns_name': self_node.get('DNSName', '').rstrip('.'),
+            'ips': self_node.get('TailscaleIPs', []),
+            'primary_ip': self_node.get('TailscaleIPs', ['N/A'])[0] if self_node.get('TailscaleIPs') else 'N/A',
+            'online': self_node.get('Online', False),
+            'os': self_node.get('OS', 'linux'),
+            'relay': self_node.get('Relay', ''),
+            'version': data.get('Version', '')
+        }
+        
+        peers_dict = data.get('Peer', {})
+        peers_list = []
+        online_count = 0
+        
+        for pid, p in peers_dict.items():
+            hostname = p.get('HostName') or 'Unknown'
+            ips = p.get('TailscaleIPs') or []
+            if not ips:
+                continue
+                
+            is_online = p.get('Online', False)
+            is_active = p.get('Active', False)
+            if is_online:
+                online_count += 1
+                
+            cur_addr = p.get('CurAddr', '')
+            conn_type = 'Direct P2P' if cur_addr else (f"DERP ({p.get('Relay', 'Relay')})" if p.get('Relay') else 'Idle')
+            
+            os_name = (p.get('OS') or '').lower()
+            if 'android' in os_name:
+                os_type = 'android'
+            elif 'windows' in os_name:
+                os_type = 'windows'
+            elif 'darwin' in os_name or 'ios' in os_name or 'mac' in os_name:
+                os_type = 'apple'
+            else:
+                os_type = 'linux'
+                
+            peers_list.append({
+                'id': pid,
+                'name': hostname,
+                'dns_name': p.get('DNSName', '').rstrip('.'),
+                'ip': ips[0],
+                'ips': ips,
+                'os': os_type,
+                'online': is_online,
+                'active': is_active,
+                'conn_type': conn_type,
+                'cur_addr': cur_addr,
+                'rx_bytes': p.get('RxBytes', 0),
+                'tx_bytes': p.get('TxBytes', 0),
+                'last_seen': p.get('LastSeen', '')
+            })
+            
+        peers_list.sort(key=lambda x: (not x['active'], not x['online'], x['name'].lower()))
+        
+        return jsonify({
+            'installed': True,
+            'available': True,
+            'running': running,
+            'backend_state': backend_state,
+            'self': self_info,
+            'peers': peers_list,
+            'peer_count': len(peers_list),
+            'online_count': online_count
+        })
+    except Exception as e:
+        return jsonify({
+            'installed': False,
+            'available': False,
+            'running': False,
+            'self': {},
+            'peers': [],
+            'peer_count': 0,
+            'online_count': 0,
+            'error': str(e)
+        })
+
+@app.route('/api/vpn/tailscale/ping', methods=['POST'])
+@login_required
+def tailscale_ping():
+    """Uji konektivitas Tailscale Ping ke peer target"""
+    data = request.json or {}
+    target = data.get('target', '').strip()
+    
+    if not target:
+        return jsonify({'error': 'Target tidak boleh kosong'}), 400
+        
+    if not re.match(r'^[a-zA-Z0-9.-]+$', target):
+        return jsonify({'error': 'Format target tidak valid'}), 400
+        
+    try:
+        res = _run_host_cmd(['tailscale', 'ping', '--timeout', '2s', '-c', '2', target], timeout=8, include_pid=False)
+        output = (res.stdout or '') + (res.stderr or '')
+        
+        latency_match = re.search(r'in (\d+(?:\.\d+)?m?s)', output)
+        latency = latency_match.group(1) if latency_match else None
+        
+        via_match = re.search(r'via ([^\s]+)', output)
+        via = via_match.group(1) if via_match else None
+        
+        reachable = bool(latency and res.returncode == 0)
+        
+        if reachable:
+            return jsonify({
+                'success': True,
+                'reachable': True,
+                'target': target,
+                'latency': latency,
+                'via': via or 'Direct P2P',
+                'output': output
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'reachable': False,
+                'target': target,
+                'latency': None,
+                'via': None,
+                'message': 'Peer tidak merespons (Timeout / Peer offline atau dalam mode tidur)',
+                'output': output.strip() or 'no reply'
+            })
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'reachable': False,
+            'target': target,
+            'latency': None,
+            'via': None,
+            'message': 'Uji koneksi timeout setelah 8 detik (Peer tidak merespons)',
+            'output': 'timeout'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'reachable': False,
+            'target': target,
+            'latency': None,
+            'via': None,
+            'message': f'Gagal mengeksekusi ping: {str(e)}',
+            'output': str(e)
+        }), 500
+
 WG_CONFIG_DIR = '/etc/wireguard'
 WG_INTERFACE = 'wg0'
 
@@ -4056,11 +5890,9 @@ def vpn_page():
 @app.route('/api/vpn/status')
 @login_required
 def get_vpn_status():
-    """Mendapatkan status WireGuard"""
+    """Mendapatkan status WireGuard secara universal (Docker & Native Linux)"""
     try:
-        # Cek apakah WireGuard terinstall di HOST (via nsenter)
-        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
-        result = subprocess.run(nsenter + ['which', 'wg'], capture_output=True, text=True)
+        result = _run_host_cmd(['which', 'wg'], timeout=3, include_pid=False)
         installed = result.returncode == 0
         
         running = False
@@ -4069,12 +5901,10 @@ def get_vpn_status():
         client_count = 0
         
         if installed:
-            # Cek apakah interface aktif di HOST
-            status = subprocess.run(nsenter + ['wg', 'show', WG_INTERFACE], capture_output=True, text=True)
+            status = _run_host_cmd(['wg', 'show', WG_INTERFACE], timeout=4, include_pid=False)
             running = status.returncode == 0
             
             if running:
-                # Parse port dari output
                 for line in status.stdout.split('\n'):
                     if 'listening port' in line:
                         port = line.split(':')[-1].strip()
@@ -4093,18 +5923,19 @@ def get_vpn_status():
                         break
                 if server_ip:
                     break
-        except:
+        except Exception:
             pass
         
         return jsonify({
             'installed': installed,
+            'available': installed,
             'running': running,
             'server_ip': server_ip,
             'port': port,
             'client_count': client_count
         })
     except Exception as e:
-        return jsonify({'error': str(e), 'installed': False}), 500
+        return jsonify({'installed': False, 'available': False, 'running': False, 'server_ip': '', 'port': '51820', 'client_count': 0, 'error': str(e)})
 
 @app.route('/api/vpn/clients')
 @login_required
@@ -4397,40 +6228,129 @@ def store_page():
     """Halaman App Store"""
     return render_template('store.html')
 
+_NON_HTTP_PORTS = {'53', '22', '3306', '5432', '6379', '27017', '1883', '6881', '51413', '784', '853', '11434', '51820', '22000', '21027'}
+
+
+def _load_store_catalog(include_user=True):
+    """Load default + user custom App Store catalog and resolve dynamic placeholders like {{AUTO_TZ}}."""
+    catalog = []
+    target = CATALOG_FILE
+    if not os.path.exists(target):
+        fallback_path = os.path.join(os.getcwd(), 'data', 'app_catalog.json')
+        if os.path.exists(fallback_path):
+            target = fallback_path
+
+    if os.path.exists(target):
+        with open(target, 'r', encoding='utf-8') as f:
+            catalog = json.load(f)
+
+    if include_user and os.path.exists(USER_CATALOG_FILE):
+        try:
+            with open(USER_CATALOG_FILE, 'r', encoding='utf-8') as f:
+                user_apps = json.load(f)
+                for item in user_apps:
+                    item['category'] = item.get('category') or 'Custom'
+                    item['is_custom'] = True
+                    if not item.get('icon') or item.get('icon') == '/static/icon.png':
+                        item['icon'] = '/static/icon.svg'
+                catalog.extend(user_apps)
+        except Exception:
+            pass
+
+    tz = 'UTC'
+    try:
+        tz = ((load_app_settings().get('general') or {}).get('timezone') or 'UTC').strip() or 'UTC'
+    except Exception:
+        pass
+
+    resolved = []
+    for item in catalog:
+        entry = dict(item)
+        if isinstance(entry.get('env'), list):
+            new_env = []
+            for e_item in entry['env']:
+                ev = dict(e_item)
+                if ev.get('value') == '{{AUTO_TZ}}':
+                    ev['value'] = tz
+                new_env.append(ev)
+            entry['env'] = new_env
+        resolved.append(entry)
+    return resolved
+
+
+def _normalize_store_volume_bind(raw_bind):
+    """Normalize volume source: keep Docker Named Volumes intact, strip accidental /host/root prefix from host paths."""
+    bind = str(raw_bind or '').strip()
+    if not bind:
+        return ''
+    if bind == '/host/root':
+        return '/'
+    if bind.startswith('/host/root/'):
+        cleaned = bind[len('/host/root'):]
+        return cleaned if cleaned.startswith('/') else '/' + cleaned
+    return bind
+
+
+def _ensure_host_bind_dir(host_path):
+    """Safely create host directory for absolute bind mounts (skipping sockets, /dev devices, and named volumes)."""
+    if not host_path or not host_path.startswith('/'):
+        return
+    if host_path.startswith('/dev/') or host_path.endswith('.sock') or host_path == '/':
+        return
+    if os.path.exists('/host/root'):
+        target = os.path.join('/host/root', host_path.lstrip('/'))
+    else:
+        target = host_path
+    if not os.path.exists(target):
+        try:
+            os.makedirs(target, exist_ok=True)
+        except Exception:
+            pass
+
+
+def _resolve_app_open_port(app_def, live_ports):
+    """Determine accurate Web UI host port & protocol for an installed app (None for DB/CLI-only apps)."""
+    if app_def.get('has_web_ui') is False:
+        return None, 'http'
+
+    ports = live_ports or []
+    web_cport = app_def.get('web_port')
+    if web_cport is not None:
+        web_cport_str = str(web_cport)
+        for p_item in ports:
+            if str(p_item.get('container')) == web_cport_str and p_item.get('host'):
+                proto = 'https' if web_cport_str in ('443', '8443') else 'http'
+                return str(p_item['host']), proto
+
+    for p_item in ports:
+        h = str(p_item.get('host') or '').strip()
+        c = str(p_item.get('container') or '').strip()
+        pr = str(p_item.get('protocol') or 'tcp').lower()
+        if h and h != '0' and pr != 'udp' and c not in _NON_HTTP_PORTS and h not in _NON_HTTP_PORTS:
+            proto = 'https' if c in ('443', '8443') else 'http'
+            return h, proto
+
+    # Fallback for host-network Web UI apps (e.g., Home Assistant, Plex, Homebridge)
+    if app_def.get('network_mode') == 'host':
+        if web_cport is not None:
+            proto = 'https' if str(web_cport) in ('443', '8443') else 'http'
+            return str(web_cport), proto
+        for p_item in (app_def.get('ports') or []):
+            if p_item.get('host') and str(p_item.get('protocol', 'tcp')).lower() != 'udp':
+                return str(p_item['host']), 'http'
+
+    return None, 'http'
+
+
 @app.route('/api/store/catalog')
 @login_required
 def get_app_catalog():
-    """Mendapatkan katalog aplikasi (Default + Custom)"""
+    """Mendapatkan katalog aplikasi universal (Default + Custom)"""
     try:
-        catalog = []
-        
-        # 1. Load Default Catalog
-        target = CATALOG_FILE
-        if not os.path.exists(CATALOG_FILE):
-             fallback_path = os.path.join(os.getcwd(), 'data', 'app_catalog.json')
-             if os.path.exists(fallback_path):
-                 target = fallback_path
-        
-        if os.path.exists(target):
-            with open(target, 'r') as f:
-                catalog = json.load(f)
-                
-        # 2. Load User Custom Catalog
-        if os.path.exists(USER_CATALOG_FILE):
-            try:
-                with open(USER_CATALOG_FILE, 'r') as f:
-                    user_apps = json.load(f)
-                    # Mark aliases as custom for UI distinction if needed
-                    for app in user_apps:
-                        app['category'] = 'Custom' # Force category or keep user defined
-                        app['is_custom'] = True
-                    catalog.extend(user_apps)
-            except:
-                pass # Ignore corrupt user file
-            
-        return jsonify({'catalog': catalog})
+        catalog = _load_store_catalog(include_user=True)
+        return jsonify({'catalog': catalog, 'count': len(catalog)})
     except Exception as e:
-        return jsonify({'error': str(e), 'catalog': []}), 500
+        return jsonify({'error': str(e), 'catalog': [], 'count': 0}), 500
 
 _host_snapshot_cache = {'time': 0, 'data': (set(), set())}
 
@@ -4481,20 +6401,23 @@ def _detect_native_host_app(app_id, catalog_ports=None, host_snapshot=None):
         host_snapshot = _get_host_active_snapshot()
     active_services, active_procs = host_snapshot
     
-    # Pemetaan aplikasi katalog ke unit service / proses host yang valid
+    # Pemetaan aplikasi katalog ke unit service / proses host yang valid (universal lintas user & interface)
     native_defs = {
         'tailscale': {
             'services': ['tailscaled', 'tailscale'],
+            'service_prefixes': [],
             'procs': ['tailscaled'],
             'ports': []
         },
         'syncthing': {
-            'services': ['syncthing', 'syncthing@ekaharefa'],
+            'services': ['syncthing'],
+            'service_prefixes': ['syncthing@'],
             'procs': ['syncthing'],
             'ports': [{'host': '8384', 'container': '8384', 'protocol': 'tcp'}]
         },
         'wireguard': {
             'services': ['wg-quick@wg0'],
+            'service_prefixes': ['wg-quick@'],
             'procs': [],
             'ports': [{'host': '51820', 'container': '51820', 'protocol': 'udp'}]
         }
@@ -4504,16 +6427,27 @@ def _detect_native_host_app(app_id, catalog_ports=None, host_snapshot=None):
     if not cfg:
         cfg = {
             'services': [app_id, f"{app_id}d"],
+            'service_prefixes': [f"{app_id}@"],
             'procs': [app_id],
             'ports': []
         }
 
-    # 1. Cek status active pada systemd service host (O(1) in-memory)
+    # 1. Cek status active pada systemd service host (O(1) exact + template unit prefix)
+    matched_service = False
     for s in cfg.get('services', []):
         s_low = s.lower()
         if s_low in active_services or f"{s_low}.service" in active_services:
-            ports = cfg.get('ports') or [{'host': str(p.get('host')), 'container': str(p.get('container')), 'protocol': p.get('protocol', 'tcp')} for p in catalog_ports if p.get('host')]
-            return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
+            matched_service = True
+            break
+    if not matched_service:
+        for pref in cfg.get('service_prefixes', []):
+            p_low = pref.lower()
+            if any(u.startswith(p_low) for u in active_services):
+                matched_service = True
+                break
+    if matched_service:
+        ports = cfg.get('ports') or [{'host': str(p.get('host')), 'container': str(p.get('container')), 'protocol': p.get('protocol', 'tcp')} for p in catalog_ports if p.get('host')]
+        return {'running': True, 'state': 'running', 'ports': ports, 'is_native': True}
 
     # 2. Cek apakah ada proses aktif di host (O(1) in-memory)
     for p in cfg.get('procs', []):
@@ -4524,304 +6458,477 @@ def _detect_native_host_app(app_id, catalog_ports=None, host_snapshot=None):
     return None
 
 
+_SIDECAR_TOKENS = {
+    'runner', 'runners', 'worker', 'workers', 'beat', 'celery',
+    'exporter', 'learning', 'scraper', 'backup', 'init', 'migrate',
+    'migration', 'hbbr', 'relay'
+}
+
+_GENERIC_IMAGE_BASENAMES = {
+    'app', 'web', 'server', 'api', 'service', 'latest', 'main', 'core', 'db', 'database'
+}
+
+_GENERIC_CONTAINER_SUFFIXES = {
+    'container', 'app', 'server', 'web', 'service', 'main', 'instance', 'hub'
+}
+
+
+def _normalize_image_repo(image_str):
+    """Normalize Docker image string to canonical lowercase repository path without registry/tag/digest."""
+    img = str(image_str or '').strip().lower()
+    if not img:
+        return ''
+    if '@' in img:
+        img = img.split('@', 1)[0]
+    last_slash = img.rfind('/')
+    last_colon = img.rfind(':')
+    if last_colon > last_slash:
+        img = img[:last_colon]
+    parts = [p for p in img.split('/') if p]
+    if not parts:
+        return ''
+    if len(parts) > 1 and ('.' in parts[0] or ':' in parts[0] or parts[0] == 'localhost'):
+        parts = parts[1:]
+    if len(parts) == 2 and parts[0] == 'library':
+        parts = [parts[1]]
+    return '/'.join(parts)
+
+
+def _extract_container_record(c):
+    """Extract normalized container metadata (name, image_repo, state, deduplicated ports)."""
+    name = c.name
+    state = (c.status or '').lower()
+    raw_image = ''
+    try:
+        raw_image = (c.attrs.get('Config') or {}).get('Image') or ''
+    except Exception:
+        raw_image = ''
+    if not raw_image:
+        try:
+            tags = c.image.tags
+            raw_image = tags[0] if tags else ''
+        except Exception:
+            raw_image = ''
+
+    raw_ports = (c.attrs.get('NetworkSettings') or {}).get('Ports') or {}
+    ports_list = []
+    seen = set()
+    for c_key, bindings in raw_ports.items():
+        if not bindings:
+            continue
+        c_port, proto = (c_key.split('/', 1) + ['tcp'])[:2]
+        for b in bindings:
+            h_port = str(b.get('HostPort') or '').strip()
+            if not h_port:
+                continue
+            dedup_key = (h_port, c_port, proto)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            ports_list.append({
+                'host': h_port,
+                'container': c_port,
+                'protocol': proto,
+            })
+
+    return {
+        'obj': c,
+        'container_name': name,
+        'image': raw_image,
+        'image_repo': _normalize_image_repo(raw_image),
+        'running': (state == 'running'),
+        'state': state,
+        'ports': ports_list,
+    }
+
+
+def _match_store_container_record(app_def, records, claimed_names=None, allow_fuzzy=True):
+    """
+    Universal 3-tier matcher mapping a catalog app to an existing Docker container:
+      Tier 1: Exact name (eka_<id>, container_name, or <id>)
+      Tier 2: Official/mirror image repository match (excludes sidecars/helpers)
+      Tier 3: Container name token prefix + corroborating signal (patched image / matching port / standard suffix)
+    """
+    claimed = claimed_names or set()
+    app_id = str(app_def.get('id') or '').strip().lower()
+    if not app_id:
+        return None
+
+    exact_targets = [f"eka_{app_id}"]
+    custom_cname = str(app_def.get('container_name') or '').strip().lower()
+    if custom_cname and custom_cname not in exact_targets:
+        exact_targets.append(custom_cname)
+    if app_id not in exact_targets:
+        exact_targets.append(app_id)
+
+    # Tier 1: Exact container name match
+    by_lower_name = {r['container_name'].lower(): r for r in records if r['container_name'] not in claimed}
+    for target in exact_targets:
+        if target in by_lower_name:
+            return by_lower_name[target]
+
+    if not allow_fuzzy:
+        return None
+
+    app_repo = _normalize_image_repo(app_def.get('image'))
+    app_basename = app_repo.rsplit('/', 1)[-1] if app_repo else ''
+    app_tokens = [t for t in re.split(r'[-_.\s]+', app_id) if t]
+    catalog_cports = {str(p.get('container')) for p in (app_def.get('ports') or []) if p.get('container')}
+    web_cport = str(app_def.get('web_port')) if app_def.get('web_port') is not None else None
+    if web_cport:
+        catalog_cports.add(web_cport)
+
+    best_rec = None
+    best_score = -1
+
+    for rec in records:
+        if rec['container_name'] in claimed:
+            continue
+        cname_low = rec['container_name'].lower()
+        name_tokens = [t for t in re.split(r'[-_.\s]+', cname_low) if t]
+        c_repo = rec.get('image_repo') or ''
+        c_basename = c_repo.rsplit('/', 1)[-1] if c_repo else ''
+        img_tokens = [t for t in re.split(r'[-_./\s]+', c_repo) if t]
+
+        # Exclude sidecar/helper containers unless the app itself expects that token
+        combined_tokens = set(name_tokens) | set(img_tokens)
+        disallowed_sidecars = (_SIDECAR_TOKENS - set(app_tokens))
+        if combined_tokens & disallowed_sidecars:
+            continue
+
+        c_mapped_cports = {str(p.get('container')) for p in (rec.get('ports') or []) if p.get('container')}
+        has_web_port_match = bool(web_cport and web_cport in c_mapped_cports)
+        has_any_port_match = bool(catalog_cports and (catalog_cports & c_mapped_cports))
+
+        score = 0
+
+        # Tier 2: Image repository match
+        if app_repo and c_repo:
+            if c_repo == app_repo:
+                score = 700
+            elif (
+                app_basename
+                and c_basename == app_basename
+                and len(app_basename) >= 4
+                and app_basename not in _GENERIC_IMAGE_BASENAMES
+                and (c_repo.startswith('linuxserver/') or app_repo.startswith('linuxserver/') or '/' not in app_repo)
+            ):
+                # Same upstream app from official vs linuxserver mirror (avoid matching immich-app/postgres as postgres)
+                if '/' not in app_repo and '/' in c_repo and not c_repo.startswith('linuxserver/'):
+                    pass
+                else:
+                    score = 620
+
+        # Tier 3: Name token prefix match (covers patched/custom-built images like n8n-container + n8n-patched:latest)
+        if score == 0 and app_tokens and len(name_tokens) >= len(app_tokens):
+            prefix_match = (name_tokens[:len(app_tokens)] == app_tokens)
+            # Also match single-token app_id with numeric suffix like pgadmin4-web for pgadmin
+            if not prefix_match and len(app_tokens) == 1 and len(app_tokens[0]) >= 3:
+                prefix_match = (
+                    name_tokens[0].startswith(app_tokens[0])
+                    and name_tokens[0][len(app_tokens[0]):].isdigit()
+                )
+            if prefix_match:
+                img_starts_with_app = bool(c_basename and (c_basename == app_id or c_basename.startswith(f"{app_id}-") or c_basename.startswith(f"{app_id}_")))
+                has_generic_suffix = (len(name_tokens) > len(app_tokens) and name_tokens[len(app_tokens)] in _GENERIC_CONTAINER_SUFFIXES)
+                if img_starts_with_app or has_web_port_match or has_any_port_match or has_generic_suffix:
+                    score = 380
+                    if img_starts_with_app:
+                        score += 50
+                    if has_web_port_match:
+                        score += 40
+
+        if score <= 0:
+            continue
+
+        # Tie-breakers: prefer running, matching web/service port, exposed host port, cleaner name match
+        if rec['running']:
+            score += 40
+        if has_web_port_match:
+            score += 35
+        elif has_any_port_match:
+            score += 20
+        if rec['ports']:
+            score += 15
+        if name_tokens and name_tokens[0].startswith(app_tokens[0]):
+            score += 15
+
+        if score > best_score:
+            best_score = score
+            best_rec = rec
+
+    return best_rec
+
+
 @app.route('/api/store/installed')
 @login_required
 def get_installed_apps():
-    """Mendapatkan detail aplikasi yang sudah terinstall (Status & Ports)"""
+    """Mendapatkan detail aplikasi yang sudah terinstall (Smart Universal Matcher, Deduplicated Ports & Web UI Port)."""
     try:
-        # Get detailed container info: Name, State, Ports
-        # Format: Name|State|Ports
-        result = subprocess.run(['docker', 'ps', '-a', '--format', '{{.Names}}|{{.State}}|{{.Ports}}'], capture_output=True, text=True)
-        if result.returncode != 0:
-             return jsonify({'error': 'Docker command failed', 'installed': []}), 500
-             
-        lines = result.stdout.strip().split('\n')
-        
-        container_map = {}
-        for line in lines:
-            if not line.strip(): continue
-            parts = line.split('|')
-            if len(parts) >= 3:
-                name = parts[0].strip()
-                state = parts[1].strip() # running, exited, created
-                ports_str = parts[2].strip()
-                
-                # Parse Ports
-                # Example: 0.0.0.0:8096->8096/tcp, :::8096->8096/tcp
-                ports_list = []
-                if ports_str:
-                    for p in ports_str.split(','):
-                        p = p.strip()
-                        # Match '0.0.0.0:HOST_PORT->CONTAINER_PORT/PROTO'
-                        # Broad regex or simple split
-                        if '->' in p:
-                            host_part, container_part = p.split('->')
-                            # clean host part '0.0.0.0:8096' -> 8096
-                            if ':' in host_part:
-                                host_port = host_part.split(':')[-1]
-                            else:
-                                host_port = host_part
-                            
-                            # clean container part '8096/tcp'
-                            if '/' in container_part:
-                                container_port, proto = container_part.split('/')
-                            else:
-                                container_port = container_part
-                                proto = 'tcp'
-                                
-                            ports_list.append({
-                                'host': host_port,
-                                'container': container_port,
-                                'protocol': proto
-                            })
-                            
-                container_map[name] = {
-                    'running': (state.lower() == 'running'),
-                    'state': state,
-                    'ports': ports_list
-                }
+        container_records = []
+        docker_available = False
+
+        try:
+            client = docker.from_env()
+            containers = client.containers.list(all=True)
+            docker_available = True
+            container_records = [_extract_container_record(c) for c in containers]
+        except Exception:
+            docker_available = False
+
+        full_catalog = _load_store_catalog(include_user=True)
+        host_snapshot = _get_host_active_snapshot()
+
+        matched_by_app = {}
+        claimed_containers = set()
+
+        # Pass 1: Exact container name matches claim their containers first
+        if docker_available:
+            for app_def in full_catalog:
+                rec = _match_store_container_record(app_def, container_records, claimed_containers, allow_fuzzy=False)
+                if rec:
+                    matched_by_app[app_def['id']] = rec
+                    claimed_containers.add(rec['container_name'])
+
+            # Pass 2: Smart image-repo & token-prefix matching for compose / custom-named containers
+            for app_def in full_catalog:
+                app_id = app_def['id']
+                if app_id in matched_by_app:
+                    continue
+                rec = _match_store_container_record(app_def, container_records, claimed_containers, allow_fuzzy=True)
+                if rec:
+                    matched_by_app[app_id] = rec
+                    claimed_containers.add(rec['container_name'])
 
         installed = []
-        
-        # Load Catalogs to find potential App IDs
-        full_catalog = []
-        if os.path.exists(CATALOG_FILE):
-             with open(CATALOG_FILE, 'r') as f: full_catalog.extend(json.load(f))
-        if os.path.exists(USER_CATALOG_FILE):
-             with open(USER_CATALOG_FILE, 'r') as f: full_catalog.extend(json.load(f))
-
-        # Batch load status host snapshot sekali jalan (hilangkan latency)
-        host_snapshot = _get_host_active_snapshot()
-             
-        for app in full_catalog:
-            app_id = app['id']
-            # Check eka_ prefixed first (standard), then raw id (custom legacy?)
-            container_name = f"eka_{app_id}"
-            info = container_map.get(container_name) or container_map.get(app_id)
-            
-            # Jika tidak berjalan di Docker, periksa layanan native di host via snapshot
+        for app_def in full_catalog:
+            app_id = app_def['id']
+            info = matched_by_app.get(app_id)
             if not info:
-                info = _detect_native_host_app(app_id, app.get('ports', []), host_snapshot)
+                info = _detect_native_host_app(app_id, app_def.get('ports', []), host_snapshot)
 
             if info:
+                cname = info.get('container_name', '')
+                is_native = bool(info.get('is_native', False))
+                open_port, open_proto = _resolve_app_open_port(app_def, info.get('ports', []))
                 installed.append({
                     'id': app_id,
-                    'running': info['running'],
-                    'ports': info['ports'],
-                    'is_native': info.get('is_native', False)
+                    'container_name': cname,
+                    'running': bool(info.get('running')),
+                    'state': info.get('state', 'running' if info.get('running') else 'stopped'),
+                    'ports': info.get('ports', []),
+                    'open_port': open_port,
+                    'open_protocol': open_proto,
+                    'is_native': is_native,
+                    'is_external': (not is_native) and bool(cname) and (not cname.startswith('eka_')),
                 })
-                
-        return jsonify({'installed': installed})
+
+        return jsonify({
+            'installed': installed,
+            'docker_available': docker_available,
+        })
     except Exception as e:
         print(f"Error checking installed apps: {e}")
-        return jsonify({'error': str(e), 'installed': []}), 500
+        return jsonify({'error': str(e), 'installed': [], 'docker_available': False})
 
 
 @app.route('/api/store/install', methods=['POST'])
 @login_required
 @admin_required
 def install_app_endpoint():
-    """Install app from store (Async with Logs)"""
-    data = request.json
-    app_id = data.get('app_id')
-    config = data.get('config', {})
+    """Install app from store (Async with Socket.IO Logs)"""
+    data = request.json or {}
+    app_id = (data.get('app_id') or '').strip()
+    config = data.get('config') or {}
     
     if not app_id:
         return jsonify({'error': 'App ID required'}), 400
 
-    # Start Background Thread
     username = session.get('username')
-    thread = threading.Thread(target=install_worker, args=(app_id, config, username))
+    thread = threading.Thread(target=install_worker, args=(app_id, config, username), daemon=True)
     thread.start()
 
     return jsonify({'success': True, 'message': 'Instalasi dimulai... Cek log untuk progress.'})
 
+
 def install_worker(app_id, config, username):
-    """Background worker for installation"""
-    room = f"install_{app_id}"
+    """Background worker for universal Docker App Store installation."""
     try:
         client = docker.from_env()
-        print(f"DEBUG: install_worker started for {app_id}")
         socketio.emit('install_log', {'app_id': app_id, 'message': f"Menyiapkan instalasi {app_id}...", 'type': 'info'})
-        
-        # Prepare params
+
+        found = None
+        cap_add = None
+        devices = None
+        command = None
+        restart_name = 'unless-stopped'
+        custom_slug = None
+
         if app_id != 'custom':
-            # Always force lookup from server catalog to ensure latest image/config is used
-            found = None
-            try:
-                if os.path.exists(CATALOG_FILE):
-                    with open(CATALOG_FILE) as f:
-                        for a in json.load(f):
-                             if a['id'] == app_id: found = a; break
-            except: pass
-            
+            catalog = _load_store_catalog(include_user=True)
+            found = next((a for a in catalog if a['id'] == app_id), None)
             if not found:
-                 socketio.emit('install_log', {'app_id': app_id, 'message': "App definition not found in catalog!", 'type': 'error'})
-                 socketio.emit('install_complete', {'app_id': app_id, 'status': 'error'})
-                 return
-            
+                socketio.emit('install_log', {'app_id': app_id, 'message': 'Definisi aplikasi tidak ditemukan di katalog.', 'type': 'error'})
+                socketio.emit('install_complete', {'app_id': app_id, 'status': 'error'})
+                return
+
             image = found['image']
-            name = app_id
-            
-            # HOTFIX: Force linuxserver for phpmyadmin on ARM
-            if app_id == 'phpmyadmin':
-                image = 'linuxserver/phpmyadmin:latest'
-                
-            # Merge defaults from catalog if config is empty/partial
+            container_name = f"eka_{app_id}"
+            cap_add = found.get('cap_add')
+            devices = found.get('devices')
+            command = found.get('command')
+            restart_name = found.get('restart') or 'unless-stopped'
+
             if 'ports' not in config and 'ports' in found:
                 config['ports'] = found['ports']
             if 'volumes' not in config and 'volumes' in found:
                 config['volumes'] = found['volumes']
             if 'env' not in config and 'env' in found:
-                config['environment'] = {e['key']: e['value'] for e in found['env']}
-            elif 'environment' not in config and 'env' in found:
-                 # Handle mismatch key name (catalog uses 'env' list, docker run uses 'environment' dict)
-                 config['environment'] = {e['key']: e['value'] for e in found['env']}
-            
+                config['env'] = found['env']
             if 'network_mode' not in config and 'network_mode' in found:
                 config['network_mode'] = found['network_mode']
-
         else:
-            # Custom App
-            image = config.get('image')
-            name = config.get('name')
-            
-            if not image or not name:
-                 socketio.emit('install_log', {'app_id': app_id, 'message': "Custom app missing config", 'type': 'error'})
-                 socketio.emit('install_complete', {'app_id': app_id, 'status': 'error'})
-                 return
-        
-        # Docker Client
-        try:
-            old = client.containers.get(name)
-            if old:
-                socketio.emit('install_log', {'app_id': app_id, 'message': "Menghapus container lama...", 'type': 'warning'})
-                old.remove(force=True)
-        except docker.errors.NotFound:
-            pass
-        
-        # Pull Image
-        print(f"DEBUG: Resolved image for {app_id} is {image}")
-        socketio.emit('install_log', {'app_id': app_id, 'message': f"Target Image: {image}", 'type': 'info'})
-        socketio.emit('install_log', {'app_id': app_id, 'message': "Downloading image from Docker Hub... (This may take a while)", 'type': 'info'})
+            image = (config.get('image') or '').strip()
+            raw_name = (config.get('name') or '').strip()
+            if not image or not raw_name:
+                socketio.emit('install_log', {'app_id': app_id, 'message': 'Nama aplikasi dan Docker image wajib diisi.', 'type': 'error'})
+                socketio.emit('install_complete', {'app_id': app_id, 'status': 'error'})
+                return
+            slug_base = ''.join(ch for ch in raw_name.lower() if ch.isalnum() or ch in ('-', '_')).strip('-_') or 'app'
+            custom_slug = f"custom_{slug_base}_{int(time.time())}"
+            container_name = f"eka_{custom_slug}"
+
+        # Remove old container if exists (both eka_<id> and legacy <id>)
+        for candidate_name in {container_name, app_id if app_id != 'custom' else container_name}:
+            try:
+                old = client.containers.get(candidate_name)
+                if old:
+                    socketio.emit('install_log', {'app_id': app_id, 'message': f"Menghapus kontainer lama ({candidate_name})...", 'type': 'warning'})
+                    old.remove(force=True)
+            except docker.errors.NotFound:
+                pass
 
         # Pull Image with Progress
-        socketio.emit('install_log', {'app_id': app_id, 'message': f"Pulling image {image}...", 'type': 'info'})
-        
+        socketio.emit('install_log', {'app_id': app_id, 'message': f"Target Image: {image}", 'type': 'info'})
+        socketio.emit('install_log', {'app_id': app_id, 'message': f"Mengunduh image {image}...", 'type': 'info'})
         try:
-            # Use low-level API for progress stream
             layers = {}
             for line in client.api.pull(image, stream=True, decode=True):
                 status = line.get('status')
                 progress_detail = line.get('progressDetail', {})
                 id_ = line.get('id')
-                
-                # Emit Logs for non-progress status updates
-                if status and 'Downloading' not in status and 'Extracting' not in status and 'Pulling fs' not in status:
-                     # Throttling status logs to avoid spam
-                     pass
 
-                if id_ and (status == 'Downloading' or status == 'Extracting'):
+                if id_ and status in ('Downloading', 'Extracting'):
                     current = progress_detail.get('current', 0)
                     total = progress_detail.get('total', 1)
                     layers[id_] = {'current': current, 'total': total, 'status': status}
-                    
-                    # Calculate Total Progress
-                    total_bytes = 0
-                    current_bytes = 0
-                    for lid, data in layers.items():
-                        total_bytes += data['total']
-                        current_bytes += data['current']
-                    
+                    total_bytes = sum(d['total'] for d in layers.values())
+                    current_bytes = sum(d['current'] for d in layers.values())
                     if total_bytes > 0:
-                        overall_percent = (current_bytes / total_bytes) * 100
-                        # Clamp to 99% until actually done
-                        if overall_percent > 99: overall_percent = 99
+                        overall_percent = min(99, (current_bytes / total_bytes) * 100)
                         socketio.emit('install_progress', {'app_id': app_id, 'percent': overall_percent, 'message': f"{status} {id_}..."})
-                
+
                 if 'error' in line:
                     raise Exception(line['error'])
-            
-            socketio.emit('install_progress', {'app_id': app_id, 'percent': 100, 'message': "Image pulled successfully"})
-                    
+
+            socketio.emit('install_progress', {'app_id': app_id, 'percent': 100, 'message': 'Image berhasil diunduh'})
         except Exception as e:
-            socketio.emit('install_log', {'app_id': app_id, 'message': f"Gagal download image: {str(e)}", 'type': 'error'})
+            socketio.emit('install_log', {'app_id': app_id, 'message': f"Gagal mengunduh image: {str(e)}", 'type': 'error'})
             socketio.emit('install_complete', {'app_id': app_id, 'status': 'error'})
             return
 
-        socketio.emit('install_log', {'app_id': app_id, 'message': "Image ready. Configuring container...", 'type': 'info'})
+        socketio.emit('install_log', {'app_id': app_id, 'message': 'Image siap. Menyiapkan konfigurasi kontainer...', 'type': 'info'})
 
-        # Prepare Config (Ports, Volumes, Env) - reused logic
+        # Prepare Ports safely
         ports = {}
-        if config.get('ports'):
-            for p in config.get('ports'):
-                c_port = f"{p['container']}/{p.get('protocol', 'tcp')}"
-                ports[c_port] = int(p['host'])
-        
+        for p_item in (config.get('ports') or []):
+            h_raw = str(p_item.get('host') or '').strip()
+            c_raw = str(p_item.get('container') or '').strip()
+            proto = (p_item.get('protocol') or 'tcp').strip().lower()
+            if not h_raw or not c_raw:
+                continue
+            try:
+                h_int = int(h_raw)
+                if 1 <= h_int <= 65535:
+                    ports[f"{c_raw}/{proto}"] = h_int
+            except (ValueError, TypeError):
+                continue
+
+        # Prepare Volumes (Named Volumes + Normalized Host Bind Paths)
         vols_dict = {}
-        if config.get('volumes'):
-            for v in config.get('volumes'):
-                host_path = v['bind']
-                if host_path.startswith('/'):
-                     internal_path = os.path.join('/host/root', host_path.lstrip('/'))
-                     if not os.path.exists(internal_path):
-                         try: os.makedirs(internal_path, exist_ok=True)
-                         except: pass
-                vols_dict[host_path] = {'bind': v['container'], 'mode': 'rw'}
+        for v_item in (config.get('volumes') or []):
+            src = _normalize_store_volume_bind(v_item.get('bind'))
+            dst = str(v_item.get('container') or '').strip()
+            if not src or not dst:
+                continue
+            if src.startswith('/'):
+                _ensure_host_bind_dir(src)
+            vols_dict[src] = {'bind': dst, 'mode': 'rw'}
 
+        # Prepare Env (supports both list [{key, value}] and dict)
         env_vars = {}
-        if config.get('env'):
-            for e in config.get('env'):
-                env_vars[e['key']] = e['value']
-        
-        # Handle host network incompatibility with ports
-        run_ports = ports
-        nm = config.get('network_mode')
-        if nm == 'host':
-            run_ports = None
+        if isinstance(config.get('environment'), dict):
+            env_vars.update(config['environment'])
+        if isinstance(config.get('env'), list):
+            for e_item in config['env']:
+                k = str(e_item.get('key') or '').strip()
+                if k:
+                    env_vars[k] = str(e_item.get('value') if e_item.get('value') is not None else '')
 
-        # Run
-        container = client.containers.run(
-            image,
-            name=name,
-            ports=run_ports,
-            volumes=vols_dict,
-            environment=env_vars,
-            network_mode=config.get('network_mode', 'bridge'),
-            restart_policy={"Name": "unless-stopped"},
-            detach=True
-        )
-        
-        # Save Custom
-        if app_id == 'custom':
+        net_mode = (config.get('network_mode') or 'bridge').strip()
+        run_kwargs = {
+            'name': container_name,
+            'volumes': vols_dict or None,
+            'environment': env_vars or None,
+            'network_mode': net_mode,
+            'restart_policy': {'Name': restart_name},
+            'detach': True,
+        }
+        if net_mode != 'host' and ports:
+            run_kwargs['ports'] = ports
+        if cap_add:
+            run_kwargs['cap_add'] = cap_add
+        if devices:
+            run_kwargs['devices'] = devices
+        if command:
+            run_kwargs['command'] = command
+
+        client.containers.run(image, **run_kwargs)
+
+        # Save Custom App cleanly with matching ID
+        if app_id == 'custom' and custom_slug:
             user_apps = []
             if os.path.exists(USER_CATALOG_FILE):
                 try:
-                    with open(USER_CATALOG_FILE) as f:
+                    with open(USER_CATALOG_FILE, 'r', encoding='utf-8') as f:
                         user_apps = json.load(f)
-                except:
+                except Exception:
                     pass
-            
+
             new_entry = {
-                "id": f"custom_{int(time.time())}",
-                "name": name,
-                "description": "Custom Application",
-                "category": "Custom",
-                "image": image,
-                "icon": "/static/icon.png",
-                "ports": config.get('ports', []),
-                "volumes": config.get('volumes', []),
-                "env": config.get('env', []),
-                "network_mode": config.get('network_mode', 'bridge')
+                'id': custom_slug,
+                'name': config.get('name').strip(),
+                'description': config.get('description') or 'Custom Docker Application',
+                'category': 'Custom',
+                'image': image,
+                'icon': '/static/icon.svg',
+                'ports': config.get('ports', []),
+                'volumes': config.get('volumes', []),
+                'env': config.get('env', []),
+                'network_mode': net_mode,
+                'has_web_ui': bool(ports),
             }
             user_apps.append(new_entry)
-            with open(USER_CATALOG_FILE, 'w') as f:
+            os.makedirs(os.path.dirname(USER_CATALOG_FILE), exist_ok=True)
+            with open(USER_CATALOG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(user_apps, f, indent=4)
 
-        audit_log('APP_INSTALL', f"Installed {name}", username)
-        socketio.emit('install_log', {'app_id': app_id, 'message': "Container berhasil dijalankan!", 'type': 'success'})
+        _invalidate_modules_cache()
+        _host_snapshot_cache['time'] = 0
+        audit_log('APP_INSTALL', f"Installed {container_name} ({image})", username)
+        socketio.emit('install_log', {'app_id': app_id, 'message': f"Kontainer {container_name} berhasil dijalankan.", 'type': 'success'})
         socketio.emit('install_complete', {'app_id': app_id, 'status': 'success'})
-            
+
     except Exception as e:
         print(f"Async Install Error: {e}")
         socketio.emit('install_log', {'app_id': app_id, 'message': f"CRITICAL ERROR: {str(e)}", 'type': 'error'})
@@ -4982,38 +7089,43 @@ def update_app_config():
         return jsonify({'error': str(e)}), 500
 
 
+def _find_store_container(client, app_id):
+    """Locate container for an App Store app (exact eka_<id>/<id> first, then universal smart matcher)."""
+    for cname in (f"eka_{app_id}", app_id):
+        try:
+            return client.containers.get(cname)
+        except Exception:
+            pass
+    try:
+        full_catalog = _load_store_catalog(include_user=True)
+        app_def = next((a for a in full_catalog if a.get('id') == app_id), None)
+        if not app_def:
+            return None
+        records = [_extract_container_record(c) for c in client.containers.list(all=True)]
+        matched = _match_store_container_record(app_def, records, allow_fuzzy=True)
+        return matched['obj'] if matched else None
+    except Exception:
+        return None
+
+
 @app.route('/api/store/manage', methods=['POST'])
 @login_required
 @admin_required
 def manage_app_endpoint():
-    """Manage app (start/stop/uninstall)"""
+    """Manage app lifecycle (start/stop/restart/uninstall) — single authoritative endpoint."""
     try:
-        data = request.json
-        app_id = data.get('app_id')
-        action = data.get('action') # start, stop, restart, uninstall
-        
-        if not app_id or not action:
+        data = request.json or {}
+        app_id = (data.get('app_id') or '').strip()
+        action = (data.get('action') or '').strip().lower()
+
+        if not app_id or action not in ('start', 'stop', 'restart', 'uninstall'):
             return jsonify({'error': 'Invalid params'}), 400
-            
+
         client = docker.from_env()
-        
-        # Determine container name
-        # Try finding by name "eka_{id}" or just id if custom
-        container = None
-        try:
-             container = client.containers.get(f"eka_{app_id}")
-        except:
-             try:
-                 container = client.containers.get(app_id) # maybe custom name
-             except:
-                 pass
-        
-        # If still not found, try searching by image or loosely?
+        container = _find_store_container(client, app_id)
         if not container:
-             # Try catalog lookup to be sure of container name?
-             # For now assume 'eka_{app_id}' is standard
-             return jsonify({'error': 'Container not found'}), 404
-             
+            return jsonify({'error': f'Container for {app_id} not found'}), 404
+
         if action == 'start':
             container.start()
         elif action == 'stop':
@@ -5021,21 +7133,50 @@ def manage_app_endpoint():
         elif action == 'restart':
             container.restart()
         elif action == 'uninstall':
-            container.stop()
-            container.remove()
-            # Remove from user_apps.json if there
+            container.remove(force=True)
             if os.path.exists(USER_CATALOG_FILE):
                 try:
-                    with open(USER_CATALOG_FILE, 'r') as f: apps = json.load(f)
-                    apps = [a for a in apps if a['id'] != app_id and a['name'] != app_id] # simplistic filter
-                    with open(USER_CATALOG_FILE, 'w') as f: json.dump(apps, f, indent=4)
-                except: pass
-                
+                    with open(USER_CATALOG_FILE, 'r', encoding='utf-8') as f:
+                        apps = json.load(f)
+                    apps = [a for a in apps if a.get('id') != app_id and a.get('name') != app_id]
+                    with open(USER_CATALOG_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(apps, f, indent=4)
+                except Exception:
+                    pass
+
+        _invalidate_modules_cache()
+        _host_snapshot_cache['time'] = 0
         audit_log('APP_MANAGE', f"{action.title()} app {app_id}", session.get('username'))
-        return jsonify({'success': True})
-            
+        return jsonify({'success': True, 'action': action, 'app_id': app_id})
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/store/logs/<app_id>', methods=['GET'])
+@login_required
+@admin_required
+def store_app_logs(app_id):
+    """Fetch recent Docker container logs for an installed App Store app."""
+    try:
+        tail = max(20, min(500, int(request.args.get('tail', 150))))
+    except (ValueError, TypeError):
+        tail = 150
+    try:
+        client = docker.from_env()
+        container = _find_store_container(client, app_id)
+        if not container:
+            return jsonify({'success': False, 'logs': '', 'error': 'Container not found'}), 404
+        raw = container.logs(tail=tail, timestamps=False)
+        text = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else str(raw)
+        return jsonify({
+            'success': True,
+            'container_name': container.name,
+            'status': container.status,
+            'logs': text,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'logs': '', 'error': str(e)}), 500
 
 SYSTEM_APPS = [
     {"id": "files", "name": "Files", "icon": "fa-solid fa-folder-open", "color": "linear-gradient(135deg, #FF9966, #FF5E62)", "url": "/files"},
@@ -5054,7 +7195,14 @@ SYSTEM_APPS = [
     {"id": "mobile-backup", "name": "Mobile Sync", "icon": "fa-solid fa-mobile-screen", "color": "linear-gradient(135deg, #00c6ff, #0072ff)", "url": "/mobile-backup"},
     {"id": "settings", "name": "Settings", "icon": "fa-solid fa-gear", "color": "linear-gradient(135deg, #36D1DC, #5B86E5)", "url": "/settings"},
     {"id": "lxd", "name": "LXD Manager", "icon": "fa-brands fa-linux", "color": "linear-gradient(135deg, #e66465, #9198e5)", "url": "/lxd"},
-    {"id": "adblocker", "name": "AdBlocker", "icon": "fa-solid fa-shield-virus", "color": "linear-gradient(135deg, #10b981, #059669)", "url": "/adblocker"}
+    {"id": "adblocker", "name": "AdBlocker", "icon": "fa-solid fa-shield-virus", "color": "linear-gradient(135deg, #10b981, #059669)", "url": "/adblocker"},
+    {"id": "services", "name": "Services", "icon": "fa-solid fa-gears", "color": "linear-gradient(135deg, #00b4db, #0083b0)", "url": "/services"},
+    {"id": "system_logs", "name": "System Logs", "icon": "fa-solid fa-file-waveform", "color": "linear-gradient(135deg, #f857a6, #ff5858)", "url": "/logs"},
+    {"id": "firewall", "name": "Firewall", "icon": "fa-solid fa-shield", "color": "linear-gradient(135deg, #f12711, #f5af19)", "url": "/firewall"},
+    {"id": "scheduler", "name": "Task Scheduler", "icon": "fa-solid fa-clock-rotate-left", "color": "linear-gradient(135deg, #11998e, #38ef7d)", "url": "/scheduler"},
+    {"id": "drive_health", "name": "Drive Health", "icon": "fa-solid fa-heart-pulse", "color": "linear-gradient(135deg, #ff0844, #ffb199)", "url": "/smart"},
+    {"id": "packages", "name": "Package Manager", "icon": "fa-solid fa-box-open", "color": "linear-gradient(135deg, #4facfe, #00f2fe)", "url": "/packages"},
+    {"id": "alerts", "name": "Alert Engine", "icon": "fa-solid fa-bell", "color": "linear-gradient(135deg, #fa709a, #fee140)", "url": "/alerts"}
 ]
 
 LAYOUT_FILE = os.path.join(DATA_DIR, 'dashboard_layout.json')
@@ -5178,7 +7326,39 @@ def get_dashboard_apps():
     except Exception as e:
         print("Error fetching installed apps for dashboard:", e)
     
-    # 3. Apply Order
+    # 3. Filter Optional Modules Visibility (Tahap 5 Opt-In Modularization)
+    hidden_modules = []
+    auto_hide_uninstalled = False
+    try:
+        settings = load_app_settings()
+        mod_cfg = _sanitize_module_settings(settings.get('modules'))
+        auto_hide_uninstalled = bool(mod_cfg.get('auto_hide_uninstalled', False))
+
+        installed_map = {}
+        if auto_hide_uninstalled:
+            for m in _probe_optional_modules():
+                installed_map[m['id']] = m.get('installed', True)
+
+        filtered_items = []
+        optional_ids = {m['id'] for m in OPTIONAL_MODULES_CATALOG if m.get('app_id')}
+        for item in all_items:
+            aid = item.get('id')
+            if aid == 'settings':
+                filtered_items.append(item)
+                continue
+            if aid in optional_ids:
+                if mod_cfg.get(aid) is False:
+                    hidden_modules.append(aid)
+                    continue
+                if auto_hide_uninstalled and (not installed_map.get(aid, True)):
+                    hidden_modules.append(aid)
+                    continue
+            filtered_items.append(item)
+        all_items = filtered_items
+    except Exception as e:
+        print("Module visibility filter error:", e)
+
+    # 4. Apply Order
     try:
         if os.path.exists(LAYOUT_FILE):
             with open(LAYOUT_FILE, 'r') as f:
@@ -5194,7 +7374,11 @@ def get_dashboard_apps():
     except Exception as e:
         print("Layout load error:", e)
 
-    return jsonify({"items": all_items})
+    return jsonify({
+        "items": all_items,
+        "hidden_modules": hidden_modules,
+        "auto_hide_uninstalled": auto_hide_uninstalled
+    })
 
 @app.route('/api/dashboard/layout', methods=['POST'])
 @login_required 
@@ -5210,194 +7394,7 @@ def save_dashboard_layout():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@login_required
-@admin_required
-def install_app():
-    """Install aplikasi dari store dengan konfigurasi custom atau 'custom install' murni"""
-    try:
-        data = request.json
-        app_id = data.get('app_id')
-        custom_config = data.get('config')
-        
-        is_custom_install = (app_id == 'custom')
-        
-        if is_custom_install:
-            # Generate ID and use config as source of truth
-            if not custom_config or not custom_config.get('name') or not custom_config.get('image'):
-                return jsonify({'error': 'Name and Image required for custom install'}), 400
-                
-            # Create a slug-like ID
-            raw_name = custom_config['name']
-            safe_id = "".join(x for x in raw_name if x.isalnum()).lower()
-            app_id = f"custom_{safe_id}_{int(time.time())}" # Ensure unique
-            
-            # Construct app definition to save
-            app_def = {
-                "id": app_id,
-                "name": raw_name,
-                "image": custom_config['image'],
-                "category": "Custom",
-                "description": custom_config.get('description', 'Custom Application'),
-                "icon": "/static/icon.png", # Default icon
-                "network_mode": custom_config.get('network_mode', 'bridge'),
-                "restart": "unless-stopped",
-                "ports": custom_config.get('ports', []),
-                "volumes": custom_config.get('volumes', []),
-                "env": custom_config.get('env', [])
-            }
-            
-            # Use this as our "app_default"
-            app_default = app_def
-            image = app_default['image']
-            
-        else:
-            if not app_id:
-                return jsonify({'error': 'App ID required'}), 400
-                
-            # Load catalog (Default + User)
-            catalog = []
-            if os.path.exists(CATALOG_FILE):
-                with open(CATALOG_FILE, 'r') as f: catalog.extend(json.load(f))
-            if os.path.exists(USER_CATALOG_FILE):
-                with open(USER_CATALOG_FILE, 'r') as f: catalog.extend(json.load(f))
-            
-            app_default = next((a for a in catalog if a['id'] == app_id), None)
-            if not app_default:
-                return jsonify({'error': 'App not found in catalog'}), 404
-            
-            image = app_default['image']
-
-        container_name = f"eka_{app_id}"
-        
-        # 1. Pull Image
-        pull_cmd = ['docker', 'pull', image]
-        subprocess.run(pull_cmd, check=True, timeout=600)
-        
-        # 2. Prepare Docker Run Command
-        run_cmd = ['docker', 'run', '-d', '--name', container_name]
-        
-        if app_default.get('restart'):
-            run_cmd.extend(['--restart', app_default['restart']])
-        
-        # Handling Network Mode (Priority to config if present)
-        # Note: If network_mode is 'host', we shouldn't publish ports.
-        net_mode = app_default.get('network_mode', 'bridge')
-        if is_custom_install and custom_config.get('network_mode'):
-             net_mode = custom_config.get('network_mode')
-             
-        if net_mode:
-             run_cmd.extend(['--network', net_mode])
-
-        # --- CONFIGURATION PRIORITY ---
-        # For custom install, app_default IS the config.
-        # For catalog install, merge custom_config with app_default.
-        
-        deploy_ports = custom_config.get('ports') if (custom_config and not is_custom_install) else app_default.get('ports', [])
-        deploy_vols = custom_config.get('volumes') if (custom_config and not is_custom_install) else app_default.get('volumes', [])
-        deploy_env = custom_config.get('env') if (custom_config and not is_custom_install) else app_default.get('env', [])
-        
-        # Ports
-        for p in deploy_ports:
-            if net_mode != 'host':
-                host = p['host']
-                container = p['container']
-                proto = p.get('protocol', 'tcp')
-                if host and container:
-                    run_cmd.extend(['-p', f"{host}:{container}/{proto}"])
-        
-        # Volumes
-        for v in deploy_vols:
-            host_pd = v['bind']
-            container_pd = v['container']
-            
-            real_host_path = host_pd
-            if host_pd.startswith('/host/root'):
-                real_host_path = host_pd.replace('/host/root', '')
-                if not real_host_path.startswith('/'): real_host_path = '/' + real_host_path
-            
-            run_cmd.extend(['-v', f"{real_host_path}:{container_pd}"])
-            
-        # Env
-        for e in deploy_env:
-            run_cmd.extend(['-e', f"{e['key']}={e['value']}"])
-            
-        # Image
-        run_cmd.append(image)
-        
-        # 3. Remove existing if any
-        subprocess.run(['docker', 'rm', '-f', container_name], capture_output=True)
-        
-        # 4. Run
-        result = subprocess.run(run_cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            return jsonify({'error': f"Failed to start: {result.stderr}"}), 500
-            
-        # 5. Persist Custom App to user_apps.json
-        if is_custom_install:
-            user_apps = []
-            if os.path.exists(USER_CATALOG_FILE):
-                try:
-                    with open(USER_CATALOG_FILE, 'r') as f: user_apps = json.load(f)
-                except: pass
-            
-            # Add or Update
-            # Remove validation duplicates if any (though ID is unique timestamped)
-            user_apps = [a for a in user_apps if a['id'] != app_id]
-            user_apps.append(app_default)
-            
-            os.makedirs(os.path.dirname(USER_CATALOG_FILE), exist_ok=True)
-            with open(USER_CATALOG_FILE, 'w') as f:
-                json.dump(user_apps, f, indent=2)
-            
-        audit_log('APP_INSTALL', f"Installed app {app_id} as {container_name}", session.get('username'))
-        return jsonify({'success': True, 'message': f'{app_default["name"]} installed successfully'})
-        
-    except subprocess.CalledProcessError as e:
-         return jsonify({'error': 'Failed to pull image'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/store/manage', methods=['POST'])
-@login_required
-@admin_required
-def manage_app():
-    """Manage app lifecycle (start/stop/restart/uninstall)"""
-    try:
-        data = request.json
-        app_id = data.get('app_id')
-        action = data.get('action')
-        
-        if not app_id or not action:
-            return jsonify({'error': 'Invalid request'}), 400
-            
-        container_name = f"eka_{app_id}"
-        
-        if action == 'uninstall':
-            subprocess.run(['docker', 'rm', '-f', container_name], capture_output=True)
-            # Optional: Remove volumes? No, keep data safe by default.
-            msg = f"{app_id} uninstalled"
-            
-        elif action == 'start':
-            subprocess.run(['docker', 'start', container_name], capture_output=True)
-            msg = f"{app_id} started"
-            
-        elif action == 'stop':
-            subprocess.run(['docker', 'stop', container_name], capture_output=True)
-            msg = f"{app_id} stopped"
-            
-        elif action == 'restart':
-            subprocess.run(['docker', 'restart', container_name], capture_output=True)
-            msg = f"{app_id} restarted"
-            
-        else:
-            return jsonify({'error': 'Unknown action'}), 400
-            
-        audit_log('APP_MANAGE', f"Action {action} on {app_id}", session.get('username'))
-        return jsonify({'success': True, 'message': msg})
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# (Legacy duplicate install_app / manage_app removed; consolidated in install_worker & manage_app_endpoint)
 # =========================================
 
 # --- SYSTEM UPDATE CHECKER ---
@@ -5412,12 +7409,9 @@ def manage_app():
 @app.route('/api/zerotier/status')
 @login_required
 def zerotier_status():
-    """Get ZeroTier status from HOST"""
+    """Get ZeroTier status from HOST universally (Docker & Native Linux)"""
     try:
-        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
-        
-        # Check installed on HOST
-        check = subprocess.run(nsenter + ['which', 'zerotier-cli'], capture_output=True, text=True)
+        check = _run_host_cmd(['which', 'zerotier-cli'], timeout=3, include_pid=False)
         installed = check.returncode == 0
         
         running = False
@@ -5425,26 +7419,22 @@ def zerotier_status():
         node_id = ''
         
         if installed:
-            # Check status
-            status = subprocess.run(nsenter + ['zerotier-cli', 'info'], capture_output=True, text=True)
+            status = _run_host_cmd(['zerotier-cli', 'info'], timeout=4, include_pid=False)
             if status.returncode == 0 and '200 info' in status.stdout:
                 running = True
                 try:
                     node_id = status.stdout.split()[2]
-                except:
+                except Exception:
                     node_id = 'Unknown'
                 
-                # Get networks
-                net_cmd = subprocess.run(nsenter + ['zerotier-cli', 'listnetworks'], capture_output=True, text=True)
+                net_cmd = _run_host_cmd(['zerotier-cli', 'listnetworks'], timeout=4, include_pid=False)
                 if net_cmd.returncode == 0:
                     lines = net_cmd.stdout.splitlines()
                     if len(lines) > 1:
-                        # Skip header
                         for line in lines[1:]:
                             parts = line.split()
                             if len(parts) >= 8:
                                 ip_address = parts[8] if len(parts) > 8 else 'Pending'
-                                
                                 networks.append({
                                     'network_id': parts[2],
                                     'name': parts[3],
@@ -5457,12 +7447,13 @@ def zerotier_status():
                             
         return jsonify({
             'installed': installed,
+            'available': installed,
             'running': running,
             'node_id': node_id,
             'networks': networks
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'installed': False, 'available': False, 'running': False, 'node_id': '', 'networks': [], 'error': str(e)})
 
 @app.route('/api/zerotier/join', methods=['POST'])
 @login_required
@@ -5470,17 +7461,16 @@ def zerotier_status():
 def zerotier_join():
     """Join ZeroTier network on HOST"""
     try:
-        network_id = request.json.get('networkId')
+        network_id = (request.json or {}).get('networkId')
         if not network_id:
             return jsonify({'error': 'Network ID required'}), 400
             
-        # Validate ID (16 hex chars)
-        import re
         if not re.match(r'^[0-9a-fA-F]{16}$', network_id):
              return jsonify({'error': 'Invalid Network ID format'}), 400
         
-        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
-        subprocess.run(nsenter + ['zerotier-cli', 'join', network_id], check=True)
+        res = _run_host_cmd(['zerotier-cli', 'join', network_id], timeout=10, include_pid=False)
+        if res.returncode != 0:
+            return jsonify({'error': res.stderr or res.stdout or 'Failed to join ZeroTier network'}), 500
         
         audit_log('VPN', f"Joined ZeroTier network {network_id}", session.get('username'))
         return jsonify({'success': True})
@@ -5493,12 +7483,13 @@ def zerotier_join():
 def zerotier_leave():
     """Leave ZeroTier network on HOST"""
     try:
-        network_id = request.json.get('networkId')
+        network_id = (request.json or {}).get('networkId')
         if not network_id:
             return jsonify({'error': 'Network ID required'}), 400
             
-        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
-        subprocess.run(nsenter + ['zerotier-cli', 'leave', network_id], check=True)
+        res = _run_host_cmd(['zerotier-cli', 'leave', network_id], timeout=10, include_pid=False)
+        if res.returncode != 0:
+            return jsonify({'error': res.stderr or res.stdout or 'Failed to leave ZeroTier network'}), 500
         audit_log('VPN', f"Left ZeroTier network {network_id}", session.get('username'))
         return jsonify({'success': True})
     except Exception as e:
@@ -5508,29 +7499,29 @@ def zerotier_leave():
 @app.route('/api/vpn/scan')
 @login_required
 def vpn_smart_scan():
-    """Otomatis mendeteksi semua layanan VPN/Network di host"""
+    """Otomatis mendeteksi semua layanan VPN/Network di host secara universal"""
     try:
-        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
         services = []
 
         # 1. Check Tailscale
         try:
-            ts_check = subprocess.run(nsenter + ['tailscale', 'status', '--json'], capture_output=True, text=True)
-            if ts_check.returncode == 0:
+            ts_check = _run_host_cmd(['tailscale', 'status', '--json'], timeout=4, include_pid=False)
+            if ts_check.returncode == 0 and ts_check.stdout.strip():
                 ts_data = json.loads(ts_check.stdout)
                 services.append({
                     'id': 'tailscale',
                     'name': 'Tailscale',
                     'status': 'Online' if ts_data.get('Self', {}).get('Online') else 'Offline',
-                    'ip': ts_data.get('Self', {}).get('TailscaleIPs', ['N/A'])[0],
+                    'ip': (ts_data.get('Self', {}).get('TailscaleIPs') or ['N/A'])[0],
                     'icon': 'fa-solid fa-circle-nodes',
                     'color': '#238636'
                 })
-        except: pass
+        except Exception:
+            pass
 
         # 2. Check ZeroTier
         try:
-            zt_check = subprocess.run(nsenter + ['zerotier-cli', 'info'], capture_output=True, text=True)
+            zt_check = _run_host_cmd(['zerotier-cli', 'info'], timeout=4, include_pid=False)
             if zt_check.returncode == 0:
                 services.append({
                     'id': 'zerotier',
@@ -5540,11 +7531,12 @@ def vpn_smart_scan():
                     'icon': 'fa-solid fa-globe',
                     'color': '#58a6ff'
                 })
-        except: pass
+        except Exception:
+            pass
 
         # 3. Check WireGuard
         try:
-            wg_check = subprocess.run(nsenter + ['wg', 'show'], capture_output=True, text=True)
+            wg_check = _run_host_cmd(['wg', 'show'], timeout=4, include_pid=False)
             if wg_check.returncode == 0 and wg_check.stdout.strip():
                 services.append({
                     'id': 'wireguard',
@@ -5554,13 +7546,13 @@ def vpn_smart_scan():
                     'icon': 'fa-solid fa-shield-halved',
                     'color': '#3fb950'
                 })
-        except: pass
+        except Exception:
+            pass
 
         # 4. Check AdGuard Home (Network Filter)
         try:
-            # Cek port 3000 atau 53 atau proses
-            ag_check = subprocess.run(nsenter + ['netstat', '-tulpn'], capture_output=True, text=True)
-            if 'AdGuardHome' in ag_check.stdout or ':3000' in ag_check.stdout:
+            ag_check = _run_host_cmd(['ss', '-tulpn'], timeout=4, include_pid=False)
+            if 'AdGuardHome' in (ag_check.stdout or ''):
                 services.append({
                     'id': 'adguard',
                     'name': 'AdGuard Home',
@@ -5569,7 +7561,8 @@ def vpn_smart_scan():
                     'icon': 'fa-solid fa-leaf',
                     'color': '#63e6be'
                 })
-        except: pass
+        except Exception:
+            pass
 
         # 5. Generic TUN/TAP interfaces
         try:
@@ -5584,11 +7577,12 @@ def vpn_smart_scan():
                         'icon': 'fa-solid fa-network-wired',
                         'color': '#8b949e'
                     })
-        except: pass
+        except Exception:
+            pass
 
         return jsonify({'services': services})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'services': [], 'error': str(e)})
 
 # =========================================
 # --- FILE UPLOAD API (ADDED) ---
@@ -5666,7 +7660,21 @@ def files_download_endpoint():
 # ==============================================================================
 
 MOBILE_BACKUP_CONFIG_FILE = os.path.join(DATA_DIR, 'mobile_backup_config.json')
-BACKUP_BASE_DIR = '/host/root/mnt/data/MobileBackup'  # /host/root = / di host, lalu /mnt/data/MobileBackup
+
+
+def _resolve_mobile_backup_base_dir():
+    """Deteksi direktori penyimpanan Mobile Backup secara dinamis & universal."""
+    env_dir = (os.environ.get('MOBILE_BACKUP_DIR') or '').strip()
+    if env_dir:
+        return env_dir
+    host_root = os.environ.get('HOST_ROOT', '/host/root')
+    mounted_data = os.path.join(host_root, 'mnt', 'data')
+    if os.path.isdir(os.path.join(mounted_data, 'MobileBackup')) or os.path.ismount(mounted_data):
+        return os.path.join(mounted_data, 'MobileBackup')
+    return os.path.join(DATA_DIR, 'mobile_backup')
+
+
+BACKUP_BASE_DIR = _resolve_mobile_backup_base_dir()
 
 def get_mobile_backup_config():
     """Baca config IP dari file, fallback ke auto-detect dari host network"""
@@ -5678,25 +7686,19 @@ def get_mobile_backup_config():
         except:
             pass
 
-    # Auto-detect dari /proc/net/fib_trie (host network via /host mount)
-    lan_ip = "192.168.0.158"
-    ts_ip = "100.87.49.14"
+    # Auto-detect dari host network
+    lan_ip = "127.0.0.1"
+    ts_ip = ""
     try:
-        import subprocess
-        # Baca IP dari host menggunakan proc filesystem
-        result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True, timeout=3)
+        nsenter = ['nsenter', '-t', '1', '-m', '-u', '-n', '-i']
+        result = subprocess.run(nsenter + ['ip', 'addr', 'show'], capture_output=True, text=True, timeout=3)
         if result.returncode == 0:
-            import re
             lines = result.stdout.split('\n')
-            current_iface = ''
             for line in lines:
-                m = re.match(r'\d+: (\S+):', line)
-                if m:
-                    current_iface = m.group(1)
                 addr_m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', line)
                 if addr_m:
                     ip = addr_m.group(1)
-                    if ip.startswith('192.168.') or ip.startswith('10.'):
+                    if (ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.')) and not ip.startswith('172.17.') and not ip.startswith('172.18.'):
                         lan_ip = ip
                     elif ip.startswith('100.'):
                         ts_ip = ip
@@ -5739,12 +7741,12 @@ def mobile_backup_ping():
 @app.route('/api/mobile-backup/disk-usage', methods=['GET'])
 @login_required
 def mobile_backup_disk_usage():
-    """Informasi penggunaan disk HDD"""
+    """Informasi penggunaan disk target penyimpanan Mobile Backup"""
     try:
         import shutil
-        # Cek penggunaan /mnt/data (HDD)
-        hdd_path = '/host/root/mnt/data'
-        total, used, free = shutil.disk_usage(hdd_path)
+        os.makedirs(BACKUP_BASE_DIR, exist_ok=True)
+        disk_target = BACKUP_BASE_DIR if os.path.exists(BACKUP_BASE_DIR) else DATA_DIR
+        total, used, free = shutil.disk_usage(disk_target)
         # Cek ukuran folder MobileBackup saja
         backup_size = 0
         if os.path.exists(BACKUP_BASE_DIR):
@@ -5956,92 +7958,473 @@ def mobile_backup_upload():
 # WEB PANEL INTEGRATION — WEBSITES, STORAGE, DOCKER OVERVIEW
 # ==========================================
 
+def _read_host_nginx_file(fpath):
+    """Membaca isi file konfigurasi Nginx dari host dengan resolusi symlink transparan di Docker"""
+    try:
+        if os.path.islink(fpath):
+            target = os.readlink(fpath)
+            if target.startswith('/'):
+                if os.path.exists('/host/root' + target):
+                    fpath = '/host/root' + target
+                elif os.path.exists(target):
+                    fpath = target
+        if os.path.exists(fpath):
+            with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+    except Exception:
+        pass
+    return ""
+
+def _parse_vhost_file(fname, fpath):
+    """Parse konfigurasi Nginx vhost: domain, listen ports, root, proxy_pass, ssl"""
+    content = _read_host_nginx_file(fpath)
+    if not content:
+        return None
+    
+    server_names = []
+    m_names = re.findall(r'server_name\s+([^;]+);', content)
+    for m in m_names:
+        names = [n.strip() for n in m.split() if n.strip()]
+        for n in names:
+            if n not in server_names:
+                server_names.append(n)
+                
+    primary_domain = server_names[0] if server_names else fname
+    
+    listen_ports = []
+    has_ssl = False
+    m_listens = re.findall(r'listen\s+([^;]+);', content)
+    for l in m_listens:
+        parts = l.split()
+        if 'ssl' in parts or '443' in parts:
+            has_ssl = True
+        port_num = parts[0].split(':')[-1]
+        if port_num.isdigit() and port_num not in listen_ports:
+            listen_ports.append(port_num)
+            
+    if not listen_ports:
+        listen_ports = ['80']
+        
+    m_root = re.search(r'root\s+([^;]+);', content)
+    root = m_root.group(1).strip() if m_root else '-'
+    
+    m_proxy = re.search(r'proxy_pass\s+([^;]+);', content)
+    proxy_target = m_proxy.group(1).strip() if m_proxy else None
+    
+    return {
+        'name': fname,
+        'domain': primary_domain,
+        'domains': server_names if server_names else [fname],
+        'port': ', '.join(listen_ports),
+        'ports': listen_ports,
+        'root': root,
+        'is_proxy': bool(proxy_target),
+        'proxy_pass': proxy_target,
+        'ssl': has_ssl or ('ssl_certificate' in content),
+        'enabled': True
+    }
+
+def _detect_host_web_servers():
+    """Deteksi web server yang terpasang pada host (nginx / apache2 / httpd / caddy)."""
+    detected = []
+    for name, bin_name, svc_name in (
+        ('nginx', 'nginx', 'nginx'),
+        ('apache', 'apache2', 'apache2'),
+        ('httpd', 'httpd', 'httpd'),
+        ('caddy', 'caddy', 'caddy'),
+    ):
+        chk = _run_host_cmd(['which', bin_name], timeout=3, include_pid=False)
+        if chk.returncode == 0 and chk.stdout.strip():
+            st = _run_systemctl(['is-active', svc_name], timeout=3)
+            detected.append({
+                'name': name,
+                'binary': bin_name,
+                'service': svc_name,
+                'running': (st.returncode == 0 and st.stdout.strip() == 'active')
+            })
+    return detected
+
+
+def _find_host_access_log():
+    """Cari lokasi file access.log web server lintas distro (Nginx/Apache/Httpd/Caddy)."""
+    host_root = os.environ.get('HOST_ROOT', '/host/root')
+    rel_paths = (
+        'var/log/nginx/access.log',
+        'var/log/apache2/access.log',
+        'var/log/httpd/access_log',
+        'var/log/caddy/access.log',
+    )
+    for rel in rel_paths:
+        for base in (host_root, '/'):
+            p = os.path.join(base, rel)
+            if os.path.exists(p):
+                return p
+    return None
+
+
+def _get_all_vhosts():
+    """Mengambil dan mem-parsing seluruh virtual host Nginx lintas distro (sites-enabled, conf.d, http.d)."""
+    sites = []
+    seen_keys = set()
+    host_root = os.environ.get('HOST_ROOT', '/host/root')
+    rel_dirs = ('etc/nginx/sites-enabled', 'etc/nginx/conf.d', 'etc/nginx/http.d')
+
+    for rel in rel_dirs:
+        target_dir = None
+        for base in (host_root, '/'):
+            cand = os.path.join(base, rel)
+            if os.path.isdir(cand):
+                target_dir = cand
+                break
+        if not target_dir:
+            continue
+        try:
+            for fname in sorted(os.listdir(target_dir)):
+                fpath = os.path.join(target_dir, fname)
+                if os.path.isdir(fpath):
+                    continue
+                if rel != 'etc/nginx/sites-enabled' and not fname.endswith('.conf'):
+                    continue
+                vhost = _parse_vhost_file(fname, fpath)
+                if vhost:
+                    dedup_key = (vhost.get('domain'), vhost.get('port'))
+                    if dedup_key not in seen_keys:
+                        seen_keys.add(dedup_key)
+                        sites.append(vhost)
+        except Exception:
+            pass
+    return sites
+
+def check_ssl_expiry(domain):
+    """Mengecek masa berlaku sertifikat SSL domain publik dengan timeout aman"""
+    import ssl
+    import socket
+    from datetime import datetime
+    try:
+        context = ssl.create_default_context()
+        conn = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=domain)
+        conn.settimeout(2.5)
+        conn.connect((domain, 443))
+        ssl_info = conn.getpeercert()
+        conn.close()
+        expire_date = datetime.strptime(ssl_info['notAfter'], r'%b %d %H:%M:%S %Y %Z')
+        days_left = (expire_date - datetime.utcnow()).days
+        issuer_cn = dict(x[0] for x in ssl_info.get('issuer', []))
+        issuer = issuer_cn.get('commonName', issuer_cn.get('organizationName', 'Unknown CA'))
+        status = 'valid'
+        if days_left <= 0:
+            status = 'expired'
+        elif days_left < 14:
+            status = 'expiring'
+            
+        return {
+            "domain": domain,
+            "days_left": days_left,
+            "issuer": issuer,
+            "valid_from": ssl_info.get('notBefore'),
+            "valid_to": ssl_info.get('notAfter'),
+            "status": status,
+            "success": True
+        }
+    except Exception as e:
+        return {
+            "domain": domain,
+            "days_left": 0,
+            "issuer": "N/A",
+            "status": "error",
+            "error": str(e),
+            "success": False
+        }
+
+def _run_iptables(args, timeout=5):
+    """Jalankan iptables pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['iptables'] + list(args), timeout=timeout)
+
 @app.route('/websites')
 @login_required
 def websites_page():
-    """List semua Nginx virtual hosts yang aktif"""
-    sites = []
-    sites_enabled = '/host/root/etc/nginx/sites-enabled'
-    sites_available = '/host/root/etc/nginx/sites-available'
-    
-    try:
-        src = sites_enabled if os.path.exists(sites_enabled) else '/etc/nginx/sites-enabled'
-        for fname in os.listdir(src):
-            fpath = os.path.join(src, fname)
-            domain = fname
-            port = '80'
-            root = '-'
-            enabled = True
-            try:
-                with open(fpath, 'r') as f:
-                    content = f.read()
-                    # Extract listen port
-                    import re
-                    m_port = re.search(r'listen\s+(\d+)', content)
-                    if m_port: port = m_port.group(1)
-                    # Extract root
-                    m_root = re.search(r'root\s+([^\s;]+)', content)
-                    if m_root: root = m_root.group(1)
-                    # Extract server_name
-                    m_name = re.search(r'server_name\s+([^\s;]+)', content)
-                    if m_name: domain = m_name.group(1)
-            except: pass
-            sites.append({'name': fname, 'domain': domain, 'port': port, 'root': root, 'enabled': enabled})
-    except Exception as e:
-        sites = []
-    
-    return render_template('websites.html', sites=sites)
+    """List semua Nginx virtual hosts yang aktif dan Shield Control"""
+    sites = _get_all_vhosts()
+    tab = request.args.get('tab', 'vhosts')
+    return render_template('websites.html', sites=sites, initial_tab=tab)
+
+@app.route('/api/websites/vhosts')
+@login_required
+def api_websites_vhosts():
+    """Daftar detail semua virtual host Nginx yang aktif"""
+    sites = _get_all_vhosts()
+    ssl_count = sum(1 for s in sites if s.get('ssl'))
+    proxy_count = sum(1 for s in sites if s.get('is_proxy'))
+    return jsonify({
+        'sites': sites,
+        'total': len(sites),
+        'active_count': len(sites),
+        'ssl_count': ssl_count,
+        'proxy_count': proxy_count
+    })
 
 @app.route('/api/websites/nginx_status')
 @login_required
 def nginx_status():
-    """Cek status Nginx service — host-aware (works inside Docker with pid:host)"""
-    try:
-        # Method 1: nsenter into host PID namespace to run systemctl on host
-        # This works because docker-compose has pid: host
-        result = subprocess.run(
-            ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
-             'systemctl', 'is-active', 'nginx'],
-            capture_output=True, text=True, timeout=5
-        )
-        status = result.stdout.strip()
-        if status in ('active', 'inactive', 'failed', 'activating', 'deactivating'):
-            return jsonify({'status': status, 'running': status == 'active'})
-    except Exception:
-        pass
+    """Cek status Nginx & web server host secara universal (Docker nsenter / Native Linux)."""
+    status = 'not_installed'
+    running = False
+    version = 'Not Installed'
+    detected_servers = _detect_host_web_servers()
+    installed = any(s['name'] == 'nginx' for s in detected_servers)
 
-    # Method 2: Fallback — scan /proc for nginx master process on host
-    try:
-        proc_path = os.environ.get('HOST_PROC', '/proc')
-        for pid in os.listdir(proc_path):
-            if not pid.isdigit():
-                continue
-            try:
-                comm_file = os.path.join(proc_path, pid, 'comm')
-                with open(comm_file, 'r') as f:
-                    if f.read().strip() == 'nginx':
-                        # Verify it's master (not worker) by checking cmdline
-                        cmdline_file = os.path.join(proc_path, pid, 'cmdline')
-                        with open(cmdline_file, 'r') as cf:
-                            cmdline = cf.read()
-                        if 'master' in cmdline or 'nginx' in cmdline:
-                            return jsonify({'status': 'active', 'running': True})
-            except Exception:
-                continue
-    except Exception:
-        pass
+    if installed:
+        status = 'inactive'
+        version = 'Nginx'
+        try:
+            result = _run_systemctl(['is-active', 'nginx'], timeout=5)
+            st_out = (result.stdout or '').strip()
+            if st_out:
+                status = st_out
+            running = (status == 'active')
+        except Exception:
+            pass
 
-    return jsonify({'status': 'unknown', 'running': False})
+    if not running:
+        try:
+            proc_path = os.environ.get('HOST_PROC', '/proc')
+            for pid in os.listdir(proc_path):
+                if not pid.isdigit():
+                    continue
+                try:
+                    comm_file = os.path.join(proc_path, pid, 'comm')
+                    with open(comm_file, 'r') as f:
+                        if f.read().strip() == 'nginx':
+                            cmdline_file = os.path.join(proc_path, pid, 'cmdline')
+                            with open(cmdline_file, 'r') as cf:
+                                cmdline = cf.read()
+                            if 'master' in cmdline or 'nginx' in cmdline:
+                                status = 'active'
+                                running = True
+                                installed = True
+                                break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if installed:
+        try:
+            v_res = _run_host_cmd(['nginx', '-v'], timeout=5)
+            v_out = (v_res.stdout or '') + (v_res.stderr or '')
+            m_ver = re.search(r'nginx/([^\s]+)', v_out)
+            if m_ver:
+                version = f"Nginx {m_ver.group(1)}"
+        except Exception:
+            pass
+
+    primary_server = 'nginx' if installed else (detected_servers[0]['name'] if detected_servers else 'none')
+    return jsonify({
+        'status': status,
+        'running': running,
+        'installed': installed,
+        'version': version,
+        'web_server': primary_server,
+        'detected_servers': detected_servers
+    })
+
+@app.route('/api/websites/control_nginx', methods=['POST'])
+@login_required
+def control_nginx():
+    """Reload, restart, start, stop service Nginx secara universal dengan uji sintaks otomatis"""
+    data = request.json or {}
+    action = data.get('action', 'reload').strip().lower()
+    if action not in ('reload', 'restart', 'start', 'stop'):
+        return jsonify({'success': False, 'error': 'Aksi tidak valid'}), 400
+
+    chk = _run_host_cmd(['which', 'nginx'], timeout=4, include_pid=False)
+    if chk.returncode != 0 or not chk.stdout.strip():
+        return jsonify({'success': False, 'error': 'Nginx tidak terpasang pada host ini'}), 400
+
+    try:
+        if action in ('reload', 'restart'):
+            t_res = _run_host_cmd(['nginx', '-t'], timeout=8)
+            if t_res.returncode != 0:
+                err_msg = (t_res.stderr or t_res.stdout or 'Sintaks konfigurasi Nginx salah').strip()
+                return jsonify({'success': False, 'error': f'Config test failed: {err_msg}'}), 400
+
+        res = _run_systemctl([action, 'nginx'], timeout=12)
+        success = (res.returncode == 0)
+        output = (res.stdout or '') + (res.stderr or '')
+        audit_log('NGINX_CONTROL', f"Nginx {action} executed", session.get('username'))
+        return jsonify({
+            'success': success,
+            'message': f'Nginx {action} berhasil dieksekusi' if success else f'Gagal {action} Nginx: {output}',
+            'output': output
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/websites/reload_nginx', methods=['POST'])
 @login_required
 def reload_nginx():
-    """Reload Nginx config"""
+    """Reload Nginx config (alias backward compatibility)"""
+    return control_nginx()
+
+@app.route('/api/websites/traffic')
+@login_required
+def api_websites_traffic():
+    """Statistik lalu lintas web server real-time lintas distro dari access.log"""
+    import collections
+    from datetime import datetime
+    log_path = _find_host_access_log()
+
+    today_requests = 0
+    unique_ips = set()
+    ip_times = collections.defaultdict(list)
+    top_pages = collections.Counter()
+    bad_bots_blocked = 0
+    hourly_counter = collections.Counter()
+    status_counter = collections.Counter()
+
+    if log_path:
+        try:
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()[-6000:]
+                for line in lines:
+                    today_requests += 1
+                    parts = line.split()
+                    if len(parts) > 6:
+                        ip = parts[0]
+                        unique_ips.add(ip)
+                        page = parts[6]
+                        status = parts[8] if len(parts) > 8 else ''
+                        if status.isdigit():
+                            code_cls = f"{status[0]}xx"
+                            status_counter[code_cls] += 1
+
+                        try:
+                            time_str = parts[3][1:]
+                            dt = datetime.strptime(time_str, "%d/%b/%Y:%H:%M:%S")
+                            ip_times[ip].append(dt)
+                            hour_label = dt.strftime('%H:00')
+                            hourly_counter[hour_label] += 1
+                        except Exception:
+                            pass
+
+                        if not page.endswith(('.png', '.css', '.js', '.ico', '.jpg', '.woff2', '.svg', '.map')):
+                            clean_page = page.split('?')[0]
+                            top_pages[clean_page] += 1
+
+                        if '403' in parts or 'bot' in line.lower() or 'crawler' in line.lower() or 'spider' in line.lower():
+                            bad_bots_blocked += 1
+        except Exception:
+            pass
+
+    total_duration = 0
+    valid_sessions = 0
+    for ip, times in ip_times.items():
+        if len(times) > 1:
+            duration = (max(times) - min(times)).total_seconds()
+            total_duration += duration
+            valid_sessions += 1
+
+    avg_duration = (total_duration / valid_sessions) if valid_sessions > 0 else 0
+    avg_duration_str = f"{int(avg_duration // 60)}m {int(avg_duration % 60)}s"
+
+    hourly_distribution = []
+    for h in range(24):
+        hl = f"{h:02d}:00"
+        hourly_distribution.append({'hour': hl, 'count': hourly_counter.get(hl, 0)})
+
+    return jsonify({
+        "today_requests": today_requests,
+        "unique_ips_count": len(unique_ips),
+        "unique_ips": list(unique_ips)[:20],
+        "avg_duration": avg_duration_str,
+        "top_pages": [{"page": k, "count": v} for k, v in top_pages.most_common(5)],
+        "bad_bots_blocked": bad_bots_blocked,
+        "hourly_distribution": hourly_distribution,
+        "status_codes": dict(status_counter)
+    })
+
+@app.route('/api/websites/ssl_status')
+@login_required
+def api_websites_ssl_status():
+    """Pengecekan sertifikat SSL dinamis untuk semua domain yang ditemukan di vhost"""
+    sites = _get_all_vhosts()
+    domains_to_check = set()
+    for s in sites:
+        for d in s.get('domains', []):
+            d_clean = d.strip()
+            if (d_clean and not d_clean.startswith('_') and not d_clean.startswith('*')
+                    and d_clean not in ('localhost', 'default')
+                    and not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', d_clean)):
+                domains_to_check.add(d_clean)
+
+    if not domains_to_check:
+        legacy_domain = get_web_shield_domain()
+        if legacy_domain:
+            domains_to_check.add(legacy_domain)
+
+    results = []
+    for dom in sorted(domains_to_check):
+        res = check_ssl_expiry(dom)
+        results.append(res)
+
+    valid_count = sum(1 for r in results if r.get('status') == 'valid')
+    expiring_count = sum(1 for r in results if r.get('status') == 'expiring')
+    expired_count = sum(1 for r in results if r.get('status') in ('expired', 'error'))
+
+    return jsonify({
+        'certificates': results,
+        'total': len(results),
+        'valid_count': valid_count,
+        'expiring_count': expiring_count,
+        'expired_count': expired_count
+    })
+
+@app.route('/api/websites/backup', methods=['POST'])
+@login_required
+def api_websites_backup():
+    """Backup direktori web domain menjadi arsip ZIP"""
+    import zipfile
+    data = request.json or {}
+    domain = data.get('domain', '').strip()
+    if not domain:
+        domain = get_web_shield_domain()
+    if not domain:
+        return jsonify({'error': 'Domain harus ditentukan'}), 400
+
+    source_dir = None
+    sites = _get_all_vhosts()
+    for s in sites:
+        if domain in s.get('domains', []) or domain == s.get('name'):
+            v_root = s.get('root')
+            if v_root and v_root != '-':
+                h_path = '/host/root' + v_root if os.path.exists('/host/root' + v_root) else v_root
+                if os.path.exists(h_path):
+                    source_dir = h_path
+                    break
+
+    if not source_dir:
+        for cand in [f'/host/root/var/www/{domain}', f'/var/www/{domain}']:
+            if os.path.exists(cand):
+                source_dir = cand
+                break
+
+    if not source_dir or not os.path.exists(source_dir):
+        return jsonify({'error': f'Direktori web untuk {domain} tidak ditemukan'}), 404
+
+    zip_filename = f"backup_{domain.replace('.', '_')}_{int(time.time())}.zip"
+    zip_path = os.path.join('/tmp', zip_filename)
+
     try:
-        result = subprocess.run(['sudo', 'systemctl', 'reload', 'nginx'], capture_output=True, text=True, timeout=10)
-        return jsonify({'success': result.returncode == 0, 'output': result.stdout + result.stderr})
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(source_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, source_dir)
+                    zipf.write(file_path, arcname)
+
+        return send_file(zip_path, as_attachment=True, download_name=zip_filename)
     except Exception as e:
-        return jsonify({'success': False, 'output': str(e)})
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================================
@@ -6237,13 +8620,12 @@ def get_threats():
 
 
 @app.route('/api/websites/threats/block', methods=['POST'])
-@admin_required
+@login_required
 def block_threat_ip():
-    """Block an IP via iptables (requires privileged container)"""
+    """Block an IP via iptables host (nsenter aware)"""
     data = request.json or {}
     ip = data.get('ip', '').strip()
 
-    # Basic IP validation
     import ipaddress
     try:
         ipaddress.ip_address(ip)
@@ -6251,18 +8633,11 @@ def block_threat_ip():
         return jsonify({'success': False, 'error': 'Invalid IP address'})
 
     try:
-        # Check if already blocked
-        check = subprocess.run(
-            ['iptables', '-C', 'INPUT', '-s', ip, '-j', 'DROP'],
-            capture_output=True, timeout=5
-        )
+        check = _run_iptables(['-C', 'INPUT', '-s', ip, '-j', 'DROP'])
         if check.returncode == 0:
             return jsonify({'success': True, 'message': f'{ip} already blocked'})
 
-        result = subprocess.run(
-            ['iptables', '-I', 'INPUT', '-s', ip, '-j', 'DROP'],
-            capture_output=True, text=True, timeout=5
-        )
+        result = _run_iptables(['-I', 'INPUT', '-s', ip, '-j', 'DROP'])
         if result.returncode == 0:
             audit_log('IP_BLOCKED', f"Blocked IP {ip} via iptables", session.get('username'))
             return jsonify({'success': True, 'message': f'{ip} blocked successfully'})
@@ -6273,9 +8648,9 @@ def block_threat_ip():
 
 
 @app.route('/api/websites/threats/unblock', methods=['POST'])
-@admin_required
+@login_required
 def unblock_threat_ip():
-    """Unblock an IP via iptables"""
+    """Unblock an IP via iptables host (nsenter aware)"""
     data = request.json or {}
     ip = data.get('ip', '').strip()
 
@@ -6286,10 +8661,7 @@ def unblock_threat_ip():
         return jsonify({'success': False, 'error': 'Invalid IP address'})
 
     try:
-        result = subprocess.run(
-            ['iptables', '-D', 'INPUT', '-s', ip, '-j', 'DROP'],
-            capture_output=True, text=True, timeout=5
-        )
+        result = _run_iptables(['-D', 'INPUT', '-s', ip, '-j', 'DROP'])
         if result.returncode == 0:
             audit_log('IP_UNBLOCKED', f"Unblocked IP {ip} via iptables", session.get('username'))
             return jsonify({'success': True, 'message': f'{ip} unblocked'})
@@ -6302,18 +8674,14 @@ def unblock_threat_ip():
 @app.route('/api/websites/threats/blocked_ips')
 @login_required
 def get_blocked_ips():
-    """List currently blocked IPs from iptables"""
+    """List currently blocked IPs from host iptables"""
     try:
-        result = subprocess.run(
-            ['iptables', '-L', 'INPUT', '-n', '--line-numbers'],
-            capture_output=True, text=True, timeout=5
-        )
+        result = _run_iptables(['-L', 'INPUT', '-n', '--line-numbers'])
         lines = result.stdout.splitlines()
         blocked = []
         for line in lines:
             if 'DROP' in line:
                 parts = line.split()
-                # Format: num  DROP  all  --  IP  0.0.0.0/0  ...
                 for part in parts:
                     try:
                         import ipaddress
@@ -6485,8 +8853,7 @@ import requests
 @app.route('/web_monitor')
 @login_required
 def web_monitor_page():
-    # If no domain is configured, frontend will handle the prompt
-    return render_template('web_monitor.html')
+    return redirect(url_for('websites_page', tab='traffic'))
 
 def get_web_shield_domain():
     config_path = os.path.join(DATA_DIR, 'web_shield.json')
@@ -6505,7 +8872,6 @@ def web_monitor_config():
         domain = request.json.get('domain')
         if not domain:
             return jsonify({'error': 'Domain required'}), 400
-        # Clean domain (remove http/https)
         domain = domain.replace('https://', '').replace('http://', '').strip('/')
         with open(config_path, 'w') as f:
             json.dump({'domain': domain}, f)
@@ -6513,38 +8879,20 @@ def web_monitor_config():
     
     return jsonify({'domain': get_web_shield_domain()})
 
-import ssl
-import socket
-from datetime import datetime
-import collections
-import zipfile
-
-def check_ssl_expiry(domain):
-    try:
-        context = ssl.create_default_context()
-        conn = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=domain)
-        conn.settimeout(3.0)
-        conn.connect((domain, 443))
-        ssl_info = conn.getpeercert()
-        conn.close()
-        expire_date = datetime.strptime(ssl_info['notAfter'], r'%b %d %H:%M:%S %Y %Z')
-        days_left = (expire_date - datetime.utcnow()).days
-        return {
-            "days_left": days_left,
-            "issuer": dict(x[0] for x in ssl_info['issuer'])['commonName'],
-            "valid_from": ssl_info['notBefore'],
-            "valid_to": ssl_info['notAfter']
-        }
-    except Exception as e:
-        return {"days_left": 0, "issuer": "Unknown", "error": str(e)}
-
 @app.route('/api/web_monitor/status')
 @login_required
 def web_monitor_status():
     """Mengambil Hardware, SSL, dan Uptime Status"""
     domain = get_web_shield_domain()
     if not domain:
-        return jsonify({"error": "not_configured"}), 400
+        # Fallback domain dari vhost aktif
+        vhosts = _get_all_vhosts()
+        for v in vhosts:
+            if v.get('domain') and v.get('domain') != '_':
+                domain = v.get('domain')
+                break
+    if not domain:
+        domain = 'localhost'
     
     # 1. Hardware Monitoring
     temp_c = 0
@@ -6574,7 +8922,6 @@ def web_monitor_status():
     
     # Is Online
     try:
-        # Pengecekan HTTP dilakukan langsung ke domain publik karena localhost merujuk pada dalam container Docker
         res = requests.get(f'https://{domain}', timeout=3)
         is_online = (res.status_code == 200)
     except:
@@ -6593,128 +8940,73 @@ def web_monitor_status():
 @login_required
 def web_monitor_ssl_details():
     domain = get_web_shield_domain()
-    if not domain: return jsonify({"error": "not_configured"}), 400
+    if not domain:
+        return api_websites_ssl_status()
     return jsonify(check_ssl_expiry(domain))
 
 @app.route('/api/web_monitor/traffic')
 @login_required
 def web_monitor_traffic():
-    """Parse Nginx Access Log untuk Traffic Real-Time, Top Pages, Origin, dan Session Duration"""
-    log_path = '/host/root/var/log/nginx/access.log'
-    today_requests = 0
-    unique_ips = set()
-    ip_times = collections.defaultdict(list)
-    top_pages = collections.Counter()
-    bad_bots_blocked = 0
-    
-    try:
-        if os.path.exists(log_path):
-            with open(log_path, 'r') as f:
-                # Read last 5000 lines for speed
-                lines = f.readlines()[-5000:]
-                for line in lines:
-                    today_requests += 1
-                    parts = line.split()
-                    if len(parts) > 6:
-                        ip = parts[0]
-                        unique_ips.add(ip)
-                        page = parts[6]
-                        
-                        # Extract time (e.g. [05/May/2026:17:42:00)
-                        try:
-                            time_str = parts[3][1:]
-                            dt = datetime.strptime(time_str, "%d/%b/%Y:%H:%M:%S")
-                            ip_times[ip].append(dt)
-                        except: pass
-                        
-                        # Top Pages (ignore static assets)
-                        if not page.endswith(('.png', '.css', '.js', '.ico', '.jpg', '.woff2')):
-                            top_pages[page] += 1
-                        # Bot Check (simple 403 checks or known bot signatures)
-                        if '403' in parts or 'bot' in line.lower():
-                            bad_bots_blocked += 1
-    except:
-        pass
-        
-    # Calculate average duration
-    total_duration = 0
-    valid_sessions = 0
-    for ip, times in ip_times.items():
-        if len(times) > 1:
-            duration = (max(times) - min(times)).total_seconds()
-            total_duration += duration
-            valid_sessions += 1
-            
-    avg_duration = (total_duration / valid_sessions) if valid_sessions > 0 else 0
-    avg_duration_str = f"{int(avg_duration // 60)}m {int(avg_duration % 60)}s"
+    """Alias backward-compatible untuk traffic access.log"""
+    return api_websites_traffic()
 
-    return jsonify({
-        "today_requests": today_requests,
-        "unique_ips_count": len(unique_ips),
-        "unique_ips": list(unique_ips)[:15], # Kirim 15 IP untuk diproses frontend
-        "avg_duration": avg_duration_str,
-        "top_pages": [{"page": k, "count": v} for k, v in top_pages.most_common(5)],
-        "bad_bots_blocked": bad_bots_blocked
-    })
+def _read_auth_log_lines(max_lines=1500):
+    """Baca baris log autentikasi SSH lintas distro (/var/log/auth.log, /var/log/secure, /var/log/messages, atau journalctl)."""
+    host_root = os.environ.get('HOST_ROOT', '/host/root')
+    rel_paths = ('var/log/auth.log', 'var/log/secure', 'var/log/messages')
+    for rel in rel_paths:
+        for base in (host_root, '/'):
+            p = os.path.join(base, rel)
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                        return f.readlines()[-max_lines:]
+                except Exception:
+                    pass
+    res = _run_journalctl(['-u', 'ssh', '-u', 'sshd', '-n', str(max_lines), '--no-pager'], timeout=6)
+    if res.returncode == 0 and res.stdout:
+        return res.stdout.splitlines()
+    return []
+
 
 @app.route('/api/web_monitor/bot_details')
 @login_required
 def web_monitor_bot_details():
-    log_path = '/host/root/var/log/nginx/access.log'
+    log_path = _find_host_access_log()
     blocked_list = []
     try:
-        if os.path.exists(log_path):
-            with open(log_path, 'r') as f:
+        if log_path and os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()[-5000:]
                 for line in reversed(lines):
                     parts = line.split()
-                    if len(parts) > 6 and ('403' in parts or 'bot' in line.lower()):
+                    if len(parts) > 6 and ('403' in parts or 'bot' in line.lower() or 'spider' in line.lower()):
                         ip = parts[0]
                         ua = line.split('"')[5] if len(line.split('"')) > 5 else "Unknown"
                         time_str = parts[3][1:] if len(parts) > 3 else "Unknown"
                         blocked_list.append({"ip": ip, "time": time_str, "ua": ua[:50]})
-                        if len(blocked_list) >= 10: break
+                        if len(blocked_list) >= 15: break
     except: pass
     return jsonify({"bots": blocked_list})
 
 @app.route('/api/web_monitor/security')
 @login_required
 def web_monitor_security():
-    """Cek Failed SSH Logins dari auth.log"""
-    auth_log = '/host/root/var/log/auth.log'
+    """Cek Failed SSH Logins lintas distro (auth.log / secure / messages / journalctl)"""
     failed_logins = 0
     try:
-        if os.path.exists(auth_log):
-            with open(auth_log, 'r') as f:
-                lines = f.readlines()[-1000:]
-                for line in lines:
-                    if 'Failed password' in line:
-                        failed_logins += 1
-    except:
+        for line in _read_auth_log_lines(max_lines=1500):
+            if 'Failed password' in line or 'authentication failure' in line or 'Invalid user' in line:
+                failed_logins += 1
+    except Exception:
         pass
     return jsonify({"failed_logins": failed_logins})
 
 @app.route('/api/web_monitor/backup')
 @login_required
 def web_monitor_backup():
-    """Backup /var/www/{domain} menjadi ZIP"""
-    domain = get_web_shield_domain()
-    if not domain: return jsonify({"error": "not_configured"}), 400
-    source_dir = f'/host/root/var/www/{domain}'
-    zip_filename = f"web_shield_backup_{int(time.time())}.zip"
-    zip_path = os.path.join('/tmp', zip_filename)
-    
-    try:
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(source_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, source_dir)
-                    zipf.write(file_path, arcname)
-                    
-        return send_file(zip_path, as_attachment=True, download_name=zip_filename)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """Alias backward-compatible untuk backup web root"""
+    return api_websites_backup()
 
 
 @app.route('/lxd')
@@ -6732,25 +9024,72 @@ def _lxc_cmd(args, project='default'):
     return cmd
 
 
+def _detect_lxc_binary():
+    """Detect whether LXD (`lxc`) or Incus (`incus`) CLI is installed on the host (including /snap/bin)."""
+    probe = 'PATH="$PATH:/snap/bin:/usr/local/bin:/usr/sbin:/sbin"; command -v lxc || command -v incus'
+    res = _run_host_cmd(['sh', '-c', probe], timeout=3, include_pid=False)
+    if res.returncode == 0 and (res.stdout or '').strip():
+        return res.stdout.strip().splitlines()[0].strip()
+    return None
+
+
+def _run_lxc_cmd(args, project='default', timeout=15, binary=None):
+    """Run LXD or Incus command universally (Docker nsenter or Native Linux)."""
+    exe = binary or _detect_lxc_binary() or 'lxc'
+    cmd = [exe]
+    if project and project != 'default':
+        cmd += ['--project', project]
+    cmd += args
+    return _run_host_cmd(cmd, timeout=timeout, include_pid=True)
+
+
 @app.route('/api/lxd/containers')
 @login_required
 def api_lxd_containers():
-    """Daftar semua LXD containers dari semua project"""
+    """Daftar semua LXD/Incus containers secara universal dengan graceful empty state."""
     try:
-        res = subprocess.run(['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--', 'lxc', 'list', '--all-projects', '--format', 'json'], capture_output=True, text=True)
-        if res.returncode == 0:
+        lxc_bin = _detect_lxc_binary()
+        if not lxc_bin:
+            return jsonify({
+                'installed': False,
+                'available': False,
+                'engine': None,
+                'containers': [],
+                'message': 'LXD/Incus is not installed on this server.'
+            })
+
+        res = _run_lxc_cmd(['list', '--all-projects', '--format', 'json'], timeout=12, binary=lxc_bin)
+        if res.returncode == 0 and (res.stdout or '').strip():
             data = json.loads(res.stdout)
-            return jsonify({'containers': data})
-        else:
-            return jsonify({'error': res.stderr}), 500
+            return jsonify({
+                'installed': True,
+                'available': True,
+                'engine': lxc_bin,
+                'containers': data
+            })
+
+        err_msg = (res.stderr or res.stdout or 'LXD daemon is not running or inaccessible').strip()
+        return jsonify({
+            'installed': True,
+            'available': False,
+            'engine': lxc_bin,
+            'containers': [],
+            'error': err_msg
+        })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'installed': False,
+            'available': False,
+            'engine': None,
+            'containers': [],
+            'error': str(e)
+        })
 
 @app.route('/api/lxd/action', methods=['POST'])
 @login_required
 def api_lxd_action():
     """Start/Stop/Restart/Delete LXD container"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     action = data.get('action')
     project = data.get('project') or 'default'
@@ -6759,15 +9098,12 @@ def api_lxd_action():
         return jsonify({'success': False, 'error': 'Invalid params'})
     
     try:
-        cmd = _lxc_cmd([action, name], project=project)
-        if action == 'delete':
-            cmd = _lxc_cmd(['delete', '-f', name], project=project)
-            
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        args = ['delete', '-f', name] if action == 'delete' else [action, name]
+        res = _run_lxc_cmd(args, project=project, timeout=30)
         if res.returncode == 0:
             return jsonify({'success': True})
         else:
-            return jsonify({'success': False, 'error': res.stderr})
+            return jsonify({'success': False, 'error': res.stderr or res.stdout})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -6775,7 +9111,7 @@ def api_lxd_action():
 @login_required
 def api_lxd_create():
     """Create LXD container"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     image = data.get('image', 'ubuntu:22.04')
     project = data.get('project') or 'default'
@@ -6784,12 +9120,11 @@ def api_lxd_create():
         return jsonify({'success': False, 'error': 'Name is required'})
         
     try:
-        cmd = _lxc_cmd(['launch', image, name], project=project)
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = _run_lxc_cmd(['launch', image, name], project=project, timeout=120)
         if res.returncode == 0:
             return jsonify({'success': True})
         else:
-            return jsonify({'success': False, 'error': res.stderr})
+            return jsonify({'success': False, 'error': res.stderr or res.stdout})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -6797,7 +9132,7 @@ def api_lxd_create():
 @login_required
 def api_lxd_config():
     """Set LXD container resource limits (CPU, RAM, Storage)"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     project = data.get('project') or 'default'
     ram = data.get('ram')
@@ -6808,21 +9143,14 @@ def api_lxd_config():
         return jsonify({'success': False, 'error': 'Name is required'})
         
     try:
-        # Set Memory
         if ram:
-            subprocess.run(_lxc_cmd(['config', 'set', name, 'limits.memory', ram], project=project))
-        
-        # Set CPU
+            _run_lxc_cmd(['config', 'set', name, 'limits.memory', ram], project=project)
         if cpu:
-            subprocess.run(_lxc_cmd(['config', 'set', name, 'limits.cpu', str(cpu)], project=project))
-            
-        # Set Storage
+            _run_lxc_cmd(['config', 'set', name, 'limits.cpu', str(cpu)], project=project)
         if storage:
-            # Try setting device property directly first
-            res = subprocess.run(_lxc_cmd(['config', 'device', 'set', name, 'root', f'size={storage}'], project=project), capture_output=True)
+            res = _run_lxc_cmd(['config', 'device', 'set', name, 'root', f'size={storage}'], project=project)
             if res.returncode != 0:
-                # If it fails, device might not be overridden yet, so override it
-                subprocess.run(_lxc_cmd(['config', 'device', 'override', name, 'root', f'size={storage}'], project=project))
+                _run_lxc_cmd(['config', 'device', 'override', name, 'root', f'size={storage}'], project=project)
 
         return jsonify({'success': True})
     except Exception as e:
@@ -6832,7 +9160,7 @@ def api_lxd_config():
 @login_required
 def api_lxd_device_add():
     """Add a proxy device (Port Forwarding) to container"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     project = data.get('project') or 'default'
     device_name = data.get('device_name')
@@ -6846,8 +9174,7 @@ def api_lxd_device_add():
     try:
         listen_str = f"{protocol}:0.0.0.0:{host_port}"
         connect_str = f"{protocol}:127.0.0.1:{container_port}"
-        cmd = _lxc_cmd(['config', 'device', 'add', name, device_name, 'proxy', f'listen={listen_str}', f'connect={connect_str}'], project=project)
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = _run_lxc_cmd(['config', 'device', 'add', name, device_name, 'proxy', f'listen={listen_str}', f'connect={connect_str}'], project=project)
         if res.returncode == 0:
             return jsonify({'success': True})
         else:
@@ -6859,7 +9186,7 @@ def api_lxd_device_add():
 @login_required
 def api_lxd_device_remove():
     """Remove a device from container"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     project = data.get('project') or 'default'
     device_name = data.get('device_name')
@@ -6868,8 +9195,7 @@ def api_lxd_device_remove():
         return jsonify({'success': False, 'error': 'Name and device_name are required'})
         
     try:
-        cmd = _lxc_cmd(['config', 'device', 'remove', name, device_name], project=project)
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = _run_lxc_cmd(['config', 'device', 'remove', name, device_name], project=project)
         if res.returncode == 0:
             return jsonify({'success': True})
         else:
@@ -6881,23 +9207,23 @@ def api_lxd_device_remove():
 @login_required
 def api_lxd_advanced():
     """Set advanced container settings (nesting, privileged, autostart)"""
-    data = request.json
+    data = request.json or {}
     name = data.get('name')
     project = data.get('project') or 'default'
-    nesting = data.get('nesting') # 'true' or 'false'
-    privileged = data.get('privileged') # 'true' or 'false'
-    autostart = data.get('autostart') # 'true' or 'false'
+    nesting = data.get('nesting')
+    privileged = data.get('privileged')
+    autostart = data.get('autostart')
     
     if not name:
         return jsonify({'success': False, 'error': 'Name is required'})
         
     try:
         if nesting is not None:
-            subprocess.run(_lxc_cmd(['config', 'set', name, 'security.nesting', nesting], project=project))
+            _run_lxc_cmd(['config', 'set', name, 'security.nesting', nesting], project=project)
         if privileged is not None:
-            subprocess.run(_lxc_cmd(['config', 'set', name, 'security.privileged', privileged], project=project))
+            _run_lxc_cmd(['config', 'set', name, 'security.privileged', privileged], project=project)
         if autostart is not None:
-            subprocess.run(_lxc_cmd(['config', 'set', name, 'boot.autostart', autostart], project=project))
+            _run_lxc_cmd(['config', 'set', name, 'boot.autostart', autostart], project=project)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -7147,6 +9473,36 @@ def get_host_network_ips():
         
     return lan_ips, tailscale_ips
 
+def _get_host_default_gateway():
+    """Deteksi IP default gateway jaringan host secara dinamis via kernel routing table."""
+    try:
+        cmd = (['nsenter', '-t', '1', '-m', '-u', '-n', '-i', 'ip', 'route', 'show', 'default']
+               if _can_use_nsenter() else ['ip', 'route', 'show', 'default'])
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout:
+            m = re.search(r'\bvia\s+(\d+\.\d+\.\d+\.\d+)\b', res.stdout)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+
+    for route_path in (os.path.join(os.environ.get('HOST_PROC', '/host/proc'), 'net/route'), '/proc/net/route'):
+        if os.path.exists(route_path):
+            try:
+                with open(route_path, 'r') as f:
+                    for line in f.readlines()[1:]:
+                        parts = line.strip().split()
+                        if len(parts) >= 3 and parts[1] == '00000000':
+                            gw_hex = parts[2]
+                            octets = [str(int(gw_hex[i:i+2], 16)) for i in (6, 4, 2, 0)]
+                            gw_ip = '.'.join(octets)
+                            if gw_ip != '0.0.0.0':
+                                return gw_ip
+            except Exception:
+                pass
+    return None
+
+
 @app.route('/adblocker')
 @login_required
 @requires_permission('adblocker')
@@ -7167,6 +9523,8 @@ def api_adblocker_status():
     ok_status, res_status, code_status = adguard_api_call('/control/status')
     if not ok_status:
         return jsonify({
+            'installed': False,
+            'available': False,
             'connected': False,
             'error': res_status,
             'base_url': base_url,
@@ -7212,18 +9570,20 @@ def api_adblocker_status():
     total_q = stats_data.get('num_dns_queries', 0)
     formatted_clients = []
 
+    default_gw = _get_host_default_gateway()
     lan_ip_values = [x.get('ip') for x in lan_ips]
     for item in raw_clients:
         if isinstance(item, dict):
             for ip, count in item.items():
+                is_gateway = bool(default_gw and ip == default_gw)
                 name = client_names.get(ip, '')
                 # Heuristik otomatis nama jika belum dinamai
                 if not name:
-                    if ip == '192.168.1.1':
+                    if is_gateway:
                         name = 'Router / Gateway'
-                    elif ip == '192.168.64.1' or ip in lan_ip_values:
-                        current_user = session.get('username') or os.environ.get('USER') or 'Local'
-                        name = f"Host Server ({current_user})"
+                    elif ip in lan_ip_values or ip in ('127.0.0.1', '::1'):
+                        host_label = socket.gethostname() or 'Local'
+                        name = f"Host Server ({host_label})"
                     elif ip.startswith('100.'):
                         name = 'Klien Tailscale'
                     else:
@@ -7239,11 +9599,14 @@ def api_adblocker_status():
                     'ip': ip,
                     'name': name or 'Perangkat Tanpa Nama',
                     'has_custom_name': bool(name and name != 'Perangkat Tanpa Nama'),
+                    'is_gateway': is_gateway,
                     'count': count,
                     'percent': pct
                 })
 
     return jsonify({
+        'installed': True,
+        'available': True,
         'connected': True,
         'base_url': base_url,
         'web_port': cfg.get('port', 8053),
@@ -7538,6 +9901,3037 @@ def api_adblocker_install():
         return jsonify({'success': False, 'error': f'Docker API error: {err_msg}'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': f'Gagal menginstal AdGuard Home: {str(e)}'}), 500
+
+
+# ============================================================
+# SERVICES & SYSTEM DAEMONS MANAGER (systemd)
+# ============================================================
+
+@app.route('/services')
+@login_required
+def services_page():
+    """Halaman Manajemen Services & System Daemons (systemd)"""
+    return render_template('services.html')
+
+@app.route('/api/services/summary')
+@login_required
+def api_services_summary():
+    """Ringkasan status systemd host: total, running, failed, inactive, system_state"""
+    res = _run_systemctl(['list-units', '--type=service', '--all', '--output=json'])
+    system_state = 'unknown'
+    try:
+        st_res = _run_systemctl(['is-system-running'])
+        system_state = (st_res.stdout or '').strip()
+    except Exception:
+        pass
+
+    total = 0
+    running = 0
+    failed = 0
+    inactive = 0
+
+    if res.returncode == 0 and res.stdout:
+        try:
+            data = json.loads(res.stdout)
+            total = len(data)
+            for item in data:
+                act = item.get('active', '')
+                sub = item.get('sub', '')
+                if act == 'failed' or sub == 'failed':
+                    failed += 1
+                elif act == 'active' and sub == 'running':
+                    running += 1
+                elif act == 'inactive' or sub == 'dead':
+                    inactive += 1
+                else:
+                    if act == 'active':
+                        running += 1
+        except Exception:
+            pass
+
+    return jsonify({
+        'total': total,
+        'running': running,
+        'failed': failed,
+        'inactive': inactive,
+        'system_state': system_state
+    })
+
+@app.route('/api/services/list')
+@login_required
+def api_services_list():
+    """Daftar services host dengan filter: all, running, failed, inactive, search query"""
+    filter_type = request.args.get('filter', 'all').strip().lower()
+    q = request.args.get('q', '').strip().lower()
+
+    cmd = ['list-units', '--type=service', '--all', '--output=json']
+    if filter_type == 'failed':
+        cmd = ['list-units', '--type=service', '--state=failed', '--output=json']
+    elif filter_type == 'running':
+        cmd = ['list-units', '--type=service', '--state=running', '--output=json']
+
+    res = _run_systemctl(cmd)
+    services = []
+
+    if res.returncode == 0 and res.stdout:
+        try:
+            raw_data = json.loads(res.stdout)
+            for item in raw_data:
+                unit = item.get('unit', '')
+                if not unit.endswith('.service'):
+                    continue
+
+                act = item.get('active', '')
+                sub = item.get('sub', '')
+                desc = item.get('description', '')
+                name = unit[:-8]
+
+                if filter_type == 'inactive' and act != 'inactive' and sub != 'dead':
+                    continue
+
+                if q:
+                    if q not in unit.lower() and q not in desc.lower() and q not in name.lower():
+                        continue
+
+                services.append({
+                    'unit': unit,
+                    'name': name,
+                    'description': desc or name,
+                    'load': item.get('load', 'loaded'),
+                    'active': act,
+                    'sub': sub
+                })
+        except Exception:
+            pass
+
+    def sort_key(s):
+        if s['active'] == 'failed' or s['sub'] == 'failed':
+            return (0, s['name'])
+        if s['active'] == 'active' and s['sub'] == 'running':
+            return (1, s['name'])
+        return (2, s['name'])
+
+    services.sort(key=sort_key)
+
+    return jsonify({
+        'services': services,
+        'count': len(services),
+        'filter': filter_type
+    })
+
+@app.route('/api/services/detail/<unit>')
+@login_required
+def api_services_detail(unit):
+    """Detail inspeksi properti service dan 40 baris log journald terakhir"""
+    unit = unit.strip()
+    if not unit.endswith('.service'):
+        unit += '.service'
+
+    if not re.match(r'^[a-zA-Z0-9_@.-]+\.service$', unit):
+        return jsonify({'error': 'Format nama unit tidak valid'}), 400
+
+    props_cmd = [
+        'show', unit,
+        '--property=Id,Description,LoadState,ActiveState,SubState,MainPID,'
+        'MemoryCurrent,CPUUsageNSec,ExecMainStatus,ExecMainCode,UnitFileState,ActiveEnterTimestamp'
+    ]
+    p_res = _run_systemctl(props_cmd)
+    props = {}
+    if p_res.stdout:
+        for line in p_res.stdout.splitlines():
+            if '=' in line:
+                k, v = line.split('=', 1)
+                props[k] = v
+
+    mem_bytes = props.get('MemoryCurrent', '')
+    mem_formatted = '0 MB'
+    if mem_bytes and mem_bytes.isdigit():
+        mb = int(mem_bytes) / (1024 * 1024)
+        if mb >= 1024:
+            mem_formatted = f"{mb / 1024:.2f} GB"
+        else:
+            mem_formatted = f"{mb:.1f} MB"
+    props['MemoryFormatted'] = mem_formatted
+
+    cpu_nsec = props.get('CPUUsageNSec', '')
+    cpu_formatted = '0 s'
+    if cpu_nsec and cpu_nsec.isdigit():
+        sec = int(cpu_nsec) / 1_000_000_000
+        cpu_formatted = f"{sec:.2f} s"
+    props['CPUUsageFormatted'] = cpu_formatted
+
+    logs = []
+    log_cmd = ['nsenter', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
+               'journalctl', '-u', unit, '-n', '40', '--no-pager']
+    try:
+        l_res = subprocess.run(log_cmd, capture_output=True, text=True, timeout=6)
+        if l_res.stdout:
+            logs = l_res.stdout.splitlines()
+    except Exception:
+        pass
+
+    return jsonify({
+        'unit': unit,
+        'properties': props,
+        'logs': logs
+    })
+
+
+# ============================================================
+# SYSTEM LOGS & JOURNALD EXPLORER (journalctl & dmesg)
+# ============================================================
+
+def _run_journalctl(args, timeout=12):
+    """Jalankan journalctl pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['journalctl'] + list(args), timeout=timeout)
+
+def _run_dmesg(args, timeout=10):
+    """Jalankan dmesg pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['dmesg'] + list(args), timeout=timeout)
+
+@app.route('/logs')
+@login_required
+def system_logs_page():
+    """Halaman Utama System Logs & Journald Explorer"""
+    return render_template('system_logs.html')
+
+@app.route('/api/logs/summary')
+@login_required
+def api_logs_summary():
+    """Statistik ringkasan log 24 jam terakhir: error count, ssh failed, oom events, kernel alerts"""
+    errors_24h = 0
+    ssh_failed_24h = 0
+    oom_events = 0
+    kernel_alerts = 0
+
+    err_res = _run_journalctl(['-p', 'err', '--since', '24 hours ago', '-q', '--no-pager'], timeout=6)
+    if err_res.returncode == 0 and err_res.stdout:
+        errors_24h = len(err_res.stdout.splitlines())
+
+    ssh_res = _run_journalctl(['-u', 'ssh', '-u', 'sshd', '--grep=Failed password|Invalid user', '--since', '24 hours ago', '-q', '--no-pager'], timeout=6)
+    if ssh_res.returncode == 0 and ssh_res.stdout:
+        ssh_failed_24h = len(ssh_res.stdout.splitlines())
+
+    dmesg_res = _run_dmesg(['-T', '--level=emerg,alert,crit,err'], timeout=6)
+    if dmesg_res.returncode == 0 and dmesg_res.stdout:
+        kernel_alerts = len(dmesg_res.stdout.splitlines())
+
+    oom_res = _run_dmesg([], timeout=6)
+    if oom_res.returncode == 0 and oom_res.stdout:
+        for line in oom_res.stdout.splitlines():
+            low = line.lower()
+            if 'oom-killer' in low or 'out of memory' in low or 'killed process' in low:
+                oom_events += 1
+
+    return jsonify({
+        'errors_24h': errors_24h,
+        'ssh_failed_24h': ssh_failed_24h,
+        'oom_events': oom_events,
+        'kernel_alerts': kernel_alerts
+    })
+
+@app.route('/api/logs/journal')
+@login_required
+def api_logs_journal():
+    """Query log journald interaktif dengan filter unit, priority, rentang waktu, limit, dan search"""
+    unit = request.args.get('unit', '').strip()
+    priority = request.args.get('priority', 'all').strip().lower()
+    since = request.args.get('since', '1h').strip()
+    limit = request.args.get('limit', '100').strip()
+    q = request.args.get('q', '').strip()
+
+    try:
+        limit_num = max(10, min(500, int(limit)))
+    except ValueError:
+        limit_num = 100
+
+    cmd = ['-n', str(limit_num), '-o', 'json', '-r', '--no-pager']
+
+    if unit:
+        if not unit.endswith('.service'):
+            unit += '.service'
+        if not re.match(r'^[a-zA-Z0-9_@.-]+\.service$', unit):
+            return jsonify({'success': False, 'error': 'Format nama unit tidak valid'}), 400
+        cmd.extend(['-u', unit])
+
+    priority_map = {
+        'emerg': '0', 'alert': '1', 'crit': '2', 'err': '3',
+        'warning': '4', 'notice': '5', 'info': '6', 'debug': '7',
+        'errors_only': '0..3', 'warnings_and_errors': '0..4'
+    }
+    if priority in priority_map:
+        cmd.extend(['-p', priority_map[priority]])
+
+    since_map = {
+        '15m': '15 minutes ago',
+        '1h': '1 hour ago',
+        '6h': '6 hours ago',
+        '24h': '24 hours ago',
+        '7d': '7 days ago',
+        'today': 'today'
+    }
+    if since in since_map:
+        cmd.extend(['--since', since_map[since]])
+
+    if q:
+        cmd.extend(['--grep', q])
+
+    res = _run_journalctl(cmd, timeout=12)
+    entries = []
+    priority_names = {
+        0: 'emerg', 1: 'alert', 2: 'crit', 3: 'err',
+        4: 'warning', 5: 'notice', 6: 'info', 7: 'debug'
+    }
+
+    if res.returncode == 0 and res.stdout:
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                ts_raw = item.get('__REALTIME_TIMESTAMP')
+                ts_str = ''
+                if ts_raw:
+                    try:
+                        epoch_sec = int(ts_raw) / 1_000_000
+                        ts_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch_sec))
+                    except Exception:
+                        ts_str = str(ts_raw)
+
+                p_val = int(item.get('PRIORITY', 6))
+                p_label = priority_names.get(p_val, 'info')
+
+                msg = item.get('MESSAGE', '')
+                if isinstance(msg, list):
+                    msg = ''.join(chr(b) if 32 <= b <= 126 else '?' for b in msg)
+
+                entries.append({
+                    'timestamp': ts_str,
+                    'priority': p_val,
+                    'priority_label': p_label,
+                    'unit': item.get('_SYSTEMD_UNIT', ''),
+                    'ident': item.get('SYSLOG_IDENTIFIER') or item.get('_COMM', ''),
+                    'pid': item.get('_PID', ''),
+                    'message': str(msg)
+                })
+            except Exception:
+                continue
+
+    return jsonify({
+        'success': True,
+        'entries': entries,
+        'count': len(entries),
+        'filter': {
+            'unit': unit,
+            'priority': priority,
+            'since': since,
+            'limit': limit_num
+        }
+    })
+
+@app.route('/api/logs/auth')
+@login_required
+def api_logs_auth():
+    """Audit keamanan SSH, upaya login brute force, session PAM, dan eksekusi sudo"""
+    since = request.args.get('since', '24h').strip()
+    limit = request.args.get('limit', '150').strip()
+    status_filter = request.args.get('status', 'all').strip().lower()
+
+    try:
+        limit_num = max(10, min(500, int(limit)))
+    except ValueError:
+        limit_num = 150
+
+    since_map = {
+        '1h': '1 hour ago',
+        '6h': '6 hours ago',
+        '24h': '24 hours ago',
+        '7d': '7 days ago',
+        'all': None
+    }
+    since_arg = since_map.get(since, '24 hours ago')
+
+    ssh_cmd = ['-u', 'ssh', '-u', 'sshd', '-n', str(limit_num), '-r', '--no-pager']
+    if since_arg:
+        ssh_cmd.extend(['--since', since_arg])
+    ssh_res = _run_journalctl(ssh_cmd, timeout=10)
+
+    sudo_cmd = ['--grep=COMMAND=', '-n', '50', '-r', '--no-pager']
+    if since_arg:
+        sudo_cmd.extend(['--since', since_arg])
+    sudo_res = _run_journalctl(sudo_cmd, timeout=10)
+
+    events = []
+    attackers = {}
+    stats = {'failed': 0, 'accepted': 0, 'sudo': 0}
+
+    re_fail = re.compile(r'Failed password for (?:invalid user )?([^\s]+) from ([0-9a-fA-F.:]+) port (\d+)')
+    re_invalid = re.compile(r'Invalid user ([^\s]+) from ([0-9a-fA-F.:]+) port (\d+)')
+    re_acc = re.compile(r'Accepted (publickey|password) for ([^\s]+) from ([0-9a-fA-F.:]+) port (\d+)')
+    re_sudo = re.compile(r'(\w+)\s*:\s*(?:TTY=[^;]*;\s*)?PWD=([^;]*);\s*USER=([^;]*);\s*COMMAND=(.*)')
+
+    ssh_lines = []
+    if ssh_res.returncode == 0 and ssh_res.stdout:
+        ssh_lines = ssh_res.stdout.splitlines()
+    else:
+        # Fallback lintas distro (non-systemd / Alpine / RHEL /var/log/secure / Debian /var/log/auth.log)
+        ssh_lines = list(reversed(_read_auth_log_lines(max_lines=limit_num * 3)))
+
+    if ssh_lines:
+        for line in ssh_lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            m_acc = re_acc.search(line)
+            if m_acc:
+                stats['accepted'] += 1
+                if status_filter in ('all', 'accepted'):
+                    ts = ' '.join(line.split()[:3])
+                    events.append({
+                        'timestamp': ts,
+                        'type': 'accepted',
+                        'method': m_acc.group(1),
+                        'user': m_acc.group(2),
+                        'ip': m_acc.group(3),
+                        'port': m_acc.group(4),
+                        'raw': line
+                    })
+                continue
+
+            m_fail = re_fail.search(line) or re_invalid.search(line)
+            if m_fail:
+                stats['failed'] += 1
+                user = m_fail.group(1)
+                ip = m_fail.group(2)
+                port = m_fail.group(3)
+
+                if ip not in attackers:
+                    attackers[ip] = {'ip': ip, 'count': 0, 'users': set(), 'last_seen': ''}
+                attackers[ip]['count'] += 1
+                attackers[ip]['users'].add(user)
+
+                ts = ' '.join(line.split()[:3])
+                if not attackers[ip]['last_seen']:
+                    attackers[ip]['last_seen'] = ts
+
+                if status_filter in ('all', 'failed'):
+                    events.append({
+                        'timestamp': ts,
+                        'type': 'failed',
+                        'method': 'password',
+                        'user': user,
+                        'ip': ip,
+                        'port': port,
+                        'raw': line
+                    })
+
+    if sudo_res.returncode == 0 and sudo_res.stdout:
+        for line in sudo_res.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            m_sudo = re_sudo.search(line)
+            if m_sudo:
+                stats['sudo'] += 1
+                if status_filter in ('all', 'sudo'):
+                    ts = ' '.join(line.split()[:3])
+                    events.append({
+                        'timestamp': ts,
+                        'type': 'sudo',
+                        'user': m_sudo.group(1),
+                        'target_user': m_sudo.group(3).strip(),
+                        'pwd': m_sudo.group(2).strip(),
+                        'command': m_sudo.group(4).strip(),
+                        'ip': '127.0.0.1 (local)',
+                        'port': '-',
+                        'raw': line
+                    })
+
+    top_attackers = []
+    for ip, data in attackers.items():
+        top_attackers.append({
+            'ip': ip,
+            'count': data['count'],
+            'users': list(data['users'])[:5],
+            'last_seen': data['last_seen']
+        })
+    top_attackers.sort(key=lambda x: x['count'], reverse=True)
+    stats['attackers_count'] = len(top_attackers)
+
+    return jsonify({
+        'success': True,
+        'stats': stats,
+        'events': events[:limit_num],
+        'top_attackers': top_attackers[:10]
+    })
+
+@app.route('/api/logs/dmesg')
+@login_required
+def api_logs_dmesg():
+    """Kernel ring buffer inspector: hardware errors, OOM-Killer, storage I/O alerts"""
+    level = request.args.get('level', 'all').strip().lower()
+    limit = request.args.get('limit', '150').strip()
+    q = request.args.get('q', '').strip().lower()
+
+    try:
+        limit_num = max(10, min(500, int(limit)))
+    except ValueError:
+        limit_num = 150
+
+    cmd = ['-T']
+    level_map = {
+        'err': '--level=emerg,alert,crit,err',
+        'warn': '--level=emerg,alert,crit,err,warn',
+        'info': '--level=emerg,alert,crit,err,warn,notice,info'
+    }
+    if level in level_map:
+        cmd.append(level_map[level])
+
+    res = _run_dmesg(cmd, timeout=8)
+    entries = []
+    oom_events = []
+    disk_errors = []
+
+    if res.returncode == 0 and res.stdout:
+        lines = res.stdout.splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+
+            low = line.lower()
+            is_oom = ('oom-killer' in low or 'out of memory' in low or 'killed process' in low)
+            is_disk = ('i/o error' in low or 'ext4-fs error' in low or 'btrfs error' in low or 'blk_update_request' in low or ('ata' in low and 'error' in low))
+
+            tag = 'info'
+            if 'error' in low or 'fail' in low or 'crit' in low:
+                tag = 'err'
+            elif 'warn' in low or 'block' in low:
+                tag = 'warn'
+            elif is_oom or is_disk:
+                tag = 'crit'
+
+            ts = ''
+            msg = line
+            if line.startswith('[') and ']' in line:
+                parts = line.split(']', 1)
+                ts = parts[0][1:]
+                msg = parts[1].strip()
+
+            entry = {
+                'timestamp': ts,
+                'tag': tag,
+                'message': msg,
+                'is_oom': is_oom,
+                'is_disk': is_disk
+            }
+
+            if is_oom:
+                oom_events.append(entry)
+            if is_disk:
+                disk_errors.append(entry)
+
+            if q:
+                if q not in low and q not in ts.lower():
+                    continue
+
+            entries.append(entry)
+            if len(entries) >= limit_num:
+                break
+
+    return jsonify({
+        'success': True,
+        'entries': entries,
+        'oom_events': oom_events[:10],
+        'disk_errors': disk_errors[:10],
+        'total': len(entries),
+        'filter': {'level': level, 'limit': limit_num}
+    })
+
+@app.route('/api/logs/units')
+@login_required
+def api_logs_units():
+    """Daftar unit systemd aktif yang sering diperiksa log-nya untuk kemudahan filter"""
+    res = _run_systemctl(['list-units', '--type=service', '--state=running', '--output=json'])
+    units = []
+    if res.returncode == 0 and res.stdout:
+        try:
+            data = json.loads(res.stdout)
+            for item in data:
+                u = item.get('unit', '')
+                if u.endswith('.service'):
+                    units.append({
+                        'unit': u,
+                        'name': u[:-8],
+                        'description': item.get('description', '')
+                    })
+        except Exception:
+            pass
+
+    units.sort(key=lambda x: x['name'])
+    return jsonify({'units': units, 'count': len(units)})
+
+
+# ============================================================
+# CENTRAL FIREWALL MANAGER (UNIVERSAL: UFW / firewalld / nftables / iptables)
+# ============================================================
+
+_DETECTED_FIREWALL_BACKEND = None
+
+
+def _run_ufw(args, timeout=12):
+    """Jalankan ufw pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['ufw'] + list(args), timeout=timeout)
+
+
+def _run_firewalld(args, timeout=12):
+    """Jalankan firewall-cmd pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['firewall-cmd'] + list(args), timeout=timeout)
+
+
+def _detect_firewall_backend(force_refresh=False):
+    """Auto-deteksi backend firewall host: ufw -> firewalld -> nftables -> iptables -> none."""
+    global _DETECTED_FIREWALL_BACKEND
+    if _DETECTED_FIREWALL_BACKEND and not force_refresh:
+        return _DETECTED_FIREWALL_BACKEND
+
+    for binary, name in (
+        ('ufw', 'ufw'),
+        ('firewall-cmd', 'firewalld'),
+        ('nft', 'nftables'),
+        ('iptables', 'iptables'),
+    ):
+        chk = _run_host_cmd(['which', binary], timeout=3, include_pid=False)
+        if chk.returncode == 0 and chk.stdout.strip():
+            _DETECTED_FIREWALL_BACKEND = name
+            return name
+
+    _DETECTED_FIREWALL_BACKEND = 'none'
+    return 'none'
+
+
+def _parse_firewalld_status(state_out, list_all_out):
+    """Parser murni status & daftar rule firewalld (`firewall-cmd --state` + `--list-all`)."""
+    active = (state_out or '').strip().lower() == 'running'
+    defaults = {'incoming': 'deny', 'outgoing': 'allow', 'routed': 'allow'}
+    rules = []
+    num = 0
+    for line in (list_all_out or '').splitlines():
+        s = line.strip()
+        if s.startswith('target:'):
+            tgt = s.split(':', 1)[1].strip().upper()
+            defaults['incoming'] = 'allow' if tgt == 'ACCEPT' else ('reject' if 'REJECT' in tgt else 'deny')
+        elif s.startswith('services:'):
+            for svc in s.split(':', 1)[1].strip().split():
+                if svc:
+                    num += 1
+                    rules.append({'num': num, 'to': f'service:{svc}', 'action': 'ALLOW IN', 'from': 'Anywhere', 'is_v6': False, 'raw': f'service:{svc}'})
+        elif s.startswith('ports:'):
+            for prt in s.split(':', 1)[1].strip().split():
+                if prt:
+                    num += 1
+                    rules.append({'num': num, 'to': prt, 'action': 'ALLOW IN', 'from': 'Anywhere', 'is_v6': False, 'raw': f'port:{prt}'})
+        elif s.startswith('rule '):
+            num += 1
+            act = 'DENY IN' if ('drop' in s or 'reject' in s) else 'ALLOW IN'
+            m_src = re.search(r'source address="([^"]+)"', s)
+            m_prt = re.search(r'port port="([^"]+)" protocol="([^"]+)"', s)
+            to_lbl = f"{m_prt.group(1)}/{m_prt.group(2)}" if m_prt else s
+            from_lbl = m_src.group(1) if m_src else 'Anywhere'
+            rules.append({'num': num, 'to': to_lbl, 'action': act, 'from': from_lbl, 'is_v6': 'ipv6' in s, 'raw': f'rich:{s}'})
+
+    allow_count = sum(1 for r in rules if 'ALLOW' in r['action'])
+    deny_count = sum(1 for r in rules if 'DENY' in r['action'] or 'REJECT' in r['action'])
+    v6_count = sum(1 for r in rules if r['is_v6'])
+    return {
+        'active': active,
+        'logging': 'firewalld',
+        'defaults': defaults,
+        'rules': rules,
+        'stats': {
+            'total_rules': len(rules),
+            'allow_count': allow_count,
+            'deny_count': deny_count,
+            'limit_count': 0,
+            'v4_count': len(rules) - v6_count,
+            'v6_count': v6_count
+        }
+    }
+
+
+def _parse_iptables_input_rules(iptables_out):
+    """Parser murni output `iptables -L INPUT -n --line-numbers` ke skema unified firewall."""
+    defaults = {'incoming': 'allow', 'outgoing': 'allow', 'routed': 'allow'}
+    rules = []
+    for line in (iptables_out or '').splitlines():
+        s = line.strip()
+        if s.startswith('Chain INPUT'):
+            m_pol = re.search(r'\(policy\s+(\w+)\)', s)
+            if m_pol:
+                defaults['incoming'] = 'deny' if m_pol.group(1).upper() in ('DROP', 'REJECT') else 'allow'
+            continue
+        m = re.match(r'^(\d+)\s+(\S+)\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s*(.*)$', s)
+        if m:
+            num = int(m.group(1))
+            target = m.group(2).upper()
+            proto = m.group(3).lower()
+            src = m.group(4)
+            extra = m.group(6) or ''
+            m_dpt = re.search(r'dpt:(\S+)', extra)
+            to_lbl = f"{m_dpt.group(1)}/{proto}" if m_dpt else (proto if proto != 'all' else 'Any')
+            action = 'ALLOW IN' if target == 'ACCEPT' else ('DENY IN' if target == 'DROP' else ('REJECT IN' if target == 'REJECT' else target))
+            rules.append({
+                'num': num,
+                'to': to_lbl,
+                'action': action,
+                'from': 'Anywhere' if src == '0.0.0.0/0' else src,
+                'is_v6': False
+            })
+
+    allow_count = sum(1 for r in rules if 'ALLOW' in r['action'])
+    deny_count = sum(1 for r in rules if 'DENY' in r['action'] or 'REJECT' in r['action'])
+    active = (defaults['incoming'] != 'allow') or (len(rules) > 0)
+    return {
+        'active': active,
+        'logging': 'kernel',
+        'defaults': defaults,
+        'rules': rules,
+        'stats': {
+            'total_rules': len(rules),
+            'allow_count': allow_count,
+            'deny_count': deny_count,
+            'limit_count': 0,
+            'v4_count': len(rules),
+            'v6_count': 0
+        }
+    }
+
+
+def _get_firewall_telemetry_summary():
+    """Ringkasan status firewall host lintas backend untuk Wallboard NOC."""
+    backend = _detect_firewall_backend()
+    summary = {'active': False, 'status_text': 'INACTIVE', 'rules_count': 0, 'blocked_count': 0, 'backend': backend}
+    try:
+        if backend == 'ufw':
+            v_res = _run_ufw(['status', 'verbose'], timeout=4)
+            if v_res.returncode == 0 and v_res.stdout:
+                summary['active'] = 'status: active' in v_res.stdout.lower()
+                summary['status_text'] = 'ACTIVE' if summary['active'] else 'INACTIVE'
+                n_res = _run_ufw(['status', 'numbered'], timeout=4)
+                if n_res.returncode == 0 and n_res.stdout:
+                    summary['rules_count'] = sum(1 for l in n_res.stdout.splitlines() if re.match(r'^\s*\[\s*\d+\]', l))
+        elif backend == 'firewalld':
+            st = _run_firewalld(['--state'], timeout=4)
+            la = _run_firewalld(['--list-all'], timeout=4)
+            parsed = _parse_firewalld_status(st.stdout, la.stdout)
+            summary['active'] = parsed['active']
+            summary['status_text'] = 'ACTIVE' if parsed['active'] else 'INACTIVE'
+            summary['rules_count'] = parsed['stats']['total_rules']
+        elif backend in ('iptables', 'nftables'):
+            res_ipt = _run_iptables(['-L', 'INPUT', '-n', '--line-numbers'], timeout=4)
+            parsed = _parse_iptables_input_rules(res_ipt.stdout)
+            summary['active'] = parsed['active']
+            summary['status_text'] = 'ACTIVE' if parsed['active'] else 'INACTIVE'
+            summary['rules_count'] = parsed['stats']['total_rules']
+    except Exception:
+        pass
+    return summary
+
+
+@app.route('/firewall')
+@login_required
+def firewall_page():
+    """Halaman Manajemen Central Firewall (UFW / Firewalld / Nftables / Iptables)"""
+    return render_template('firewall.html')
+
+@app.route('/api/firewall/status')
+@login_required
+def api_firewall_status():
+    """Status lengkap firewall host lintas backend (ufw / firewalld / iptables / nftables)"""
+    backend = _detect_firewall_backend()
+
+    if backend == 'firewalld':
+        st_res = _run_firewalld(['--state'])
+        la_res = _run_firewalld(['--list-all'])
+        parsed = _parse_firewalld_status(st_res.stdout, la_res.stdout)
+        return jsonify({
+            'success': True,
+            'backend': backend,
+            **parsed
+        })
+
+    if backend in ('iptables', 'nftables'):
+        ipt_res = _run_iptables(['-L', 'INPUT', '-n', '--line-numbers'])
+        parsed = _parse_iptables_input_rules(ipt_res.stdout)
+        return jsonify({
+            'success': True,
+            'backend': backend,
+            **parsed
+        })
+
+    v_res = _run_ufw(['status', 'verbose'])
+    n_res = _run_ufw(['status', 'numbered'])
+
+    status_active = False
+    logging = 'off'
+    defaults = {'incoming': 'deny', 'outgoing': 'allow', 'routed': 'allow'}
+
+    if v_res.returncode == 0 and v_res.stdout:
+        for line in v_res.stdout.splitlines():
+            line_str = line.strip()
+            if line_str.startswith('Status:'):
+                status_active = 'active' in line_str.lower()
+            elif line_str.startswith('Logging:'):
+                logging = line_str.split(':', 1)[1].strip()
+            elif line_str.startswith('Default:'):
+                parts = line_str.split(':', 1)[1].strip().split(',')
+                for p in parts:
+                    p = p.strip()
+                    if '(incoming)' in p:
+                        defaults['incoming'] = p.replace('(incoming)', '').strip()
+                    elif '(outgoing)' in p:
+                        defaults['outgoing'] = p.replace('(outgoing)', '').strip()
+                    elif '(routed)' in p:
+                        defaults['routed'] = p.replace('(routed)', '').strip()
+
+    rules = []
+    allow_count = 0
+    deny_count = 0
+    limit_count = 0
+    v4_count = 0
+    v6_count = 0
+
+    if n_res.returncode == 0 and n_res.stdout:
+        for line in n_res.stdout.splitlines():
+            m = re.match(r'^\s*\[\s*(\d+)\]\s+(.*?)\s+(ALLOW IN|DENY IN|LIMIT IN|ALLOW FWD|DENY FWD|REJECT IN|ALLOW OUT|DENY OUT)\s+(.*)$', line)
+            if m:
+                num = int(m.group(1))
+                to_target = m.group(2).strip()
+                action = m.group(3).strip()
+                from_target = m.group(4).strip()
+                is_v6 = ('(v6)' in to_target or '(v6)' in from_target)
+
+                if is_v6:
+                    v6_count += 1
+                else:
+                    v4_count += 1
+
+                if 'ALLOW' in action:
+                    allow_count += 1
+                elif 'DENY' in action or 'REJECT' in action:
+                    deny_count += 1
+                elif 'LIMIT' in action:
+                    limit_count += 1
+
+                rules.append({
+                    'num': num,
+                    'to': to_target,
+                    'action': action,
+                    'from': from_target,
+                    'is_v6': is_v6
+                })
+
+    stats = {
+        'total_rules': len(rules),
+        'allow_count': allow_count,
+        'deny_count': deny_count,
+        'limit_count': limit_count,
+        'v4_count': v4_count,
+        'v6_count': v6_count
+    }
+
+    return jsonify({
+        'success': True,
+        'backend': backend,
+        'active': status_active,
+        'logging': logging,
+        'defaults': defaults,
+        'stats': stats,
+        'rules': rules
+    })
+
+@app.route('/api/firewall/rule/add', methods=['POST'])
+@login_required
+def api_firewall_rule_add():
+    """Menambahkan aturan firewall baru secara aman lintas backend (ufw / firewalld / iptables)"""
+    data = request.json or {}
+    action = (data.get('action') or 'allow').strip().lower()
+    port = str(data.get('port') or '').strip()
+    proto = (data.get('proto') or '').strip().lower()
+    from_ip = (data.get('from_ip') or '').strip()
+    direction = (data.get('direction') or 'in').strip().lower()
+    interface = (data.get('interface') or '').strip()
+
+    valid_actions = ('allow', 'deny', 'reject', 'limit')
+    if action not in valid_actions:
+        return jsonify({'success': False, 'error': f'Aksi tidak valid: {action}'}), 400
+
+    if direction not in ('in', 'out'):
+        direction = 'in'
+
+    if interface and not re.match(r'^[a-zA-Z0-9_.-]+$', interface):
+        return jsonify({'success': False, 'error': 'Format interface tidak valid'}), 400
+
+    if port:
+        if not re.match(r'^[a-zA-Z0-9_:-]+$', port):
+            return jsonify({'success': False, 'error': 'Format port tidak valid'}), 400
+
+    if proto and proto not in ('tcp', 'udp', 'any'):
+        return jsonify({'success': False, 'error': 'Protokol tidak valid (tcp, udp, any)'}), 400
+
+    if from_ip and from_ip.lower() != 'any':
+        import ipaddress
+        try:
+            if '/' in from_ip:
+                ipaddress.ip_network(from_ip, strict=False)
+            else:
+                ipaddress.ip_address(from_ip)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Format IP / CIDR source tidak valid'}), 400
+
+    backend = _detect_firewall_backend()
+
+    if backend == 'firewalld':
+        eff_proto = proto if (proto and proto != 'any') else 'tcp'
+        fd_port = port.replace(':', '-')
+        if (not from_ip or from_ip.lower() == 'any') and action == 'allow' and fd_port:
+            res = _run_firewalld(['--permanent', f'--add-port={fd_port}/{eff_proto}'], timeout=15)
+        else:
+            fd_act = 'accept' if action in ('allow', 'limit') else ('reject' if action == 'reject' else 'drop')
+            fam = 'ipv6' if ':' in from_ip else 'ipv4'
+            rule_parts = [f'rule family="{fam}"']
+            if from_ip and from_ip.lower() != 'any':
+                rule_parts.append(f'source address="{from_ip}"')
+            if fd_port:
+                rule_parts.append(f'port port="{fd_port}" protocol="{eff_proto}"')
+            rule_parts.append(fd_act)
+            res = _run_firewalld(['--permanent', f'--add-rich-rule={" ".join(rule_parts)}'], timeout=15)
+        if res.returncode == 0:
+            _run_firewalld(['--reload'], timeout=15)
+        success = (res.returncode == 0)
+        output = (res.stdout or '') + (res.stderr or '')
+        audit_log('FIREWALL_RULE_ADD', f"firewalld {action} {port}/{eff_proto} from={from_ip or 'any'} - success={success}", session.get('username'))
+        return jsonify({
+            'success': success,
+            'backend': backend,
+            'message': 'Aturan firewalld berhasil ditambahkan' if success else f'Gagal: {output}',
+            'output': output
+        }), 200 if success else 400
+
+    if backend in ('iptables', 'nftables'):
+        chain = 'INPUT' if direction == 'in' else 'OUTPUT'
+        tgt = 'ACCEPT' if action in ('allow', 'limit') else ('REJECT' if action == 'reject' else 'DROP')
+        ipt_args = ['-A', chain]
+        if interface:
+            ipt_args += ['-i' if direction == 'in' else '-o', interface]
+        if from_ip and from_ip.lower() != 'any':
+            ipt_args += ['-s', from_ip]
+        if port:
+            eff_proto = proto if (proto and proto != 'any') else 'tcp'
+            ipt_args += ['-p', eff_proto, '--dport', port]
+        elif proto and proto != 'any':
+            ipt_args += ['-p', proto]
+        ipt_args += ['-j', tgt]
+        res = _run_iptables(ipt_args, timeout=15)
+        success = (res.returncode == 0)
+        output = (res.stdout or '') + (res.stderr or '')
+        audit_log('FIREWALL_RULE_ADD', f"iptables {' '.join(ipt_args)} - success={success}", session.get('username'))
+        return jsonify({
+            'success': success,
+            'backend': backend,
+            'message': f'Aturan berhasil ditambahkan: iptables {" ".join(ipt_args)}' if success else f'Gagal: {output}',
+            'output': output
+        }), 200 if success else 400
+
+    args = []
+    if not from_ip or from_ip.lower() == 'any':
+        if not port:
+            return jsonify({'success': False, 'error': 'Port atau IP source wajib ditentukan'}), 400
+
+        target_port = port
+        if proto and proto != 'any':
+            target_port = f"{port}/{proto}"
+
+        if interface:
+            args = [action, direction, 'on', interface, 'to', 'any', 'port', port]
+            if proto and proto != 'any':
+                args.extend(['proto', proto])
+        else:
+            args = [action, target_port]
+    else:
+        args = [action]
+        if direction == 'in':
+            args.append('in')
+        elif direction == 'out':
+            args.append('out')
+
+        if interface:
+            args.extend(['on', interface])
+
+        args.extend(['from', from_ip])
+
+        if port:
+            args.extend(['to', 'any', 'port', port])
+            if proto and proto != 'any':
+                args.extend(['proto', proto])
+
+    res = _run_ufw(args, timeout=15)
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('FIREWALL_RULE_ADD', f"UFW {' '.join(args)} - success={success}", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'backend': backend,
+        'message': f'Aturan berhasil ditambahkan: ufw {" ".join(args)}' if success else f'Gagal: {output}',
+        'output': output
+    }), 200 if success else 400
+
+@app.route('/api/firewall/rule/delete', methods=['POST'])
+@login_required
+def api_firewall_rule_delete():
+    """Menghapus aturan firewall berdasarkan nomor urut lintas backend"""
+    data = request.json or {}
+    try:
+        num = int(data.get('num'))
+        if num <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'Nomor rule tidak valid'}), 400
+
+    backend = _detect_firewall_backend()
+    if backend == 'firewalld':
+        st_res = _run_firewalld(['--state'])
+        la_res = _run_firewalld(['--list-all'])
+        parsed = _parse_firewalld_status(st_res.stdout, la_res.stdout)
+        target_rule = next((r for r in parsed['rules'] if r['num'] == num), None)
+        if not target_rule:
+            return jsonify({'success': False, 'error': f'Rule #{num} tidak ditemukan di firewalld'}), 404
+        raw = target_rule.get('raw', '')
+        if raw.startswith('port:'):
+            res = _run_firewalld(['--permanent', f'--remove-port={raw[5:]}'], timeout=15)
+        elif raw.startswith('service:'):
+            res = _run_firewalld(['--permanent', f'--remove-service={raw[8:]}'], timeout=15)
+        elif raw.startswith('rich:'):
+            res = _run_firewalld(['--permanent', f'--remove-rich-rule={raw[5:]}'], timeout=15)
+        else:
+            return jsonify({'success': False, 'error': 'Tipe rule firewalld tidak didukung'}), 400
+        if res.returncode == 0:
+            _run_firewalld(['--reload'], timeout=15)
+    elif backend in ('iptables', 'nftables'):
+        res = _run_iptables(['-D', 'INPUT', str(num)], timeout=15)
+    else:
+        res = _run_ufw(['--force', 'delete', str(num)], timeout=15)
+
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('FIREWALL_RULE_DELETE', f"{backend} delete rule #{num} - success={success}", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'backend': backend,
+        'message': f'Rule #{num} berhasil dihapus' if success else f'Gagal menghapus rule #{num}: {output}',
+        'output': output
+    }), 200 if success else 400
+
+@app.route('/api/firewall/default', methods=['POST'])
+@login_required
+def api_firewall_set_default():
+    """Mengubah kebijakan default traffic (incoming, outgoing, routed) lintas backend"""
+    data = request.json or {}
+    direction = (data.get('direction') or 'incoming').strip().lower()
+    policy = (data.get('policy') or 'deny').strip().lower()
+
+    if direction not in ('incoming', 'outgoing', 'routed'):
+        return jsonify({'success': False, 'error': 'Direction tidak valid'}), 400
+    if policy not in ('allow', 'deny', 'reject'):
+        return jsonify({'success': False, 'error': 'Kebijakan tidak valid (allow, deny, reject)'}), 400
+
+    backend = _detect_firewall_backend()
+    if backend == 'firewalld':
+        tgt = 'ACCEPT' if policy == 'allow' else ('%%REJECT%%' if policy == 'reject' else 'DROP')
+        res = _run_firewalld(['--permanent', f'--set-target={tgt}'], timeout=15)
+        if res.returncode == 0:
+            _run_firewalld(['--reload'], timeout=15)
+    elif backend in ('iptables', 'nftables'):
+        chain = {'incoming': 'INPUT', 'outgoing': 'OUTPUT', 'routed': 'FORWARD'}[direction]
+        ipt_pol = 'ACCEPT' if policy == 'allow' else 'DROP'
+        res = _run_iptables(['-P', chain, ipt_pol], timeout=15)
+    else:
+        res = _run_ufw(['default', policy, direction], timeout=15)
+
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('FIREWALL_DEFAULT_POLICY', f"{backend} default {policy} {direction}", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'backend': backend,
+        'message': f'Kebijakan default {direction} diubah menjadi {policy}' if success else f'Gagal: {output}',
+        'output': output
+    }), 200 if success else 400
+
+@app.route('/api/firewall/toggle', methods=['POST'])
+@login_required
+def api_firewall_toggle():
+    """Mengaktifkan atau menonaktifkan firewall host lintas backend"""
+    data = request.json or {}
+    action = (data.get('action') or '').strip().lower()
+
+    if action not in ('enable', 'disable'):
+        return jsonify({'success': False, 'error': 'Aksi tidak valid (enable/disable)'}), 400
+
+    backend = _detect_firewall_backend()
+    if backend == 'firewalld':
+        svc_act = 'start' if action == 'enable' else 'stop'
+        res = _run_systemctl([svc_act, 'firewalld'], timeout=15)
+    elif backend in ('iptables', 'nftables'):
+        return jsonify({
+            'success': False,
+            'backend': backend,
+            'error': f'Backend {backend} berjalan di level kernel; kelola proteksi melalui aturan atau default policy.'
+        }), 400
+    else:
+        args = ['--force', 'enable'] if action == 'enable' else ['disable']
+        res = _run_ufw(args, timeout=15)
+
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('FIREWALL_TOGGLE', f"{backend} {action}", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'backend': backend,
+        'message': f'Firewall ({backend}) berhasil di-{action}' if success else f'Gagal {action} firewall: {output}',
+        'output': output
+    }), 200 if success else 500
+
+@app.route('/api/firewall/reload', methods=['POST'])
+@login_required
+def api_firewall_reload():
+    """Memuat ulang aturan firewall host lintas backend"""
+    backend = _detect_firewall_backend()
+    if backend == 'firewalld':
+        res = _run_firewalld(['--reload'], timeout=15)
+    elif backend in ('iptables', 'nftables'):
+        res = _run_iptables(['-L', '-n'], timeout=10)
+    else:
+        res = _run_ufw(['reload'], timeout=15)
+
+    success = (res.returncode == 0)
+    output = (res.stdout or '') + (res.stderr or '')
+
+    audit_log('FIREWALL_RELOAD', f"{backend} reload", session.get('username'))
+
+    return jsonify({
+        'success': success,
+        'backend': backend,
+        'message': f'Firewall ({backend}) berhasil dimuat ulang' if success else f'Gagal reload firewall: {output}',
+        'output': output
+    }), 200 if success else 500
+
+@app.route('/api/firewall/iptables')
+@login_required
+def api_firewall_iptables():
+    """Membaca daftar aturan filter iptables dan nftables untuk inspeksi tingkat lanjut"""
+    res_v4 = _run_iptables(['-L', '-n', '-v', '--line-numbers'])
+    v4_rules = res_v4.stdout if res_v4.returncode == 0 else ''
+
+    n_res = _run_host_cmd(['nft', 'list', 'ruleset'], timeout=8)
+    nft_rules = n_res.stdout if (n_res.returncode == 0 and n_res.stdout) else ''
+
+    return jsonify({
+        'success': True,
+        'backend': _detect_firewall_backend(),
+        'iptables_v4': v4_rules,
+        'nftables': nft_rules
+    })
+
+
+# ============================================================
+# TASK SCHEDULER & CRON JOBS (crontab & systemd.timer)
+# ============================================================
+
+def _run_scheduler_cmd(args, timeout=15, input_data=None):
+    """Jalankan perintah host via eksekutor universal (nsenter / native) dengan input data opsional."""
+    return _run_host_cmd(list(args), timeout=timeout, input_data=input_data)
+
+def _get_system_cron_users():
+    """Deteksi pengguna di host secara dinamis yang memiliki atau dapat memiliki crontab"""
+    users = {'root'}
+    res = _run_scheduler_cmd(['ls', '-1', '/var/spool/cron/crontabs'])
+    if res.returncode == 0 and res.stdout:
+        for u in res.stdout.strip().splitlines():
+            u = u.strip()
+            if u and not u.startswith('.'):
+                users.add(u)
+    res_pw = _run_scheduler_cmd(['cat', '/etc/passwd'])
+    if res_pw.returncode == 0 and res_pw.stdout:
+        for line in res_pw.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 7:
+                uname = parts[0].strip()
+                try:
+                    uid = int(parts[2])
+                    shell = parts[6].strip()
+                    if (uid == 0 or uid >= 1000) and not shell.endswith('nologin') and not shell.endswith('false'):
+                        users.add(uname)
+                except ValueError:
+                    pass
+    return sorted(list(users))
+
+def _humanize_cron_schedule(schedule):
+    """Menerjemahkan ekspresi cron ke penjelasan bahasa manusia yang ramah"""
+    s = schedule.strip()
+    if s == '@reboot':
+        return 'Saat booting / startup sistem'
+    if s in ('@daily', '@midnight', '0 0 * * *'):
+        return 'Setiap hari pada pukul 00:00'
+    if s in ('@hourly', '0 * * * *'):
+        return 'Setiap jam (menit 00)'
+    if s == '* * * * *':
+        return 'Setiap menit'
+    if s == '*/5 * * * *':
+        return 'Setiap 5 menit'
+    if s == '*/10 * * * *':
+        return 'Setiap 10 menit'
+    if s == '*/15 * * * *':
+        return 'Setiap 15 menit'
+    if s == '*/30 * * * *':
+        return 'Setiap 30 menit'
+
+    parts = s.split()
+    if len(parts) == 5:
+        m, h, dom, mon, dow = parts
+        time_str = ''
+        if m.isdigit() and h.isdigit():
+            time_str = f"pada {h.zfill(2)}:{m.zfill(2)}"
+        elif m.isdigit() and h == '*':
+            time_str = f"pada menit ke-{m} setiap jam"
+        elif m.startswith('*/'):
+            time_str = f"setiap {m[2:]} menit"
+
+        days_str = ''
+        if dom == '*' and dow == '*':
+            days_str = 'Setiap hari'
+        elif dow != '*':
+            dow_map = {'0': 'Minggu', '1': 'Senin', '2': 'Selasa', '3': 'Rabu', '4': 'Kamis', '5': 'Jumat', '6': 'Sabtu', '7': 'Minggu'}
+            day_name = dow_map.get(dow, f"hari ke-{dow}")
+            days_str = f"Setiap {day_name}"
+        elif dom != '*':
+            days_str = f"Tanggal {dom} setiap bulan"
+
+        if time_str and days_str:
+            return f"{days_str} {time_str}"
+        elif time_str:
+            return time_str
+        elif days_str:
+            return days_str
+
+    return s
+
+def _parse_crontab_lines(content, default_user='root', source='user'):
+    """Parsing baris-baris crontab ke list of dict"""
+    jobs = []
+    lines = content.splitlines()
+    for idx, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        is_disabled = False
+        active_line = line
+        if line.startswith('# DISABLED:') or line.startswith('# DISABLED_BY_EKADASH:'):
+            is_disabled = True
+            active_line = line.split(':', 1)[1].strip()
+        elif line.startswith('#'):
+            # Komentar biasa, lewati
+            continue
+
+        schedule = ''
+        command = ''
+        job_user = default_user
+
+        if active_line.startswith('@'):
+            parts = active_line.split(None, 1)
+            schedule = parts[0]
+            command = parts[1] if len(parts) > 1 else ''
+        else:
+            parts = active_line.split(None, 5)
+            if len(parts) >= 6:
+                schedule = ' '.join(parts[:5])
+                command = parts[5]
+            elif len(parts) == 5:
+                schedule = ' '.join(parts)
+                command = ''
+            else:
+                continue
+
+        # Untuk /etc/crontab atau /etc/cron.d, format baris: min hr dom mon dow username command
+        if source == 'system':
+            c_parts = command.split(None, 1)
+            if len(c_parts) >= 2:
+                job_user = c_parts[0]
+                command = c_parts[1]
+
+        jobs.append({
+            'id': f"{default_user}_{idx}_{abs(hash(raw_line)) & 0xffffffff:x}",
+            'user': job_user,
+            'source': source,
+            'schedule': schedule,
+            'schedule_human': _humanize_cron_schedule(schedule),
+            'command': command,
+            'enabled': not is_disabled,
+            'raw': raw_line,
+            'line_index': idx
+        })
+    return jobs
+
+def _get_all_cron_jobs():
+    """Mengumpulkan seluruh cron jobs dari seluruh pengguna host dan direktori sistem"""
+    all_jobs = []
+    users = _get_system_cron_users()
+
+    # 1. User Crontabs
+    for u in users:
+        res = _run_scheduler_cmd(['crontab', '-u', u, '-l'])
+        if res.returncode == 0 and res.stdout:
+            parsed = _parse_crontab_lines(res.stdout, default_user=u, source='user')
+            all_jobs.extend(parsed)
+
+    # 2. System /etc/crontab
+    res_sys = _run_scheduler_cmd(['cat', '/etc/crontab'])
+    if res_sys.returncode == 0 and res_sys.stdout:
+        parsed_sys = _parse_crontab_lines(res_sys.stdout, default_user='system', source='system')
+        all_jobs.extend(parsed_sys)
+
+    # 3. System /etc/cron.d/*
+    res_d = _run_scheduler_cmd(['ls', '-1', '/etc/cron.d'])
+    if res_d.returncode == 0 and res_d.stdout:
+        for fname in res_d.stdout.splitlines():
+            fname = fname.strip()
+            if not fname or fname.startswith('.'):
+                continue
+            res_f = _run_scheduler_cmd(['cat', f'/etc/cron.d/{fname}'])
+            if res_f.returncode == 0 and res_f.stdout:
+                parsed_f = _parse_crontab_lines(res_f.stdout, default_user=f'cron.d/{fname}', source='system')
+                all_jobs.extend(parsed_f)
+
+    return all_jobs, users
+
+def _write_user_crontab(user, new_content):
+    """Menulis berkas crontab pengguna secara aman"""
+    if not new_content.strip():
+        res = _run_scheduler_cmd(['crontab', '-u', user, '-r'])
+        return res.returncode == 0 or 'no crontab' in res.stderr.lower()
+    if not new_content.endswith('\n'):
+        new_content += '\n'
+    res = _run_scheduler_cmd(['crontab', '-u', user, '-'], input_data=new_content)
+    return res.returncode == 0
+
+
+@app.route('/scheduler')
+@login_required
+def scheduler_page():
+    """Halaman Task Scheduler & Cron Jobs"""
+    return render_template('scheduler.html')
+
+@app.route('/api/cron/summary')
+@login_required
+def api_cron_summary():
+    """Ringkasan statistik cron jobs dan systemd timers"""
+    jobs, users = _get_all_cron_jobs()
+    total_jobs = len(jobs)
+    active_jobs = sum(1 for j in jobs if j['enabled'])
+    disabled_jobs = total_jobs - active_jobs
+
+    res_timers = _run_scheduler_cmd(['systemctl', 'list-timers', '--all', '--output=json'])
+    timers_list = []
+    if res_timers.returncode == 0 and res_timers.stdout:
+        try:
+            timers_list = json.loads(res_timers.stdout)
+        except Exception:
+            pass
+
+    active_timers = 0
+    next_timer_info = None
+    min_left = float('inf')
+
+    for t in timers_list:
+        next_val = t.get('next')
+        if next_val and next_val > 0:
+            active_timers += 1
+            left_val = t.get('left')
+            if left_val is not None and left_val < min_left:
+                min_left = left_val
+                next_timer_info = {
+                    'unit': t.get('unit'),
+                    'activates': t.get('activates'),
+                    'timestamp': int(next_val / 1e6)
+                }
+
+    return jsonify({
+        'success': True,
+        'total_cron_jobs': total_jobs,
+        'active_cron_jobs': active_jobs,
+        'disabled_cron_jobs': disabled_jobs,
+        'total_timers': len(timers_list),
+        'active_timers': active_timers,
+        'next_timer': next_timer_info,
+        'users': users
+    })
+
+@app.route('/api/cron/list')
+@login_required
+def api_cron_list():
+    """Daftar cron jobs dengan filter user dan source"""
+    filter_user = request.args.get('user', 'all').strip()
+    filter_source = request.args.get('source', 'all').strip()
+
+    jobs, users = _get_all_cron_jobs()
+
+    if filter_user != 'all':
+        jobs = [j for j in jobs if j['user'] == filter_user]
+    if filter_source != 'all':
+        jobs = [j for j in jobs if j['source'] == filter_source]
+
+    return jsonify({
+        'success': True,
+        'jobs': jobs,
+        'count': len(jobs),
+        'users': users
+    })
+
+@app.route('/api/cron/save', methods=['POST'])
+@login_required
+def api_cron_save():
+    """Menambah atau memperbarui jadwal cron pengguna"""
+    data = request.json or {}
+    user = (data.get('user') or 'root').strip()
+    schedule = (data.get('schedule') or '').strip()
+    command = (data.get('command') or '').strip()
+    enabled = bool(data.get('enabled', True))
+    original_raw = data.get('original_raw')
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', user):
+        return jsonify({'success': False, 'error': 'Username tidak valid'}), 400
+
+    if not command:
+        return jsonify({'success': False, 'error': 'Perintah (command) tidak boleh kosong'}), 400
+
+    command = ' '.join(command.splitlines()).strip()
+
+    valid_special = ('@reboot', '@yearly', '@annually', '@monthly', '@weekly', '@daily', '@midnight', '@hourly')
+    if schedule not in valid_special:
+        parts = schedule.split()
+        if len(parts) != 5:
+            return jsonify({'success': False, 'error': 'Format schedule cron harus berupa @preset atau 5 kolom (min hour dom mon dow)'}), 400
+        for p in parts:
+            if not re.match(r'^[0-9a-zA-Z/*,-]+$', p):
+                return jsonify({'success': False, 'error': f'Karakter tidak valid pada kolom schedule: {p}'}), 400
+
+    new_line = f"{schedule} {command}"
+    if not enabled:
+        new_line = f"# DISABLED: {new_line}"
+
+    res_l = _run_scheduler_cmd(['crontab', '-u', user, '-l'])
+    existing_content = res_l.stdout if res_l.returncode == 0 else ''
+    lines = [l for l in existing_content.splitlines() if l.strip()]
+
+    updated = False
+    if original_raw:
+        new_lines = []
+        for line in lines:
+            if line.strip() == original_raw.strip() and not updated:
+                new_lines.append(new_line)
+                updated = True
+            else:
+                new_lines.append(line)
+        lines = new_lines
+
+    if not updated:
+        lines.append(new_line)
+
+    new_crontab = '\n'.join(lines) + '\n'
+    ok = _write_user_crontab(user, new_crontab)
+    if not ok:
+        return jsonify({'success': False, 'error': 'Gagal menulis crontab pada sistem host'}), 500
+
+    return jsonify({
+        'success': True,
+        'message': 'Jadwal cron berhasil disimpan'
+    })
+
+@app.route('/api/cron/toggle', methods=['POST'])
+@login_required
+def api_cron_toggle():
+    """Mengaktifkan atau menonaktifkan baris cron job"""
+    data = request.json or {}
+    user = (data.get('user') or 'root').strip()
+    raw = (data.get('raw') or '').strip()
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', user):
+        return jsonify({'success': False, 'error': 'Username tidak valid'}), 400
+
+    if not raw:
+        return jsonify({'success': False, 'error': 'Parameter raw tidak boleh kosong'}), 400
+
+    res_l = _run_scheduler_cmd(['crontab', '-u', user, '-l'])
+    if res_l.returncode != 0:
+        return jsonify({'success': False, 'error': 'Tidak dapat membaca crontab user'}), 400
+
+    lines = res_l.stdout.splitlines()
+    new_lines = []
+    found = False
+    new_state = True
+
+    for line in lines:
+        if line.strip() == raw and not found:
+            found = True
+            if line.strip().startswith('# DISABLED:') or line.strip().startswith('# DISABLED_BY_EKADASH:'):
+                active = line.strip().split(':', 1)[1].strip()
+                new_lines.append(active)
+                new_state = True
+            else:
+                new_lines.append(f"# DISABLED: {line.strip()}")
+                new_state = False
+        else:
+            new_lines.append(line)
+
+    if not found:
+        return jsonify({'success': False, 'error': 'Baris jadwal tidak ditemukan dalam crontab'}), 404
+
+    new_crontab = '\n'.join(new_lines) + '\n'
+    ok = _write_user_crontab(user, new_crontab)
+    if not ok:
+        return jsonify({'success': False, 'error': 'Gagal memperbarui crontab'}), 500
+
+    return jsonify({
+        'success': True,
+        'enabled': new_state,
+        'message': f"Jadwal cron berhasil {'diaktifkan' if new_state else 'dinonaktifkan'}"
+    })
+
+@app.route('/api/cron/delete', methods=['POST'])
+@login_required
+def api_cron_delete():
+    """Menghapus entri cron job tertentu"""
+    data = request.json or {}
+    user = (data.get('user') or 'root').strip()
+    raw = (data.get('raw') or '').strip()
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', user):
+        return jsonify({'success': False, 'error': 'Username tidak valid'}), 400
+
+    if not raw:
+        return jsonify({'success': False, 'error': 'Parameter raw tidak boleh kosong'}), 400
+
+    res_l = _run_scheduler_cmd(['crontab', '-u', user, '-l'])
+    if res_l.returncode != 0:
+        return jsonify({'success': False, 'error': 'Crontab user tidak ditemukan'}), 404
+
+    lines = res_l.stdout.splitlines()
+    new_lines = []
+    found = False
+
+    for line in lines:
+        if line.strip() == raw and not found:
+            found = True
+            continue
+        new_lines.append(line)
+
+    if not found:
+        return jsonify({'success': False, 'error': 'Baris jadwal tidak ditemukan'}), 404
+
+    new_crontab = '\n'.join(new_lines) + '\n'
+    ok = _write_user_crontab(user, new_crontab)
+    if not ok:
+        return jsonify({'success': False, 'error': 'Gagal memperbarui crontab setelah penghapusan'}), 500
+
+    return jsonify({
+        'success': True,
+        'message': 'Jadwal cron berhasil dihapus'
+    })
+
+@app.route('/api/cron/timers')
+@login_required
+def api_cron_timers():
+    """Daftar systemd timers aktif dan terjadwal"""
+    search = (request.args.get('search') or '').strip().lower()
+
+    res = _run_scheduler_cmd(['systemctl', 'list-timers', '--all', '--output=json'])
+    raw_timers = []
+    if res.returncode == 0 and res.stdout:
+        try:
+            raw_timers = json.loads(res.stdout)
+        except Exception:
+            pass
+
+    formatted_timers = []
+    now_ts = time.time()
+
+    for item in raw_timers:
+        unit = item.get('unit', '')
+        activates = item.get('activates', '')
+
+        if search and search not in unit.lower() and search not in activates.lower():
+            continue
+
+        next_us = item.get('next')
+        last_us = item.get('last')
+
+        next_dt_str = '-'
+        next_countdown = '-'
+        status = 'waiting'
+
+        if next_us and next_us > 0:
+            next_sec = next_us / 1e6
+            try:
+                next_dt = datetime.fromtimestamp(next_sec)
+                next_dt_str = next_dt.strftime('%Y-%m-%d %H:%M:%S')
+                diff = next_sec - now_ts
+                if diff > 0:
+                    mins = int(diff // 60)
+                    hours = int(mins // 60)
+                    days = int(hours // 24)
+                    if days > 0:
+                        next_countdown = f"dalam {days}h {hours % 24}j"
+                    elif hours > 0:
+                        next_countdown = f"dalam {hours}j {mins % 60}m"
+                    elif mins > 0:
+                        next_countdown = f"dalam {mins}m"
+                    else:
+                        next_countdown = f"dalam {int(diff)}s"
+                else:
+                    next_countdown = 'segera'
+                status = 'active'
+            except Exception:
+                pass
+        else:
+            status = 'inactive'
+
+        last_dt_str = '-'
+        last_elapsed = '-'
+        if last_us and last_us > 0:
+            last_sec = last_us / 1e6
+            try:
+                last_dt = datetime.fromtimestamp(last_sec)
+                last_dt_str = last_dt.strftime('%Y-%m-%d %H:%M:%S')
+                diff = now_ts - last_sec
+                if diff > 0:
+                    mins = int(diff // 60)
+                    hours = int(mins // 60)
+                    days = int(hours // 24)
+                    if days > 0:
+                        last_elapsed = f"{days}h lalu"
+                    elif hours > 0:
+                        last_elapsed = f"{hours}j lalu"
+                    elif mins > 0:
+                        last_elapsed = f"{mins}m lalu"
+                    else:
+                        last_elapsed = f"{int(diff)}s lalu"
+            except Exception:
+                pass
+
+        formatted_timers.append({
+            'unit': unit,
+            'activates': activates,
+            'next_time': next_dt_str,
+            'next_countdown': next_countdown,
+            'last_time': last_dt_str,
+            'last_elapsed': last_elapsed,
+            'status': status
+        })
+
+    return jsonify({
+        'success': True,
+        'timers': formatted_timers,
+        'count': len(formatted_timers)
+    })
+
+@app.route('/api/cron/test_run', methods=['POST'])
+@login_required
+def api_cron_test_run():
+    """Uji coba eksekusi (dry-run) perintah atau skrip dengan log output real-time"""
+    data = request.json or {}
+    command = (data.get('command') or '').strip()
+    user = (data.get('user') or 'root').strip()
+
+    if not command:
+        return jsonify({'success': False, 'error': 'Perintah (command) tidak boleh kosong'}), 400
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', user):
+        return jsonify({'success': False, 'error': 'Username tidak valid'}), 400
+
+    t0 = time.time()
+    exec_cmd = ['su', '-', user, '-c', command]
+    res = _run_scheduler_cmd(exec_cmd, timeout=15)
+    duration_ms = int((time.time() - t0) * 1000)
+
+    return jsonify({
+        'success': True,
+        'returncode': res.returncode,
+        'stdout': res.stdout,
+        'stderr': res.stderr,
+        'duration_ms': duration_ms,
+        'passed': res.returncode == 0
+    })
+
+
+# ============================================================
+# DRIVE HEALTH & S.M.A.R.T. INSPECTOR (smartctl, RAID & ZFS)
+# ============================================================
+
+def _run_smartctl_cmd(args, timeout=15):
+    """Jalankan smartctl pada host via eksekutor universal (nsenter / native)."""
+    return _run_host_cmd(['smartctl'] + list(args), timeout=timeout)
+
+def _discover_physical_drives():
+    """Deteksi drive fisik yang terpasang pada host secara dinamis"""
+    drives = []
+    res = _run_smartctl_cmd(['--scan', '-j'])
+    if res.stdout:
+        try:
+            data = json.loads(res.stdout)
+            for d in data.get('devices', []):
+                dev_name = d.get('name', '').strip()
+                if dev_name and not dev_name.startswith('/dev/loop') and not dev_name.startswith('/dev/ram'):
+                    drives.append({
+                        'device': dev_name,
+                        'name': os.path.basename(dev_name),
+                        'type': d.get('type', 'scsi'),
+                        'protocol': d.get('protocol', '')
+                    })
+        except Exception:
+            pass
+
+    if not drives:
+        res_lsblk = _run_scheduler_cmd(['lsblk', '-d', '-J', '-o', 'NAME,TYPE,ROTA,MODEL,TRAN,SIZE'])
+        if res_lsblk.stdout:
+            try:
+                blk_data = json.loads(res_lsblk.stdout)
+                for b in blk_data.get('blockdevices', []):
+                    bname = b.get('name', '')
+                    btype = b.get('type', '')
+                    if btype == 'disk' and not bname.startswith('loop') and not bname.startswith('ram'):
+                        drives.append({
+                            'device': f"/dev/{bname}",
+                            'name': bname,
+                            'type': 'nvme' if 'nvme' in bname else 'scsi',
+                            'protocol': 'NVMe' if 'nvme' in bname else 'SATA'
+                        })
+            except Exception:
+                pass
+
+    return drives
+
+def _format_smart_json(data, dev_path):
+    """Ekstraksi telemetri terstruktur dari output JSON smartctl"""
+    bname = os.path.basename(dev_path)
+    is_nvme = (data.get('device', {}).get('type') == 'nvme') or ('nvme' in bname.lower())
+
+    model = data.get('model_name') or data.get('device', {}).get('info_name') or bname
+    serial = data.get('serial_number') or 'N/A'
+    firmware = data.get('firmware_version') or 'N/A'
+    cap_bytes = data.get('user_capacity', {}).get('bytes') or data.get('nvme_total_capacity') or 0
+    cap_gb = f"{round(cap_bytes / (1024**3), 1)} GB" if cap_bytes else "N/A"
+
+    smart_status_obj = data.get('smart_status', {})
+    passed = smart_status_obj.get('passed', True)
+    health_status = 'PASSED' if passed else 'WARNING / FAILING'
+
+    temp_val = None
+    if 'temperature' in data and isinstance(data['temperature'], dict):
+        temp_val = data['temperature'].get('current')
+    elif 'nvme_smart_health_information_log' in data:
+        temp_val = data['nvme_smart_health_information_log'].get('temperature')
+
+    poh = 0
+    error_count = 0
+    nvme_stats = None
+    ata_attrs = []
+    pending_sectors = 0
+    reallocated_sectors = 0
+
+    if is_nvme:
+        log = data.get('nvme_smart_health_information_log', {})
+        poh = log.get('power_on_hours', 0)
+        error_count = log.get('media_errors', 0) + log.get('num_err_log_entries', 0)
+
+        units_written = log.get('data_units_written', 0)
+        tbw = round((units_written * 512000) / (1024**4), 2) if units_written else 0
+
+        units_read = log.get('data_units_read', 0)
+        tbr = round((units_read * 512000) / (1024**4), 2) if units_read else 0
+
+        percentage_used = log.get('percentage_used', 0)
+        available_spare = log.get('available_spare', 100)
+        spare_threshold = log.get('available_spare_threshold', 10)
+
+        nvme_stats = {
+            'percentage_used': percentage_used,
+            'tbw': tbw,
+            'tbr': tbr,
+            'available_spare': available_spare,
+            'available_spare_threshold': spare_threshold,
+            'critical_warning': log.get('critical_warning', 0),
+            'unsafe_shutdowns': log.get('unsafe_shutdowns', 0),
+            'media_errors': log.get('media_errors', 0),
+            'num_err_log_entries': log.get('num_err_log_entries', 0)
+        }
+    else:
+        table = data.get('ata_smart_attributes', {}).get('table', [])
+        for attr in table:
+            attr_id = attr.get('id')
+            attr_name = attr.get('name')
+            raw_val = attr.get('raw', {}).get('string') or str(attr.get('raw', {}).get('value', '0'))
+            val = attr.get('value')
+            worst = attr.get('worst')
+            thresh = attr.get('thresh')
+            when_failed = attr.get('when_failed', '-')
+
+            if attr_name == 'Power_On_Hours':
+                try:
+                    poh = int(raw_val.split()[0])
+                except Exception:
+                    pass
+            elif attr_name == 'Current_Pending_Sector':
+                try:
+                    pending_sectors = int(raw_val.split()[0])
+                    error_count += pending_sectors
+                except Exception:
+                    pass
+            elif attr_name == 'Reallocated_Sector_Ct':
+                try:
+                    reallocated_sectors = int(raw_val.split()[0])
+                    error_count += reallocated_sectors
+                except Exception:
+                    pass
+            elif attr_name in ('Offline_Uncorrectable', 'Reported_Uncorrect'):
+                try:
+                    error_count += int(raw_val.split()[0])
+                except Exception:
+                    pass
+
+            ata_attrs.append({
+                'id': attr_id,
+                'name': attr_name,
+                'value': val,
+                'worst': worst,
+                'thresh': thresh,
+                'raw': raw_val,
+                'when_failed': when_failed
+            })
+
+    selftest_status = 'Tidak ada tes aktif'
+    if is_nvme:
+        op = data.get('nvme_self_test_log', {}).get('current_self_test_operation', {})
+        selftest_status = op.get('string', 'No test in progress')
+    else:
+        st_obj = data.get('ata_smart_data', {}).get('self_test', {}).get('status', {})
+        selftest_status = st_obj.get('string', 'Completed or No test running')
+
+    is_healthy = passed and (error_count == 0 or (nvme_stats and nvme_stats['percentage_used'] < 90))
+
+    return {
+        'device': dev_path,
+        'name': bname,
+        'model': model,
+        'serial': serial,
+        'firmware': firmware,
+        'capacity_bytes': cap_bytes,
+        'capacity_gb': cap_gb,
+        'protocol': 'NVMe' if is_nvme else 'SATA',
+        'is_nvme': is_nvme,
+        'healthy': is_healthy,
+        'health_status': 'PASSED' if is_healthy else 'WARNING',
+        'temperature': temp_val,
+        'power_on_hours': poh,
+        'nvme_stats': nvme_stats,
+        'ata_attributes': ata_attrs,
+        'pending_sectors': pending_sectors,
+        'reallocated_sectors': reallocated_sectors,
+        'selftest_status': selftest_status,
+        'error_count': error_count,
+        'raw_json': data
+    }
+
+def _parse_drive_smart(dev_path):
+    """Membaca dan memparsing data telemetri S.M.A.R.T. untuk sebuah drive fisik"""
+    res = _run_smartctl_cmd(['-a', '-j', dev_path])
+    if res.stdout:
+        try:
+            data = json.loads(res.stdout)
+            return _format_smart_json(data, dev_path)
+        except Exception:
+            pass
+
+    bname = os.path.basename(dev_path)
+    return {
+        'device': dev_path,
+        'name': bname,
+        'model': 'Drive Fisik ' + bname,
+        'serial': 'N/A',
+        'firmware': 'N/A',
+        'capacity_bytes': 0,
+        'capacity_gb': 'N/A',
+        'protocol': 'NVMe' if 'nvme' in bname else 'SATA',
+        'is_nvme': 'nvme' in bname,
+        'healthy': True,
+        'health_status': 'PASSED',
+        'temperature': None,
+        'power_on_hours': 0,
+        'nvme_stats': None,
+        'ata_attributes': [],
+        'pending_sectors': 0,
+        'reallocated_sectors': 0,
+        'selftest_status': 'Tidak ada tes aktif',
+        'error_count': 0,
+        'raw_json': {}
+    }
+
+def _get_raid_and_zfs_status():
+    """Inspeksi status Software RAID mdadm dan ZFS pool"""
+    raid_arrays = []
+    res_md = _run_scheduler_cmd(['cat', '/proc/mdstat'])
+    if res_md.returncode == 0 and res_md.stdout:
+        lines = res_md.stdout.splitlines()
+        for i, l in enumerate(lines):
+            l = l.strip()
+            if l.startswith('md'):
+                parts = l.split()
+                md_name = parts[0]
+                status = parts[1] if len(parts) > 1 else 'unknown'
+                level = parts[2] if len(parts) > 2 else ''
+                devices = parts[3:] if len(parts) > 3 else []
+                detail_line = lines[i+1].strip() if i+1 < len(lines) else ''
+                raid_arrays.append({
+                    'name': md_name,
+                    'status': status,
+                    'level': level,
+                    'devices': devices,
+                    'detail': detail_line
+                })
+
+    zfs_pools = []
+    res_zfs = _run_scheduler_cmd(['zpool', 'list', '-H', '-o', 'name,size,alloc,free,frag,cap,health'])
+    if res_zfs.returncode == 0 and res_zfs.stdout:
+        for line in res_zfs.stdout.strip().splitlines():
+            p = line.split()
+            if len(p) >= 7:
+                zfs_pools.append({
+                    'name': p[0],
+                    'size': p[1],
+                    'alloc': p[2],
+                    'free': p[3],
+                    'frag': p[4],
+                    'capacity': p[5],
+                    'health': p[6]
+                })
+
+    return {
+        'raid_active': len(raid_arrays) > 0,
+        'raid_arrays': raid_arrays,
+        'zfs_active': len(zfs_pools) > 0,
+        'zfs_pools': zfs_pools
+    }
+
+
+@app.route('/smart')
+@login_required
+def drive_health_page():
+    """Halaman Drive Health & S.M.A.R.T. Inspector"""
+    return render_template('drive_health.html')
+
+@app.route('/api/smart/summary')
+@login_required
+def api_smart_summary():
+    """Ringkasan status kesehatan seluruh drive fisik host"""
+    raw_drives = _discover_physical_drives()
+    drives_data = []
+    healthy_count = 0
+    warning_count = 0
+    max_temp = 0
+
+    for d in raw_drives:
+        dev_path = d['device']
+        parsed = _parse_drive_smart(dev_path)
+        drives_data.append(parsed)
+
+        if parsed.get('healthy'):
+            healthy_count += 1
+        else:
+            warning_count += 1
+
+        t = parsed.get('temperature')
+        if t and isinstance(t, (int, float)) and t > max_temp:
+            max_temp = t
+
+    raid_info = _get_raid_and_zfs_status()
+
+    return jsonify({
+        'success': True,
+        'total_drives': len(drives_data),
+        'healthy_count': healthy_count,
+        'warning_count': warning_count,
+        'max_temperature': max_temp if max_temp > 0 else None,
+        'drives': drives_data,
+        'raid': raid_info
+    })
+
+@app.route('/api/smart/detail/<disk_name>')
+@login_required
+def api_smart_detail(disk_name):
+    """Mendapatkan rincian telemetri S.M.A.R.T. lengkap untuk sebuah disk"""
+    disk_name = (disk_name or '').strip()
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', disk_name):
+        return jsonify({'success': False, 'error': 'Nama disk tidak valid'}), 400
+
+    dev_path = f"/dev/{disk_name}"
+    data = _parse_drive_smart(dev_path)
+    return jsonify({
+        'success': True,
+        'drive': data
+    })
+
+@app.route('/api/smart/test/start', methods=['POST'])
+@login_required
+def api_smart_test_start():
+    """Memulai eksekusi S.M.A.R.T. Self-Test (Short / Long)"""
+    data = request.json or {}
+    device = (data.get('device') or '').strip()
+    test_type = (data.get('type') or 'short').strip().lower()
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', device):
+        return jsonify({'success': False, 'error': 'Nama device tidak valid'}), 400
+
+    if test_type not in ('short', 'long'):
+        return jsonify({'success': False, 'error': 'Tipe self-test tidak valid (short atau long)'}), 400
+
+    dev_path = f"/dev/{device}"
+    res = _run_smartctl_cmd(['-t', test_type, dev_path])
+
+    if res.returncode == 0 or 'has begun' in res.stdout.lower() or 'routine begun' in res.stdout.lower():
+        return jsonify({
+            'success': True,
+            'message': f"S.M.A.R.T. {test_type.upper()} Self-Test berhasil dimulai pada {device}",
+            'output': res.stdout
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': res.stderr or res.stdout or 'Gagal memulai S.M.A.R.T. Self-Test'
+        }), 500
+
+@app.route('/api/smart/test/abort', methods=['POST'])
+@login_required
+def api_smart_test_abort():
+    """Membatalkan eksekusi S.M.A.R.T. Self-Test yang sedang berjalan"""
+    data = request.json or {}
+    device = (data.get('device') or '').strip()
+
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', device):
+        return jsonify({'success': False, 'error': 'Nama device tidak valid'}), 400
+
+    dev_path = f"/dev/{device}"
+    res = _run_smartctl_cmd(['-X', dev_path])
+
+    if res.returncode == 0 or 'aborted' in res.stdout.lower():
+        return jsonify({
+            'success': True,
+            'message': f"S.M.A.R.T. Self-Test pada {device} berhasil dibatalkan",
+            'output': res.stdout
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': res.stderr or res.stdout or 'Gagal membatalkan S.M.A.R.T. Self-Test'
+        }), 500
+
+@app.route('/api/smart/raid')
+@login_required
+def api_smart_raid():
+    """Status Software RAID mdadm dan ZFS pool"""
+    raid_info = _get_raid_and_zfs_status()
+    return jsonify({
+        'success': True,
+        'raid': raid_info
+    })
+
+
+# ==========================================
+# PACKAGE & OS UPDATE MANAGER (UNIVERSAL MULTI-DISTRO)
+# Mendukung: APT (Debian/Ubuntu), DNF/YUM (Fedora/RHEL/Rocky),
+#            Pacman (Arch/Garuda/Manjaro), APK (Alpine), Zypper (openSUSE)
+# ==========================================
+
+_DETECTED_PKG_MANAGER = None
+_KERNEL_PKG_PATTERNS = (
+    'linux-image', 'linux-generic', 'linux-lts', 'linux-zen', 'linux-hardened',
+    'kernel-core', 'kernel-default', 'kernel-modules'
+)
+
+
+def _run_apt_cmd(args, timeout=120):
+    """Menjalankan perintah package manager di host via eksekutor universal (nsenter / native)."""
+    if not isinstance(args, list):
+        args = [args]
+    env = os.environ.copy()
+    env['DEBIAN_FRONTEND'] = 'noninteractive'
+    env['LANG'] = 'C.UTF-8'
+    res = _run_host_cmd(args, timeout=timeout, env=env)
+    return res.returncode, res.stdout, res.stderr
+
+
+def _detect_distro_info():
+    """Deteksi nama dan ID distribusi Linux host dari /etc/os-release secara dinamis."""
+    host_root = os.environ.get('HOST_ROOT', '/host/root')
+    candidates = [os.path.join(host_root, 'etc', 'os-release'), '/etc/os-release']
+    info = {'id': 'linux', 'pretty_name': f"{platform.system()} {platform.release()}"}
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('PRETTY_NAME='):
+                            info['pretty_name'] = line.split('=', 1)[1].strip().strip('"')
+                        elif line.startswith('ID='):
+                            info['id'] = line.split('=', 1)[1].strip().strip('"').lower()
+                return info
+            except Exception:
+                pass
+    return info
+
+
+def _detect_package_manager(force_refresh=False):
+    """Auto-deteksi package manager utama host (apt/dnf/yum/pacman/apk/zypper)."""
+    global _DETECTED_PKG_MANAGER
+    if _DETECTED_PKG_MANAGER and not force_refresh:
+        return _DETECTED_PKG_MANAGER
+
+    checks = [
+        ('apt-get', 'apt'),
+        ('dnf', 'dnf'),
+        ('yum', 'yum'),
+        ('pacman', 'pacman'),
+        ('apk', 'apk'),
+        ('zypper', 'zypper'),
+    ]
+    for binary, pm_name in checks:
+        res = _run_host_cmd(['which', binary], timeout=4, include_pid=False)
+        if res.returncode == 0 and res.stdout.strip():
+            _DETECTED_PKG_MANAGER = pm_name
+            return pm_name
+
+    _DETECTED_PKG_MANAGER = 'unknown'
+    return 'unknown'
+
+
+def _build_pkg_refresh_cmd(pm):
+    """Susun perintah refresh repository cache sesuai package manager host."""
+    mapping = {
+        'apt': ['apt-get', 'update'],
+        'dnf': ['dnf', 'makecache', '-q'],
+        'yum': ['yum', 'makecache', '-q'],
+        'pacman': ['pacman', '-Sy', '--noconfirm'],
+        'apk': ['apk', 'update'],
+        'zypper': ['zypper', '--non-interactive', 'refresh'],
+    }
+    return mapping.get(pm)
+
+
+def _build_pkg_install_cmd(pm, package_name):
+    """Susun perintah instalasi satu paket lintas distro Linux."""
+    mapping = {
+        'apt': ['apt-get', 'install', '-y', package_name],
+        'dnf': ['dnf', 'install', '-y', package_name],
+        'yum': ['yum', 'install', '-y', package_name],
+        'pacman': ['pacman', '-S', '--noconfirm', package_name],
+        'apk': ['apk', 'add', '--no-cache', package_name],
+        'zypper': ['zypper', '--non-interactive', 'install', package_name],
+    }
+    return mapping.get(pm)
+
+
+def _build_pkg_upgrade_cmd(pm, packages=None, dry_run=False):
+    """Susun perintah simulasi dry-run atau upgrade paket lintas distro Linux."""
+    has_pkgs = bool(packages and len(packages) > 0)
+    if pm == 'apt':
+        if has_pkgs:
+            return ['apt-get', 'install', '--only-upgrade', '-y'] + (['-s'] if dry_run else []) + list(packages)
+        return ['apt-get', 'upgrade', '-y'] + (['-s'] if dry_run else [])
+    if pm in ('dnf', 'yum'):
+        base = [pm, 'upgrade', '--assumeno' if dry_run else '-y']
+        return base + list(packages) if has_pkgs else base
+    if pm == 'pacman':
+        if has_pkgs:
+            return ['pacman', '-S', '--noconfirm'] + (['--print'] if dry_run else []) + list(packages)
+        return ['pacman', '-Su', '--noconfirm'] + (['--print'] if dry_run else [])
+    if pm == 'apk':
+        base = ['apk', 'upgrade'] + (['--simulate'] if dry_run else [])
+        return base + list(packages) if has_pkgs else base
+    if pm == 'zypper':
+        base = ['zypper', '--non-interactive', 'update'] + (['--dry-run'] if dry_run else [])
+        return base + list(packages) if has_pkgs else base
+    return None
+
+
+def _parse_apt_upgradable(stdout):
+    """Parser output `apt list --upgradable`."""
+    pkgs = []
+    pattern = r'^([^/]+)/(\S+)\s+(\S+)\s+(\S+)\s+\[upgradable from:\s*([^\]]+)\]'
+    for line in (stdout or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('Listing...') or '[' not in line:
+            continue
+        m = re.match(pattern, line)
+        if m:
+            name, repo, new_ver, arch, cur_ver = m.groups()
+            pkgs.append({
+                'name': name,
+                'repo': repo,
+                'new_version': new_ver,
+                'arch': arch,
+                'current_version': cur_ver,
+                'is_security': 'security' in repo.lower()
+            })
+    return pkgs
+
+
+def _parse_dnf_upgradable(stdout, security_names=None):
+    """Parser output `dnf/yum check-update -q`."""
+    sec_set = set(security_names or ())
+    pkgs = []
+    for line in (stdout or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith(('Last metadata', 'Obsoleting', 'Security:')):
+            continue
+        parts = line.split()
+        if len(parts) < 3 or '.' not in parts[0]:
+            continue
+        name, arch = parts[0].rsplit('.', 1)
+        new_ver = parts[1]
+        repo = parts[2]
+        pkgs.append({
+            'name': name,
+            'repo': repo,
+            'new_version': new_ver,
+            'arch': arch,
+            'current_version': 'installed',
+            'is_security': ('security' in repo.lower()) or (name in sec_set)
+        })
+    return pkgs
+
+
+def _parse_pacman_upgradable(stdout):
+    """Parser output `pacman -Qu` atau `checkupdates`."""
+    arch_default = platform.machine() or 'x86_64'
+    sec_hints = ('openssl', 'openssh', 'linux', 'glibc', 'sudo', 'systemd', 'ca-certificates', 'gnutls', 'curl', 'gnupg')
+    pkgs = []
+    pattern = r'^(\S+)\s+(\S+)\s+->\s+(\S+)'
+    for line in (stdout or '').splitlines():
+        m = re.match(pattern, line.strip())
+        if m:
+            name, cur_ver, new_ver = m.groups()
+            pkgs.append({
+                'name': name,
+                'repo': 'pacman',
+                'new_version': new_ver,
+                'arch': arch_default,
+                'current_version': cur_ver,
+                'is_security': any(h in name.lower() for h in sec_hints)
+            })
+    return pkgs
+
+
+def _parse_apk_upgradable(stdout):
+    """Parser output `apk version -l '<'` (Alpine Linux)."""
+    arch_default = platform.machine() or 'x86_64'
+    pkgs = []
+    for line in (stdout or '').splitlines():
+        line = line.strip()
+        if '<' not in line or line.startswith('Installed:'):
+            continue
+        left, right = [x.strip() for x in line.split('<', 1)]
+        m = re.match(r'^(.+?)-([0-9][^-]*(?:-r[0-9]+)?)$', left)
+        if m:
+            name, cur_ver = m.groups()
+        else:
+            name, cur_ver = left, 'installed'
+        new_ver = right.split()[0] if right else ''
+        pkgs.append({
+            'name': name,
+            'repo': 'alpine',
+            'new_version': new_ver,
+            'arch': arch_default,
+            'current_version': cur_ver,
+            'is_security': any(h in name.lower() for h in ('openssl', 'musl', 'openssh', 'busybox', 'linux', 'ca-certificates'))
+        })
+    return pkgs
+
+
+def _parse_zypper_upgradable(stdout):
+    """Parser output `zypper --non-interactive list-updates`."""
+    pkgs = []
+    for line in (stdout or '').splitlines():
+        if '|' not in line:
+            continue
+        cols = [c.strip() for c in line.split('|')]
+        if len(cols) >= 6 and cols[0] == 'v':
+            repo, name, cur_ver, new_ver, arch = cols[1], cols[2], cols[3], cols[4], cols[5]
+            pkgs.append({
+                'name': name,
+                'repo': repo,
+                'new_version': new_ver,
+                'arch': arch,
+                'current_version': cur_ver,
+                'is_security': 'security' in repo.lower()
+            })
+    return pkgs
+
+
+def _parse_upgradable_packages(pm=None):
+    """Mengambil dan mem-parsing daftar paket upgradable secara lintas distro."""
+    pm = pm or _detect_package_manager()
+    if pm == 'apt':
+        ret, stdout, _ = _run_apt_cmd(['apt', 'list', '--upgradable'], timeout=30)
+        return _parse_apt_upgradable(stdout) if (ret == 0 or stdout) else []
+    if pm in ('dnf', 'yum'):
+        ret, stdout, _ = _run_apt_cmd([pm, 'check-update', '-q'], timeout=45)
+        if ret not in (0, 100) and not stdout:
+            return []
+        sec_names = set()
+        if pm == 'dnf':
+            s_ret, s_out, _ = _run_apt_cmd(['dnf', 'updateinfo', 'list', 'security', '-q'], timeout=25)
+            if s_ret == 0 and s_out:
+                for line in s_out.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        pkg_spec = parts[2]
+                        sec_names.add(pkg_spec.rsplit('-', 2)[0] if '-' in pkg_spec else pkg_spec)
+        return _parse_dnf_upgradable(stdout, security_names=sec_names)
+    if pm == 'pacman':
+        ret, stdout, _ = _run_apt_cmd(['pacman', '-Qu'], timeout=30)
+        return _parse_pacman_upgradable(stdout) if stdout else []
+    if pm == 'apk':
+        ret, stdout, _ = _run_apt_cmd(['apk', 'version', '-l', '<'], timeout=30)
+        return _parse_apk_upgradable(stdout) if (ret == 0 or stdout) else []
+    if pm == 'zypper':
+        ret, stdout, _ = _run_apt_cmd(['zypper', '--non-interactive', 'list-updates'], timeout=45)
+        return _parse_zypper_upgradable(stdout) if (ret == 0 or stdout) else []
+    return []
+
+
+def _get_reboot_status(pm=None):
+    """Memeriksa kebutuhan reboot lintas distro (Debian/Ubuntu, RHEL/Fedora, Arch/Universal)."""
+    pm = pm or _detect_package_manager()
+    # 1. Debian / Ubuntu standard flag
+    ret, _, _ = _run_apt_cmd(['test', '-f', '/var/run/reboot-required'], timeout=5)
+    if ret == 0:
+        reboot_pkgs = []
+        ret_pkgs, stdout_pkgs, _ = _run_apt_cmd(['cat', '/var/run/reboot-required.pkgs'], timeout=5)
+        if ret_pkgs == 0 and stdout_pkgs:
+            reboot_pkgs = [p.strip() for p in stdout_pkgs.splitlines() if p.strip()]
+        return True, reboot_pkgs
+
+    # 2. RHEL / Fedora / Rocky (dnf-utils / yum-utils)
+    if pm in ('dnf', 'yum'):
+        ret_nr, out_nr, _ = _run_apt_cmd(['needs-restarting', '-r'], timeout=10)
+        if ret_nr == 1:
+            return True, ['kernel/core-libraries (needs-restarting)']
+
+    # 3. Universal kernel-module mismatch check (Arch / Alpine / openSUSE / generic)
+    ret_k, out_k, _ = _run_apt_cmd(['uname', '-r'], timeout=5)
+    running_k = out_k.strip() if ret_k == 0 else ''
+    if running_k:
+        ret_mod, _, _ = _run_apt_cmd(['test', '-d', f'/lib/modules/{running_k}'], timeout=5)
+        ret_base, out_base, _ = _run_apt_cmd(['ls', '-1', '/lib/modules'], timeout=5)
+        if ret_mod != 0 and ret_base == 0 and out_base.strip():
+            return True, [f'kernel-upgrade (running: {running_k})']
+
+    return False, []
+
+
+def _get_kernel_info(pm=None):
+    """Mendapatkan informasi kernel berjalan, daftar kernel terinstal, dan status auto-update lintas distro."""
+    pm = pm or _detect_package_manager()
+    ret_k, out_k, _ = _run_apt_cmd(['uname', '-r'], timeout=5)
+    running_kernel = out_k.strip() if (ret_k == 0 and out_k.strip()) else (platform.release() or 'Unknown')
+
+    installed_kernels = []
+    if pm == 'apt':
+        ret_dpkg, out_dpkg, _ = _run_apt_cmd(['dpkg', '-l', 'linux-image-[0-9]*'], timeout=10)
+        if ret_dpkg == 0 and out_dpkg:
+            for line in out_dpkg.splitlines():
+                if line.startswith('ii'):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        installed_kernels.append(parts[1].replace('linux-image-', ''))
+    elif pm in ('dnf', 'yum', 'zypper'):
+        ret_rpm, out_rpm, _ = _run_apt_cmd(['rpm', '-q', '--qf', '%{VERSION}-%{RELEASE}.%{ARCH}\n', 'kernel', 'kernel-core', 'kernel-default'], timeout=10)
+        if out_rpm:
+            for line in out_rpm.splitlines():
+                line = line.strip()
+                if line and 'is not installed' not in line and line not in installed_kernels:
+                    installed_kernels.append(line)
+
+    # Universal fallback (Arch / Alpine / generic): /lib/modules
+    if not installed_kernels:
+        ret_m, out_m, _ = _run_apt_cmd(['ls', '-1', '/lib/modules'], timeout=5)
+        if ret_m == 0 and out_m:
+            installed_kernels = [k.strip() for k in out_m.splitlines() if k.strip()]
+
+    # Auto-update service check lintas distro
+    auto_svc_map = {
+        'apt': 'unattended-upgrades.service',
+        'dnf': 'dnf-automatic.timer',
+        'yum': 'yum-cron.service',
+    }
+    auto_svc = auto_svc_map.get(pm, 'manual')
+    auto_updates = False
+    if auto_svc != 'manual':
+        ret_u, out_u, _ = _run_apt_cmd(['systemctl', 'is-active', auto_svc], timeout=5)
+        auto_updates = (ret_u == 0 and out_u.strip() == 'active')
+
+    return {
+        'running_kernel': running_kernel,
+        'installed_kernels': installed_kernels,
+        'auto_updates_active': auto_updates,
+        'auto_update_service': auto_svc
+    }
+
+
+@app.route('/packages')
+@login_required
+def packages_page():
+    """Halaman Package & OS Update Manager"""
+    return render_template('packages.html')
+
+
+@app.route('/api/packages/summary')
+@login_required
+def api_packages_summary():
+    """Ringkasan status paket, keamanan, distro, dan kernel host secara lintas distro"""
+    pm = _detect_package_manager()
+    distro = _detect_distro_info()
+    pkgs = _parse_upgradable_packages(pm=pm)
+    total_upgradable = len(pkgs)
+    security_count = sum(1 for p in pkgs if p['is_security'])
+    regular_count = total_upgradable - security_count
+
+    reboot_required, reboot_pkgs = _get_reboot_status(pm=pm)
+    kernel_info = _get_kernel_info(pm=pm)
+
+    kernel_upgrade_available = any(
+        p['name'] in ('linux', 'kernel') or any(pat in p['name'] for pat in _KERNEL_PKG_PATTERNS)
+        for p in pkgs
+    )
+
+    return jsonify({
+        'success': True,
+        'package_manager': pm,
+        'distro_name': distro.get('pretty_name', 'Linux'),
+        'distro_id': distro.get('id', 'linux'),
+        'total_upgradable': total_upgradable,
+        'security_count': security_count,
+        'regular_count': regular_count,
+        'reboot_required': reboot_required,
+        'reboot_pkgs': reboot_pkgs,
+        'kernel_upgrade_available': kernel_upgrade_available,
+        'running_kernel': kernel_info.get('running_kernel', 'Unknown'),
+        'installed_kernels': kernel_info.get('installed_kernels', []),
+        'auto_updates_active': kernel_info.get('auto_updates_active', False),
+        'auto_update_service': kernel_info.get('auto_update_service', 'manual')
+    })
+
+
+@app.route('/api/packages/list')
+@login_required
+def api_packages_list():
+    """Daftar paket yang dapat diperbarui (upgradable) secara lintas distro"""
+    pm = _detect_package_manager()
+    pkgs = _parse_upgradable_packages(pm=pm)
+    return jsonify({
+        'success': True,
+        'package_manager': pm,
+        'count': len(pkgs),
+        'packages': pkgs
+    })
+
+
+@app.route('/api/packages/refresh', methods=['POST'])
+@login_required
+def api_packages_refresh():
+    """Memperbarui cache repository paket host (lintas distro)"""
+    pm = _detect_package_manager()
+    cmd = _build_pkg_refresh_cmd(pm)
+    if not cmd:
+        return jsonify({
+            'success': False,
+            'package_manager': pm,
+            'returncode': 1,
+            'output': 'Package manager Linux tidak terdeteksi atau belum didukung pada host ini.'
+        }), 400
+
+    ret, stdout, stderr = _run_apt_cmd(cmd, timeout=120)
+    output = stdout + ('\n' + stderr if stderr else '')
+    return jsonify({
+        'success': (ret == 0),
+        'package_manager': pm,
+        'command': ' '.join(cmd),
+        'returncode': ret,
+        'output': output
+    }), (200 if ret == 0 else 500)
+
+
+@app.route('/api/packages/upgrade', methods=['POST'])
+@login_required
+def api_packages_upgrade():
+    """Mengeksekusi simulasi dry-run atau upgrade nyata paket host secara lintas distro"""
+    data = request.json or {}
+    dry_run = bool(data.get('dry_run', False))
+    packages = data.get('packages')  # list of package names, or None for all
+
+    clean_pkgs = None
+    if packages and isinstance(packages, list) and len(packages) > 0:
+        clean_pkgs = []
+        for p in packages:
+            p_clean = str(p).strip()
+            if re.match(r'^[a-zA-Z0-9_\.\+:-]+$', p_clean):
+                clean_pkgs.append(p_clean)
+
+        if not clean_pkgs:
+            return jsonify({'success': False, 'error': 'Daftar nama paket tidak valid'}), 400
+
+    pm = _detect_package_manager()
+    cmd = _build_pkg_upgrade_cmd(pm, packages=clean_pkgs, dry_run=dry_run)
+    if not cmd:
+        return jsonify({
+            'success': False,
+            'package_manager': pm,
+            'error': 'Package manager Linux tidak terdeteksi pada host ini'
+        }), 400
+
+    ret, stdout, stderr = _run_apt_cmd(cmd, timeout=300)
+    # Pada dnf/yum dengan --assumeno, exit code 1 adalah hasil normal dry-run setelah menampilkan daftar transaksi
+    is_ok = (ret == 0) or (dry_run and pm in ('dnf', 'yum') and ret == 1 and bool(stdout))
+    output = stdout + ('\n' + stderr if stderr else '')
+
+    return jsonify({
+        'success': is_ok,
+        'dry_run': dry_run,
+        'package_manager': pm,
+        'command': ' '.join(cmd),
+        'returncode': ret,
+        'output': output
+    }), (200 if is_ok else 500)
+
+
+# ==========================================
+# ALERTING & NOTIFICATION ENGINE (UNIVERSAL MULTI-CHANNEL)
+# ==========================================
+
+ALERT_CONFIG_FILE = os.path.join(DATA_DIR, 'alert_config.json')
+ALERT_HISTORY_FILE = os.path.join(DATA_DIR, 'alert_history.json')
+
+DEFAULT_ALERT_CONFIG = {
+    'channel': 'telegram',  # 'telegram', 'whatsapp', 'both', 'webhook'
+    'telegram': {
+        'enabled': True,
+        'bot_token': '',
+        'chat_id': ''
+    },
+    'whatsapp': {
+        'enabled': False,
+        'gateway_url': 'http://127.0.0.1:3000/send',
+        'target_phone': ''
+    },
+    'webhook': {
+        'enabled': False,
+        'url': ''
+    },
+    'rules': {
+        'cpu_threshold': 90,
+        'cpu_enabled': True,
+        'ram_threshold': 85,
+        'ram_enabled': True,
+        'disk_threshold': 90,
+        'disk_enabled': True,
+        'smart_warning_enabled': True,
+        'service_failure_enabled': True,
+        'reboot_required_enabled': True
+    }
+}
+
+
+def _load_alert_config():
+    """Memuat konfigurasi notifikasi dengan fallback default aman."""
+    if os.path.exists(ALERT_CONFIG_FILE):
+        try:
+            with open(ALERT_CONFIG_FILE, 'r') as f:
+                cfg = json.load(f)
+                merged = json.loads(json.dumps(DEFAULT_ALERT_CONFIG))
+                for k, v in cfg.items():
+                    if isinstance(v, dict) and k in merged:
+                        merged[k].update(v)
+                    else:
+                        merged[k] = v
+                return merged
+        except Exception as e:
+            print("Error loading alert config:", e)
+    return json.loads(json.dumps(DEFAULT_ALERT_CONFIG))
+
+
+def _save_alert_config(config):
+    """Menyimpan konfigurasi notifikasi ke file JSON."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(ALERT_CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        print("Error saving alert config:", e)
+        return False
+
+
+def _load_alert_history():
+    """Memuat riwayat pengiriman notifikasi."""
+    if os.path.exists(ALERT_HISTORY_FILE):
+        try:
+            with open(ALERT_HISTORY_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print("Error loading alert history:", e)
+    return []
+
+
+def _append_alert_history(entry):
+    """Mencatat entri pengiriman notifikasi baru ke riwayat (maks 100)."""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        history = _load_alert_history()
+        history.insert(0, entry)
+        history = history[:100]
+        with open(ALERT_HISTORY_FILE, 'w') as f:
+            json.dump(history, f, indent=2)
+        return True
+    except Exception as e:
+        print("Error appending alert history:", e)
+        return False
+
+
+def _send_telegram_notification(bot_token, chat_id, message):
+    """Mengirim pesan notifikasi via Telegram Bot API."""
+    if not bot_token or not chat_id:
+        return False, "Bot Token atau Chat ID tidak boleh kosong"
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": str(chat_id).strip(),
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=12)
+        data = res.json()
+        if data.get("ok"):
+            return True, "Pesan berhasil terkirim ke Telegram"
+        return False, data.get("description", f"Telegram error: {res.status_code}")
+    except requests.exceptions.Timeout:
+        return False, "Koneksi ke Telegram API timeout (12 detik)"
+    except Exception as e:
+        return False, str(e)
+
+
+def _send_http_with_host_fallback(url, payload, headers=None, timeout=12):
+    """
+    Kirim HTTP POST. Jika target mengarah ke loopback (127.0.0.1 / localhost) dan
+    berjalan di dalam kontainer Docker, lakukan eksekusi langsung ke host network
+    namespace via nsenter + curl agar dapat menjangkau daemon port host (mis. WA bridge port 3000).
+    """
+    url_clean = url.strip()
+    is_loopback = ('127.0.0.1' in url_clean or 'localhost' in url_clean)
+
+    # 1. Jika loopback dan container memiliki kapabilitas nsenter, langsung bypass via host namespace
+    if is_loopback and _can_use_nsenter():
+        try:
+            cmd = [
+                'nsenter', '-t', '1', '-m', '-u', '-i', '-n', '--',
+                '/usr/bin/curl', '-s', '-S',
+                '-w', '\n__HTTP_CODE__:%{http_code}',
+                '-X', 'POST',
+                '-H', 'Content-Type: application/json',
+                '-d', json.dumps(payload),
+                url_clean,
+                '--connect-timeout', str(min(timeout, 8)),
+                '--max-time', str(timeout)
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 2)
+            stdout = res.stdout
+            if '__HTTP_CODE__:' in stdout:
+                body, code_str = stdout.rsplit('__HTTP_CODE__:', 1)
+                http_code = int(code_str.strip()) if code_str.strip().isdigit() else 0
+                if 200 <= http_code < 300:
+                    return True, http_code, body
+                return False, http_code, body or res.stderr
+            if res.returncode != 0:
+                if 'Connection refused' in res.stderr or 'Failed to connect' in res.stderr:
+                    return False, 502, "Koneksi ditolak oleh host (Connection refused). Gateway lokal tidak aktif atau port belum berjalan."
+                return False, 500, res.stderr or "Eksekusi curl host gagal"
+            return True, 200, stdout
+        except subprocess.TimeoutExpired:
+            return False, 408, "Host curl timeout (12 detik)"
+        except Exception as e:
+            return False, 500, f"Host fallback error: {str(e)}"
+
+    # 2. Direct requests via Python
+    try:
+        req_headers = headers or {"Content-Type": "application/json"}
+        res = requests.post(url_clean, json=payload, headers=req_headers, timeout=timeout)
+        if 200 <= res.status_code < 300:
+            return True, res.status_code, res.text
+        return False, res.status_code, res.text
+    except requests.exceptions.Timeout:
+        return False, 408, "Koneksi gateway timeout (12 detik)"
+    except requests.exceptions.ConnectionError:
+        return False, 502, "Koneksi ditolak (Connection refused). Gateway offline atau URL tidak dapat dijangkau."
+    except Exception as e:
+        return False, 500, str(e)
+
+
+def _send_whatsapp_notification(gateway_url, target_phone, message):
+    """Mengirim pesan notifikasi via WhatsApp Bridge API."""
+    if not gateway_url or not target_phone:
+        return False, "Gateway URL atau Nomor WhatsApp tidak boleh kosong"
+
+    clean_phone = re.sub(r'\D', '', str(target_phone))
+    if not clean_phone:
+        return False, "Format nomor telepon tidak valid"
+
+    payload = {
+        "chatId": clean_phone,
+        "number": clean_phone,
+        "message": message
+    }
+    ok, code, text = _send_http_with_host_fallback(gateway_url, payload, timeout=12)
+    if ok:
+        return True, f"Pesan terkirim ke WhatsApp ({code})"
+    return False, f"WhatsApp Gateway ({code}): {text[:140]}"
+
+
+def _send_webhook_notification(webhook_url, message):
+    """Mengirim notifikasi via Generic Webhook (Discord / Slack / Custom)."""
+    if not webhook_url:
+        return False, "Webhook URL tidak boleh kosong"
+
+    payload = {
+        "content": message,
+        "text": message,
+        "source": "Eka Dashboard Alert Engine"
+    }
+    headers = {
+        "User-Agent": "EkaDashboard-AlertEngine/1.0"
+    }
+    ok, code, text = _send_http_with_host_fallback(webhook_url, payload, headers=headers, timeout=12)
+    if ok:
+        return True, f"Webhook berhasil (HTTP {code})"
+    return False, f"Webhook ({code}): {text[:140]}"
+
+
+def _dispatch_alert(channel, message, config=None):
+    """Mengirim notifikasi ke satu atau lebih kanal dan mencatat riwayat."""
+    if config is None:
+        config = _load_alert_config()
+
+    target_channel = channel or config.get('channel', 'telegram')
+    results = []
+
+    # 1. Telegram
+    if target_channel in ['telegram', 'both', 'all']:
+        tg = config.get('telegram', {})
+        ok, msg = _send_telegram_notification(tg.get('bot_token'), tg.get('chat_id'), message)
+        results.append({'channel': 'Telegram', 'success': ok, 'detail': msg})
+
+    # 2. WhatsApp
+    if target_channel in ['whatsapp', 'both', 'all']:
+        wa = config.get('whatsapp', {})
+        ok, msg = _send_whatsapp_notification(wa.get('gateway_url'), wa.get('target_phone'), message)
+        results.append({'channel': 'WhatsApp', 'success': ok, 'detail': msg})
+
+    # 3. Webhook
+    if target_channel in ['webhook', 'all']:
+        wh = config.get('webhook', {})
+        ok, msg = _send_webhook_notification(wh.get('url'), message)
+        results.append({'channel': 'Webhook', 'success': ok, 'detail': msg})
+
+    overall_success = any(r['success'] for r in results) if results else False
+
+    # Log riwayat
+    entry = {
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "channel": target_channel,
+        "message": message[:200] + '...' if len(message) > 200 else message,
+        "success": overall_success,
+        "results": results
+    }
+    _append_alert_history(entry)
+
+    return overall_success, results
+
+
+@app.route('/alerts')
+@login_required
+def alerts_page():
+    """Halaman Alerting & Notification Engine"""
+    return render_template('alerts.html')
+
+
+@app.route('/api/alerts/config', methods=['GET', 'POST'])
+@login_required
+def api_alerts_config():
+    """Mengambil atau menyimpan konfigurasi notifikasi"""
+    if request.method == 'GET':
+        cfg = _load_alert_config()
+        history = _load_alert_history()
+        total_sent = len(history)
+        success_count = sum(1 for h in history if h.get('success'))
+        failure_count = total_sent - success_count
+        return jsonify({
+            'success': True,
+            'config': cfg,
+            'stats': {
+                'total_sent': total_sent,
+                'success_count': success_count,
+                'failure_count': failure_count,
+                'last_alert': history[0] if history else None
+            }
+        })
+
+    # POST: Simpan konfigurasi
+    data = request.json or {}
+    current_cfg = _load_alert_config()
+
+    # Update field utama
+    if 'channel' in data and data['channel'] in ['telegram', 'whatsapp', 'both', 'webhook', 'all']:
+        current_cfg['channel'] = data['channel']
+
+    if 'telegram' in data and isinstance(data['telegram'], dict):
+        current_cfg['telegram']['enabled'] = bool(data['telegram'].get('enabled', current_cfg['telegram'].get('enabled')))
+        if 'bot_token' in data['telegram']:
+            current_cfg['telegram']['bot_token'] = str(data['telegram']['bot_token']).strip()
+        if 'chat_id' in data['telegram']:
+            current_cfg['telegram']['chat_id'] = str(data['telegram']['chat_id']).strip()
+
+    if 'whatsapp' in data and isinstance(data['whatsapp'], dict):
+        current_cfg['whatsapp']['enabled'] = bool(data['whatsapp'].get('enabled', current_cfg['whatsapp'].get('enabled')))
+        if 'gateway_url' in data['whatsapp']:
+            current_cfg['whatsapp']['gateway_url'] = str(data['whatsapp']['gateway_url']).strip()
+        if 'target_phone' in data['whatsapp']:
+            current_cfg['whatsapp']['target_phone'] = str(data['whatsapp']['target_phone']).strip()
+
+    if 'webhook' in data and isinstance(data['webhook'], dict):
+        current_cfg['webhook']['enabled'] = bool(data['webhook'].get('enabled', current_cfg['webhook'].get('enabled')))
+        if 'url' in data['webhook']:
+            current_cfg['webhook']['url'] = str(data['webhook']['url']).strip()
+
+    if 'rules' in data and isinstance(data['rules'], dict):
+        for r_key, r_val in data['rules'].items():
+            if r_key in current_cfg['rules']:
+                current_cfg['rules'][r_key] = r_val
+
+    ok = _save_alert_config(current_cfg)
+    return jsonify({
+        'success': ok,
+        'config': current_cfg
+    }), (200 if ok else 500)
+
+
+@app.route('/api/alerts/test', methods=['POST'])
+@login_required
+def api_alerts_test():
+    """Mengirim pesan notifikasi uji coba ke kanal yang dipilih"""
+    data = request.json or {}
+    channel = data.get('channel')  # 'telegram', 'whatsapp', 'both', 'webhook', atau None untuk config default
+    message = data.get('message') or (
+        f"<b>🔔 [TEST ALERT] Eka Dashboard</b>\n\n"
+        f"Server: <code>{socket.gethostname()}</code>\n"
+        f"Waktu: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+        f"Status: Saluran komunikasi terverifikasi normal.\n"
+        f"Pesan ini dikirim melalui Alerting & Notification Engine."
+    )
+
+    custom_config = data.get('custom_config')
+    overall_success, results = _dispatch_alert(channel, message, config=custom_config)
+
+    return jsonify({
+        'success': overall_success,
+        'results': results
+    })
+
+
+@app.route('/api/alerts/history', methods=['GET'])
+@login_required
+def api_alerts_history():
+    """Mendapatkan riwayat pengiriman notifikasi"""
+    history = _load_alert_history()
+    return jsonify({
+        'success': True,
+        'history': history
+    })
+
+
+@app.route('/api/alerts/history/clear', methods=['POST'])
+@login_required
+def api_alerts_history_clear():
+    """Menghapus seluruh riwayat pengiriman notifikasi"""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(ALERT_HISTORY_FILE, 'w') as f:
+            json.dump([], f)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/alerts/system_check', methods=['POST'])
+@login_required
+def api_alerts_system_check():
+    """Memeriksa ambang batas sistem (CPU, RAM, Disk, SMART) dan memicu alert jika terlampaui"""
+    data = request.json or {}
+    send_alert = bool(data.get('send_alert', False))
+    cfg = _load_alert_config()
+    rules = cfg.get('rules', {})
+
+    triggers = []
+
+    # 1. CPU
+    try:
+        cpu_usage = psutil.cpu_percent(interval=0.2)
+        if rules.get('cpu_enabled') and cpu_usage >= rules.get('cpu_threshold', 90):
+            triggers.append(f"⚠️ CPU Usage Tinggi: {cpu_usage}% (Ambang batas: {rules.get('cpu_threshold')}%)")
+    except Exception:
+        pass
+
+    # 2. RAM
+    try:
+        ram = psutil.virtual_memory()
+        if rules.get('ram_enabled') and ram.percent >= rules.get('ram_threshold', 85):
+            triggers.append(f"⚠️ RAM Usage Tinggi: {ram.percent}% (Ambang batas: {rules.get('ram_threshold')}%)")
+    except Exception:
+        pass
+
+    # 3. Disk
+    try:
+        disk = psutil.disk_usage('/')
+        if rules.get('disk_enabled') and disk.percent >= rules.get('disk_threshold', 90):
+            triggers.append(f"⚠️ Root Disk Hampir Penuh: {disk.percent}% (Ambang batas: {rules.get('disk_threshold')}%)")
+    except Exception:
+        pass
+
+    # 4. Reboot Required
+    if rules.get('reboot_required_enabled'):
+        reboot_req, reboot_pkgs = _get_reboot_status()
+        if reboot_req:
+            triggers.append(f"🔄 Host Membutuhkan Reboot ({len(reboot_pkgs)} paket kernel/sistem)")
+
+    # 5. SMART Warning
+    if rules.get('smart_warning_enabled'):
+        try:
+            drives = _discover_physical_drives()
+            for d in drives:
+                dev = d.get('device')
+                smart_data = _parse_drive_smart(dev)
+                if smart_data.get('health') == 'WARNING':
+                    triggers.append(f"🚨 S.M.A.R.T. Warning pada {dev}: Terdeteksi anomali sektor/wear!")
+        except Exception:
+            pass
+
+    # Dispatch alert jika diminta dan ada triggers
+    dispatch_results = []
+    if send_alert and triggers:
+        alert_msg = (
+            f"<b>🚨 [ALERT INCIDENT] Eka Dashboard</b>\n\n"
+            f"Server: <code>{socket.gethostname()}</code>\n"
+            f"Waktu: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>\n\n"
+            + "\n".join(triggers)
+        )
+        _, dispatch_results = _dispatch_alert(cfg.get('channel'), alert_msg, config=cfg)
+
+    return jsonify({
+        'success': True,
+        'triggered': len(triggers) > 0,
+        'triggers': triggers,
+        'dispatch_results': dispatch_results
+    })
+
+
+@app.route('/api/alerts/wa_status', methods=['GET'])
+@login_required
+def api_alerts_wa_status():
+    """Memeriksa apakah WhatsApp Gateway aktif dan siap menerima pesan secara opt-in."""
+    cfg = _load_alert_config()
+    wa_cfg = cfg.get('whatsapp', {})
+    wa_enabled = bool(wa_cfg.get('enabled', False))
+    gateway_url = (wa_cfg.get('gateway_url') or '').strip()
+
+    if not gateway_url:
+        return jsonify({
+            'success': True,
+            'installed': False,
+            'configured': False,
+            'online': False,
+            'status': 'not_configured',
+            'message': 'WhatsApp Gateway URL is not configured (optional module).'
+        })
+
+    # Bentuk endpoint health check
+    health_url = gateway_url.replace('/send', '/health') if '/send' in gateway_url else gateway_url.rstrip('/') + '/health'
+    is_loopback = ('127.0.0.1' in health_url or 'localhost' in health_url)
+
+    if is_loopback and _can_use_nsenter():
+        try:
+            res = _run_host_cmd([
+                '/usr/bin/curl', '-s', '-S',
+                '-w', '\n__HTTP_CODE__:%{http_code}',
+                health_url,
+                '--connect-timeout', '3',
+                '--max-time', '5'
+            ], timeout=7, include_pid=False)
+            stdout = res.stdout or ''
+            if '__HTTP_CODE__:' in stdout:
+                body, code_str = stdout.rsplit('__HTTP_CODE__:', 1)
+                code = int(code_str.strip()) if code_str.strip().isdigit() else 0
+                if 200 <= code < 300:
+                    try:
+                        parsed = json.loads(body.strip())
+                        return jsonify({'success': True, 'installed': True, 'configured': wa_enabled, 'online': True, 'status': parsed.get('status', 'connected'), 'details': parsed})
+                    except Exception:
+                        return jsonify({'success': True, 'installed': True, 'configured': wa_enabled, 'online': True, 'status': 'online', 'details': body[:100]})
+                return jsonify({'success': True, 'installed': False, 'configured': wa_enabled, 'online': False, 'status': 'offline', 'http_code': code, 'error': f'HTTP {code}'})
+            return jsonify({'success': True, 'installed': False, 'configured': wa_enabled, 'online': False, 'status': 'offline', 'error': 'Gateway tidak merespons'})
+        except Exception as e:
+            return jsonify({'success': True, 'installed': False, 'configured': wa_enabled, 'online': False, 'status': 'offline', 'error': str(e)})
+
+    # Fallback direct request
+    try:
+        res = requests.get(health_url, timeout=4)
+        if 200 <= res.status_code < 300:
+            try:
+                parsed = res.json()
+                return jsonify({'success': True, 'installed': True, 'configured': wa_enabled, 'online': True, 'status': parsed.get('status', 'connected'), 'details': parsed})
+            except Exception:
+                return jsonify({'success': True, 'installed': True, 'configured': wa_enabled, 'online': True, 'status': 'online', 'details': res.text[:100]})
+        return jsonify({'success': True, 'installed': False, 'configured': wa_enabled, 'online': False, 'status': 'offline', 'http_code': res.status_code})
+    except Exception as e:
+        return jsonify({'success': True, 'installed': False, 'configured': wa_enabled, 'online': False, 'status': 'offline', 'error': str(e)})
 
 
 if __name__ == '__main__':

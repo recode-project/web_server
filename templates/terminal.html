@@ -24,7 +24,8 @@
         body {
             font-family: 'Inter', sans-serif;
             background: radial-gradient(circle at 10% 20%, rgb(14, 26, 40) 0%, rgb(8, 14, 21) 90%);
-            min-height: 100vh;
+            height: 100vh;
+            height: 100dvh;
             color: #fff;
             overflow: hidden; /* Prevent body scroll */
         }
@@ -64,8 +65,17 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-            padding: 1rem;
-            gap: 1rem;
+            height: 100dvh;
+            padding: 0.75rem 1rem;
+            gap: 0.75rem;
+            overflow: hidden;
+        }
+
+        .header,
+        .quick-commands,
+        .settings-bar,
+        .mobile-bar {
+            flex-shrink: 0;
         }
 
         /* Header / Glass Panel */
@@ -180,12 +190,12 @@
         /* Quick Commands Panel */
         .quick-commands {
             display: flex;
-            gap: 1rem;
-            padding: 1rem;
+            gap: 0.65rem;
+            padding: 0.6rem 0.8rem;
             background: rgba(20, 20, 30, 0.5);
             backdrop-filter: blur(10px);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
             flex-wrap: wrap;
             align-items: center;
         }
@@ -239,7 +249,7 @@
 
         /* Mac-like Terminal Area */
         .terminal-container {
-            flex: 1;
+            flex: 1 1 0;
             background: #0f111a;
             border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.05);
@@ -249,7 +259,6 @@
             flex-direction: column;
             position: relative;
             min-height: 0;
-            height: 100%;
         }
 
         /* Terminal Window Bar */
@@ -258,7 +267,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 40px;
+            flex: 0 0 38px;
+            height: 38px;
             background: rgba(30, 33, 45, 0.9);
             border-bottom: 1px solid rgba(255,255,255,0.05);
             width: 100%;
@@ -273,7 +283,7 @@
         .terminal-container::after {
             content: '';
             position: absolute;
-            top: 14px;
+            top: 13px;
             left: 18px;
             width: 12px;
             height: 12px;
@@ -284,13 +294,12 @@
         }
 
         .terminal-wrap {
-            flex: 1;
-            padding: 1.2rem;
+            flex: 1 1 0;
+            padding: 0.75rem 1rem;
             display: none;
-            background: #0d0f14;
-            box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
+            background: #15151e;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.4);
             width: 100%;
-            height: 100%;
             min-height: 0;
             overflow: hidden;
         }
@@ -299,9 +308,19 @@
             display: flex;
             flex-direction: column;
             width: 100%;
-            height: 100%;
+            flex: 1 1 0;
             min-height: 0;
             animation: fadeIn 0.2s ease;
+        }
+
+        /* Padding-free host element so xterm FitAddon computes exact rows with zero bottom clipping */
+        .terminal-screen {
+            flex: 1 1 0;
+            min-height: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
         }
 
         @keyframes fadeIn {
@@ -309,11 +328,9 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .terminal-wrap .xterm {
-            flex: 1;
+        .terminal-screen .xterm {
             height: 100%;
             width: 100%;
-            min-height: 0;
         }
         
         .xterm-viewport::-webkit-scrollbar { width: 10px; }
@@ -637,13 +654,13 @@
 
             .terminal-container {
                 min-height: 0;
-                flex: 1;
+                flex: 1 1 0;
             }
 
             .terminal-wrap { 
-                padding: 0.25rem;
+                padding: 0.35rem;
                 min-height: 0;
-                height: 100%;
+                flex: 1 1 0;
                 width: 100%;
             }
 
@@ -651,7 +668,7 @@
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
-                height: 100%;
+                flex: 1 1 0;
             }
 
             /* Judul window Mac disembunyikan untuk menghemat tinggi layar */
@@ -737,23 +754,12 @@
                     journal</button>
                 <button class="quick-btn logs" onclick="quickCmd('dmesg -w')"><i class="fa-solid fa-bug"></i>
                     dmesg</button>
-                <button class="quick-btn logs" onclick="quickCmd('tail -f /var/log/syslog')"><i
+                <button class="quick-btn logs" onclick="quickCmd('tail -f /var/log/syslog 2>/dev/null || tail -f /var/log/messages 2>/dev/null || journalctl -n 50 -f')"><i
                         class="fa-solid fa-file-alt"></i> syslog</button>
             </div>
 
-            <!-- ESP32 -->
-            <div class="cmd-category">
-                <span class="cmd-category-label system" style="background:rgba(255, 107, 107, 0.15); color:#ff6b6b">
-                    <i class="fa-solid fa-microchip"></i> ESP32
-                </span>
-                <button class="quick-btn system" style="border-color: rgba(255, 107, 107, 0.3); color: #ff9f9f"
-                    onclick="quickCmd('export TERM=xterm && screen /dev/ttyACM1 115200')">
-                    <i class="fa-solid fa-bolt"></i> CONNECT SERIAL
-                </button>
-            </div>
-
             <!-- Custom Commands -->
-            <div class="cmd-category" id="custom-commands"></div>
+            <div class="cmd-category" id="custom-commands" style="display:none"></div>
         </div>
 
         <!-- Terminal Area -->
@@ -839,7 +845,7 @@ Restart App=systemctl restart myapp"></textarea>
         </div>
     </div>
 
-    <script src="/static/terminal.js?v=4"></script>
+    <script src="/static/terminal.js?v=6"></script>
 </body>
 
 </html>
