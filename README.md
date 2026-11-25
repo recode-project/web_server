@@ -1,22 +1,23 @@
 <div align="center">
 
-# 🛡️ Eka Dashboard
-### All-in-One Autonomous Linux Server & Infrastructure Management Suite
+# Eka Dashboard
+### Universal Self-Hosted Linux Server & Bare-Metal Control Center
 
 ![Version](https://img.shields.io/badge/version-1.4.0-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=for-the-badge&logo=docker&logoColor=white)
-![LXD](https://img.shields.io/badge/LXD-Containers-FF6B6B?style=for-the-badge&logo=canonical&logoColor=white)
-![AdGuard](https://img.shields.io/badge/AdGuard%20Home-DNS%20Suite-00B06F?style=for-the-badge&logo=adguard&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-Multi--Distro-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-78_App_Store-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![LXD](https://img.shields.io/badge/LXD%20%2F%20Incus-Containers-FF6B6B?style=for-the-badge&logo=canonical&logoColor=white)
+![Tests](https://img.shields.io/badge/Unit_Tests-171%2F171_Passing-10B981?style=for-the-badge)
 ![License](https://img.shields.io/badge/Copyright-Eka%20Harefa-orange?style=for-the-badge)
 
 <p align="center">
-  <b>Eka Dashboard</b> adalah platform kontrol server modern, ringan, dan elegan berbasis web untuk memantau performa perangkat keras, mengatur kontainer virtualisasi (LXD & Docker), melindungi jaringan lokal melalui server DNS mandiri (AdGuard Home), serta menangkal serangan siber pada website secara real-time.
+  <b>Eka Dashboard</b> adalah pusat kendali server Linux serbaguna berbasis web untuk homelab, mini PC, SBC/ARM, VPS cloud, maupun server bare-metal produksi. Dirancang 100% portabel dan agnostik distro (Debian/Ubuntu, Fedora/RHEL, Arch, Alpine, openSUSE), menyatukan telemetri perangkat keras &amp; daya listrik RAPL, App Store 78 aplikasi Docker, orkestrasi LXD/Incus, firewall multi-backend, manajemen paket OS, DNS AdBlocker, backup offsite, hingga Web Terminal PTY dalam satu antarmuka Glassmorphism yang ringan.
 </p>
 
 ---
 
-[Fitur Utama](#-fitur-utama) • [Arsitektur & Port](#-arsitektur--port-mapping) • [Design System](#-design-system--arsitektur-tema) • [Panduan Instalasi](#-panduan-instalasi-cepat) • [Konfigurasi DNS](#-panduan-dns-adblocker) • [Troubleshooting](#-troubleshooting) • [Hak Kepemilikan](#-hak-cipta--kepemilikan)
+[Ringkasan](#-sekilas-pandang) • [Fitur Utama](#-fitur-utama) • [Dukungan Distro](#-dukungan-lingkungan--multi-distro) • [Arsitektur & Port](#-arsitektur--port-mapping) • [Instalasi](#-panduan-instalasi-cepat) • [Panduan DNS](#-panduan-dns-adblocker) • [Troubleshooting](#-troubleshooting) • [Hak Cipta](#-hak-cipta--kepemilikan)
 
 ---
 
@@ -24,123 +25,129 @@
 
 ## 📌 Sekilas Pandang
 
-Dibangun dengan arsitektur **Glassmorphism UI** dengan wallpaper dinamis animasi gradient, Eka Dashboard dirancang untuk berjalan di server rumahan (*homelab*), server VPS cloud, hingga server bare-metal produksi tanpa membebani resource CPU dan memori. Seluruh antarmuka bersifat responsif dan dapat dioperasikan penuh melalui browser desktop maupun layar smartphone.
+**Eka Dashboard** dibangun untuk menggantikan banyak panel terpisah dengan satu control plane ringan berbasis **Python Flask + Socket.IO + Vanilla Modular JS (Zero Inline JS)**. Seluruh deteksi sistem dilakukan secara dinamis saat runtime (tanpa hardcode IP, user, maupun perangkat), mendukung mode **Docker (`nsenter`)** maupun **Native Linux/VPS**, serta menyediakan kontrol visibilitas **Optional Modules Opt-In** agar fitur yang belum terpasang tetap rapi tanpa error.
+
+| Aspek | Kemampuan Utama |
+| :--- | :--- |
+| **Portabilitas OS** | Multi-distro (`apt`, `dnf`, `yum`, `pacman`, `apk`, `zypper`) & multi-arsitektur (`x86_64`, `ARM64`) |
+| **Mode Deployment** | Kontainer Docker terisolasi (`nsenter` ke kernel host) atau instalasi Native Linux / VPS |
+| **App Store** | 78 aplikasi self-hosted terkurasi lintas 12 kategori + Smart 3-Tier Container Matcher untuk Docker Compose |
+| **Telemetri & Daya** | CPU/RAM/Disk/Network real-time, Public NOC Wallboard, Hardware RAPL & Battery/UPS Power Engine + kalibrasi tarif global |
+| **Arsitektur Frontend** | Modern Cybernetic Glassmorphism (`DESIGN_SYSTEM.md`), 100% separasi berkas `static/*.js`, responsif desktop & mobile |
+| **Keandalan** | Dilengkapi 171 unit test otomatis (`unittest`), audit log, RBAC (`owner`/`admin`/`operator`/`readonly`) |
 
 ---
 
 ## 🎨 Design System & Arsitektur Tema
 
-Seluruh modul dan tampilan antarmuka Eka Dashboard dibakukan di bawah panduan desain terpusat pada berkas `DESIGN_SYSTEM.md`.
+Seluruh modul dan tampilan antarmuka Eka Dashboard dibakukan di bawah panduan desain terpusat pada berkas [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
 
 Prinsip inti sistem desain ini meliputi:
-* **Signature Dynamic Wallpaper:** Animasi 4-stop gradient (`#ee7752`, `#e73c7e`, `#23a6d5`, `#23d5ab`) 15 detik dengan akselerasi GPU, posisi `fixed`, elevasi `z-index: 0`, dan `pointer-events: none`.
-* **Universal Stacking Context & Auto-Scroll:** Aturan kanvas transparan (`body { background: transparent !important; }`), scrolling aktif penuh (`overflow-y: auto !important; height: auto !important; min-height: 100vh !important;`), dan buffer bawah 100px pada `.main-content`.
-* **Unified Glassmorphism Component Library:** Tombol standar `.btn`, `.btn-secondary`, `.btn-primary` dengan efek frosted glass (`backdrop-filter: blur(12px)`), kartu metrik telemetri 4-kolom, tab navigasi interaktif, badge status, dan konsol terminal monospace.
-* **Separasi Kode 100%:** Bebas inline JavaScript — seluruh logika frontend dimuat secara modular melalui `static/*.js`.
+* **Signature Dynamic Wallpaper:** Animasi 4-stop gradient (`#ee7752`, `#e73c7e`, `#23a6d5`, `#23d5ab`) 15 detik berakselerasi GPU (`position: fixed; z-index: 0; pointer-events: none`).
+* **Frosted Glass Surfaces:** Kartu, panel navigasi, dan modal memakai token kaca transparan seragam (`--glass-bg: rgba(30, 30, 40, 0.6)`, `backdrop-filter: blur(20px)`, `--glass-border`) dengan auto-scroll aktif penuh.
+* **Separasi Kode 100% (Zero Inline JS):** Seluruh logika frontend diisolasi ke berkas eksternal modular `static/*.js` tanpa inline JavaScript pada HTML.
 
 ---
 
 ## ✨ Fitur Utama
 
-### 1. 📊 Telemetri Sistem Real-Time (Live Telemetry)
-* **Hardware Gauges:** Monitoring beban CPU multi-core, temperatur prosesor, penggunaan RAM, partisi penyimpanan (NVMe/SSD/HDD), serta statistik pemakaian energi (kWh / estimasi rupiah).
-* **Network Monitor:** Grafik tren *bandwidth* real-time (download & upload per detik) serta total akumulasi transfer data sejak boot server.
-* **Informasi Host:** Tampilan nama host, kernel Linux, arsitektur CPU, dan waktu aktif (*uptime*) yang diperbarui otomatis.
+### 1. 📊 Live Telemetry, NOC Wallboard & Hardware Energy Engine (`/dashboard`, `/`, `/metrics`)
+* **Telemetri Perangkat Keras:** Monitoring beban CPU multi-core, temperatur, penggunaan RAM, kapasitas disk, bandwidth jaringan live, serta **Public NOC Wallboard (`/`)** 6-kartu untuk pemantauan status armada server.
+* **Hardware Power & Energy Engine:** Membaca daya aktual dari register fisik **Intel/AMD RAPL** (`/sys/class/powercap`) dan sensor **Battery/UPS** (`/sys/class/power_supply`) dengan fallback lintas arsitektur.
+* **Interactive Energy Detail & Kalibrasi Global:** Klik kartu **Energy** membuka proyeksi kWh & biaya (per jam, harian, mingguan, bulanan, tahunan), rincian parameter sensor, preset 9 mata uang global + tarif/kWh kustom di `/settings`, serta reset counter kWh.
 
-### 2. 🛡️ AdBlocker DNS Protection Suite (AdGuard Home Integration)
-* **Master Protection Toggle:** Saklar proteksi global DNS AdGuard Home aktif/nonaktif dalam hitungan milidetik.
-* **Quick Security Switches:** Kontrol instan untuk modul *SafeBrowsing* (blokir malware/phishing), *SafeSearch* (pencarian bersih di mesin telusur), dan *Parental Control* (pemblokiran konten dewasa).
-* **Aktivitas Query 24 Jam:** Grafik time-series interaktif (HTML5 Canvas retina-ready) membandingkan total permintaan DNS vs query yang berhasil diblokir filter.
-* **Analitik 3 Kolom Sejajar:**
-  * **Top Blocked Domains:** 10 domain ancaman/pelacak yang paling banyak dicegat.
-  * **Top Queried Domains:** 10 domain yang paling sering diminta oleh perangkat klien.
-  * **Klien Teratas:** Daftar IP klien aktif lengkap dengan pengenalan jenis perangkat cerdas (ponsel, laptop, server, router), visual rasio persentase, serta tombol modal untuk mengganti nama/alias perangkat secara langsung.
-* **Live Query Log:** Riwayat permintaan DNS real-time dengan status *Blocked* atau *Processed*.
-* **Custom Filter Editor:** Editor aturan filter khusus (format Adblock Plus, AdGuard, dan file hosts standar) langsung dari browser.
+### 2. 🛒 Self-Hosted App Store & Smart Container Matcher (`/store`)
+* **78 Aplikasi Terkurasi (12 Kategori):** AI & LLM (`Ollama`, `Open WebUI`, `n8n`, `Flowise`, `Qdrant`, `LibreChat`), Database (`PostgreSQL`, `MariaDB`, `Redis`, `MongoDB`, `pgAdmin`, `MinIO`, `CouchDB`), Media (`Jellyfin`, `Plex`, `Immich`, `Navidrome`, `PhotoPrism`), Files (`Nextcloud`, `OnlyOffice`, `Obsidian Web`, `Syncthing`, `Stirling PDF`), Network (`AdGuard Home`, `Nginx Proxy Manager`, `Tailscale`, `WireGuard Easy`, `Cloudflared`, `RustDesk Server`), Monitoring (`Grafana`, `Prometheus`, `Uptime Kuma`, `Dozzle`, `Beszel`), Developer (`Portainer`, `Dockge`, `Gitea`, `Code-Server`, `PocketBase`), Home Automation, Privacy, Dashboards, Downloader, dan Automation.
+* **Smart 3-Tier Container Matcher:** Mendeteksi otomatis kontainer yang dipasang lewat App Store maupun Docker Compose / nama kustom (mis. `n8n-container`, `pgadmin4-web`, `immich_server`) sambil mengecualikan kontainer sidecar (`runner`, `worker`, `exporter`).
+* **Lifecycle Manager & Live Logs:** Instalasi 1-klik dengan Docker Named Volumes + timezone dinamis (`{{AUTO_TZ}}`), dukungan **Custom Docker App**, serta **Manage Modal** (Start, Stop, Restart, Open UI, live 150-baris Container Logs, dan Uninstall berproteksi kontainer eksternal).
 
-### 3. 📦 LXD Container Orchestrator & Virtualization
-* **Manajemen Kontainer:** Daftar seluruh kontainer LXD, inspeksi status (*Running / Stopped*), IP address (LAN & Tailscale), serta kontrol *Start, Stop, Restart*, dan *Delete*.
-* **Web Terminal xterm.js:** Akses konsol shell root interaktif langsung ke dalam kontainer melalui browser tanpa perlu konfigurasi SSH manual.
-* **Resource Quota Limits:** Konfigurasi batas RAM (contoh: `2GB`), CPU core limits (contoh: `2`), dan kuota penyimpanan per kontainer langsung dari antarmuka modal.
-* **Port Forwarding Manager:** Pemetaan port host ke port internal kontainer dengan integrasi firewall otomatis.
-* **1-Click Network Mesh:** Skrip instalasi otomatis Tailscale dan WireGuard untuk kontainer LXD.
+### 3. 📦 LXD / Incus Orchestrator & Docker Panel (`/lxd`, `/panel_docker`)
+* **Manajemen Kontainer LXD & Incus:** Dukungan multi-project (`--all-projects`), deteksi biner otomatis (`lxc`/`incus` termasuk `/snap/bin`), status IP LAN & Tailscale, kuota RAM/CPU/storage, port forwarding, 1-click Tailscale/WireGuard, serta Web Terminal root terisolasi.
+* **Docker Container Panel:** Inspeksi kontainer, port, volume, environment variables, dan kontrol siklus hidup kontainer Docker host.
 
-### 4. 🌐 Web & Reverse Proxy Shield (Unifikasi Websites & Web Shield)
-* **Nginx Virtual Hosts Manager:** Pemindaian dinamis seluruh vhosts aktif dari `/etc/nginx/sites-enabled` (dengan resolusi symlink transparan di Docker), inspeksi server name, listen port, document root, dan target reverse proxy.
-* **Kontrol Service Nginx Host:** Uji validasi sintaks otomatis (`nginx -t`), reload, dan restart service Nginx secara aman via `nsenter` pada kernel host.
-* **Trafik & Analisis Real-Time:** Statistik 24 jam dengan grafik batang fleksibel per jam, pemantauan pengunjung unik, rata-rata durasi sesi, rasio status HTTP, dan Top 5 URL yang sering diakses dari `access.log`.
-* **Shield & Keamanan Bot:** Deteksi otomatis signature scanner (Nikto, SQLmap, Nmap, Gobuster), exploit path (`.env`, `wp-login`, traversal), percobaan login SSH gagal (`auth.log`), dan pemblokiran instan IP penyerang ke aturan `iptables DROP` host.
-* **Pemantau SSL Dinamis & Cadangan Web:** Pemeriksaan masa berlaku sertifikat SSL seluruh domain vhost secara multi-domain otomatis (tanpa hardcode domain), serta fitur 1-klik unduh arsip ZIP direktori web.
-* **Separasi Kode Penuh:** 100% logika frontend dimuat secara modular melalui `static/websites.js` tanpa inline JavaScript.
+### 4. 🛡️ AdBlocker DNS Suite & Web Reverse Proxy Shield (`/adblocker`, `/websites`)
+* **AdGuard Home DNS Suite:** Master toggle proteksi, SafeBrowsing, SafeSearch, Parental Control, grafik query 24 jam, analitik 3 kolom (Top Blocked, Top Queried, Top Clients + alias perangkat), Live Query Log, dan Custom Filter Editor.
+* **Web Server & Security Shield:** Deteksi multi-web-server (`nginx`, `apache2`, `httpd`, `caddy`), manajemen vhost, uji sintaks & reload service host, monitor masa berlaku SSL otomatis multi-domain, arsip backup web ZIP, serta deteksi serangan scanner/exploit/SSH brute-force dengan tombol Ban IP `iptables`.
 
-### 5. 💻 Web-Based Terminal & File Explorer
-* **Full Login Shell:** Terminal berbasis web dengan dukungan penuh ANSI escape codes, resize canvas dinamis, font monospace adaptif, dan eksekusi perintah aman.
-* **Storage Inspector:** Ringkasan visual ruang penyimpanan per partisi sistem.
+### 5. 🔥 Firewall Multi-Backend, Services, Logs & Package Manager (`/firewall`, `/services`, `/logs`, `/packages`)
+* **Central Firewall Manager:** Auto-deteksi lintas distro (`ufw` -> `firewalld` -> `nftables` -> `iptables`), manajemen aturan bernomor, preset cepat SSH rate-limit, kebijakan default traffic, dan inspeksi raw ruleset.
+* **Services & System Daemons:** Kontrol penuh systemd (`start`, `stop`, `restart`, `enable`, `disable`, `mask`), inspeksi PID/memori cgroup, dan viewer log `journalctl`.
+* **System Logs & SSH Audit:** Explorer `journalctl` multi-filter, audit log autentikasi SSH lintas distro (`/var/log/auth.log`, `/var/log/secure`, `/var/log/messages`, `journalctl`), dan ring buffer kernel (`dmesg`) deteksi OOM/disk error.
+* **Package & OS Update Manager:** Mendukung 6 package manager (`apt`, `dnf`, `yum`, `pacman`, `apk`, `zypper`), klasifikasi security vs regular updates, deteksi kernel & reboot required, serta dry-run simulator.
 
-### 6. ⚙️ Services & System Daemons Manager (`/services`)
-* **Kontrol Siklus Hidup Systemd:** Start, Stop, Restart, Enable, Disable, Mask, dan Unmask service host secara instan melalui wrapper `systemctl` berbasis `nsenter` pada kernel host.
-* **Telemetri & Status Host:** Ringkasan visual total unit service, service running, service failed (crash-loop), dan status integritas sistem host (*running, degraded, maintenance*).
-* **Shortcut Cepat Service Krusial:** Tombol filter instan 1-klik untuk daemons inti (Docker, Nginx, Tailscale, Samba, SSH, Cron).
-* **Inspeksi Properti & cgroup:** Modal inspeksi detail menampilkan Main PID, konsumsi memori cgroup riil (`MemoryCurrent`), durasi CPU (`CPUUsageNSec`), Exit Code terakhir, dan active enter timestamp.
-* **Journald Log Explorer:** Pembacaan 40 baris log `journalctl -u <unit>` real-time per service dengan tombol salin log.
-* **Separasi Logika Frontend:** 100% kode JavaScript dimuat secara modular melalui `static/services.js` tanpa inline JavaScript.
+### 6. 💾 Drive Health S.M.A.R.T., Backup Offsite, Alerting & Task Scheduler (`/smart`, `/backup`, `/alerts`, `/scheduler`)
+* **Drive Health & S.M.A.R.T. Inspector:** Telemetri NVMe & SATA (suhu, wear level, TBW, bad sectors, Power-On Hours), runner Short/Long Self-Test, dan monitor Software RAID (`mdadm`) & ZFS Pool.
+* **Disaster Recovery & Offsite Backup:** Snapshot multi-komponen (`manifest.json`), inspektur arsip interaktif, sinkronisasi cloud **Rclone**, dan penjadwalan otomatis.
+* **Alerting Engine:** Notifikasi ambang batas (CPU, RAM, Storage, S.M.A.R.T., Reboot) via Telegram Bot, WhatsApp Gateway, maupun Generic Webhook (Discord/Slack).
+* **Task Scheduler:** Visual manager Crontab & Systemd Timers lengkap dengan konsol dry-run tester.
 
-### 7. 📜 System Logs & Journald Explorer (`/logs`)
-* **Journald Explorer Terpadu:** Pemfilteran multi-parameter log `journalctl` host: per unit service, level prioritas error (`emerg` s.d. `debug`), rentang waktu fleksibel (15m s.d. 7d), limit baris, dan pencarian teks regex secara real-time.
-* **Audit Keamanan SSH & Autentikasi:** Deteksi upaya serangan brute-force login SSH, pemantauan riwayat login sukses (`publickey` / `password`), eksekusi perintah `sudo` lokal, serta daftar Top Attacker IPs lengkap dengan tombol 1-klik "Ban IP" via iptables host.
-* **Kernel Ring Buffer (`dmesg`):** Inspeksi kernel events host dengan indikator otomatis untuk mendeteksi insiden OOM-Killer (Out of Memory) dan error hardware / disk storage I/O.
-* **Live Telemetry & Auto-Refresh:** 4 kartu ringkasan (Error Logs 24h, SSH Failed 24h, OOM Events, Kernel Alerts) serta mode auto-refresh stream 5 detik.
-* **Separasi Logika Frontend:** 100% kode JavaScript dimuat secara modular melalui `static/system_logs.js` tanpa inline JavaScript.
+### 7. 💻 Web Terminal PTY, File Manager, VPN Mesh & SMB Sharing (`/terminal`, `/files`, `/vpn`, `/sharing`)
+* **Web Terminal PTY:** Konsol interaktif non-login (`bash -i`) bebas banner host, multi-tab, auto-resize sinkron `TIOCSWINSZ`, dan quick commands lintas distro.
+* **File Explorer & SMB Sharing:** Navigasi disk fisik host (`lsblk`) + manajemen Samba share dengan tautan UNC/SMB akurat (IP LAN & Tailscale) dan monitor sesi aktif (`smbstatus`).
+* **VPN Mesh & Network Manager:** Integrasi Tailscale Mesh (+ P2P Ping), WireGuard Hub (generator QR & `.conf`), ZeroTier, port scanner (`ss`), diagnostik Ping/DNS, serta routing table.
+* **Optional Modules Opt-In (`/settings`):** Modul opsional dapat diaktifkan/disembunyikan secara fleksibel termasuk mode `Auto-Hide Uninstalled`.
 
-### 8. 🛡️ Central Firewall Manager (`/firewall`)
-* **Kontrol Host Firewall UFW Terpadu:** Saklar Master Protection (Active / Inactive), reload konfigurasi real-time, dan pemantauan status logging kernel.
-* **Manajemen Aturan Bernomor (Numbered Rules):** Daftar interaktif seluruh aturan UFW (IPv4 & IPv6), filter kategori (Allow, Deny, Reject, Limit), pencarian instan, dan penghapusan aturan bernomor 1-klik (`ufw --force delete <num>`).
-* **Modal Tambah Aturan Granular:** Pembuatan aturan port, rentang port (`8080:8090`), protokol (TCP, UDP, Any), filter subnet IP sumber (CIDR), serta pengikatan interface jaringan spesifik (`tailscale0`, `lxdbr0`, `eth0`).
-* **Preset Cepat & Rate-Limiting:** Proteksi otomatis SSH anti brute-force (`ufw limit 22/tcp`), pembukaan port web server (80 & 443), serta isolasi subnet jaringan mesh Tailscale.
-* **Kebijakan Default Traffic:** Konfigurasi arah lalu lintas Incoming (DENY/REJECT/ALLOW), Outgoing (ALLOW/DENY), dan Routed forward (ALLOW/DENY).
-* **Inspeksi Raw Kernel Filter:** Pembacaan tabel filter `iptables -L -n -v` dan ruleset `nftables` native untuk verifikasi tingkat lanjut.
-* **Separasi Logika Frontend:** 100% kode JavaScript dimuat secara modular melalui `static/firewall.js` tanpa inline JavaScript.
+---
+
+## 🌍 Dukungan Lingkungan & Multi-Distro
+
+| Komponen | Backend yang Didukung Otomatis |
+| :--- | :--- |
+| **Package Manager** | `apt` (Debian/Ubuntu), `dnf` / `yum` (Fedora/RHEL/Rocky/Alma), `pacman` (Arch/Garuda/Manjaro), `apk` (Alpine), `zypper` (openSUSE) |
+| **Firewall** | `ufw`, `firewalld`, `nftables`, `iptables` |
+| **Web Server** | `nginx`, `apache2`, `httpd`, `caddy` |
+| **Container Engine** | Docker Engine + LXD / Incus |
+| **Mode Eksekusi Host** | Docker Container (`nsenter` ke PID 1 host) atau Native Linux / VPS tanpa Docker |
 
 ---
 
 ## 🏗️ Arsitektur & Port Mapping
 
-Eka Dashboard dikemas dalam arsitektur container Docker mandiri yang terisolasi namun terhubung langsung ke daemon host:
+Eka Dashboard dapat dijalankan dalam kontainer Docker mandiri yang terhubung aman ke daemon host, maupun langsung sebagai service Native Linux:
 
 | Layanan / Protokol | Port Host | Port Kontainer | Deskripsi |
 | :--- | :--- | :--- | :--- |
-| **Eka Dashboard Web UI** | `80` (HTTP) | `5000` (TCP) | Antarmuka panel web utama (dapat dialihkan via reverse-proxy) |
-| **AdGuard DNS Server** | `53` (TCP/UDP) | `53` (TCP/UDP) | Resolver DNS lokal untuk seluruh perangkat jaringan |
-| **AdGuard Home Web UI** | `8053` (HTTP) | `80` (TCP) | Antarmuka web konsol native AdGuard Home |
-| **LXD REST Socket** | Local Unix Socket | `/var/snap/lxd/common/lxd/unix.socket` | Manajemen kontainer virtualisasi |
-| **Docker Socket** | Local Unix Socket | `/var/run/docker.sock` | Manajemen kontainer pendukung |
+| **Eka Dashboard Web UI** | `80` (dapat dikustomisasi) | `5000` (TCP) | Antarmuka panel web utama (dapat dialihkan via `--port` atau reverse proxy) |
+| **AdGuard DNS Server** *(opsional)* | `53` (TCP/UDP) | `53` (TCP/UDP) | Resolver DNS lokal untuk perangkat jaringan |
+| **AdGuard Home Web UI** *(opsional)* | `8053` (HTTP) | `80` (TCP) | Antarmuka web konsol native AdGuard Home |
+| **LXD / Incus Socket** *(opsional)* | Local Unix Socket | `/var/snap/lxd/common/lxd/unix.socket` | Manajemen kontainer virtualisasi |
+| **Docker Socket** *(opsional)* | Local Unix Socket | `/var/run/docker.sock` | Manajemen kontainer & App Store 78 aplikasi |
 
 ---
 
 ## 🚀 Panduan Instalasi Cepat
 
 ### Prasyarat Sistem
-* Sistem Operasi: Linux (Ubuntu 20.04+, Debian 11+, Arch Linux, atau CentOS Stream).
-* Docker Engine (v20.10+) & Docker Compose Plugin (v2.0+).
-* Port `80` dan Port `53` belum terikat oleh layanan lain.
+* Sistem Operasi: Linux (`Ubuntu`, `Debian`, `Fedora`, `Rocky/Alma/RHEL`, `Arch/Garuda`, `openSUSE`, atau `Alpine`).
+* Docker Engine (v20.10+) & Docker Compose Plugin (v2.0+) untuk mode kontainer, **atau** Python 3.9+ untuk mode Native Linux.
 
-### Langkah Pemasangan:
+### Cara 1: Installer Universal Interaktif (`install.sh` — Disarankan)
+Skrip `install.sh` bersifat lintas distro dan non-destruktif (mendukung `--port`, `--dir`, `--reset-admin`, `--shift-casaos`):
+```bash
+git clone https://github.com/recode-project/web_server.git eka_dashboard
+cd eka_dashboard
+chmod +x install.sh
+sudo ./install.sh --port 80
+```
+
+### Cara 2: Docker Compose Langsung
 ```bash
 # 1. Kloning repositori resmi
 git clone https://github.com/recode-project/web_server.git eka_dashboard
 cd eka_dashboard
 
-# 2. Jalankan dan bangun kontainer via Docker Compose
+# 2. Bangun dan jalankan kontainer
 docker compose up --build -d
 
 # 3. Periksa status kontainer
 docker compose ps
 ```
 
-Setelah kontainer berjalan, buka browser dan akses antarmuka dashboard pada:
+Setelah berjalan, buka browser dan akses dashboard melalui:
 ```text
 http://<IP_SERVER_ANDA>/
 ```
+Pada kunjungan pertama, halaman **Setup Admin** akan memandu pembuatan akun administrator pertama secara otomatis.
 
 ---
 
