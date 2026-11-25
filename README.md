@@ -8,7 +8,7 @@
 ![Linux](https://img.shields.io/badge/Linux-Multi--Distro-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-78_App_Store-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![LXD](https://img.shields.io/badge/LXD%20%2F%20Incus-Containers-FF6B6B?style=for-the-badge&logo=canonical&logoColor=white)
-![Tests](https://img.shields.io/badge/Unit_Tests-140%2F140_Passing-10B981?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Unit_Tests-144%2F144_Passing-10B981?style=for-the-badge)
 ![License](https://img.shields.io/badge/Copyright-Eka%20Harefa-orange?style=for-the-badge)
 
 <p align="center">
@@ -34,7 +34,7 @@
 | **App Store** | 78 aplikasi self-hosted terkurasi lintas 12 kategori + Smart 3-Tier Container Matcher untuk Docker Compose |
 | **Telemetri & Daya** | CPU/RAM/Disk/Network real-time, Public NOC Wallboard, Hardware RAPL & Battery/UPS Power Engine + kalibrasi tarif global |
 | **Arsitektur Frontend** | Modern Cybernetic Glassmorphism (`DESIGN_SYSTEM.md`), 100% separasi berkas `static/*.js`, responsif desktop & mobile |
-| **Keandalan** | Dilengkapi 140 unit test otomatis (`unittest`), audit log, RBAC (`owner`/`admin`/`operator`/`readonly`) |
+| **Keandalan** | Dilengkapi 144 unit test otomatis (`unittest`), audit log, RBAC (`owner`/`admin`/`operator`/`readonly`) |
 
 ---
 
@@ -295,7 +295,12 @@ docker compose up -d
     - Memperbaiki `.gitignore` agar menggunakan `data/*` + `!data/app_catalog.json` sehingga katalog 78 aplikasi ikut terdistribusi di repositori publik sementara seluruh konfigurasi runtime, database, dan kredensial di `data/` tetap terabaikan.
     - Penyempurnaan UI anti-slop & penyelarasan penuh tema Dashboard `/store`: menghapus kapsul status melayang `.status-badge` + dot `fa-circle` (judul aplikasi tampil penuh), mengganti seluruh pil `999px` menjadi tab kategori tegas & teks metrik polos, menerapkan formula `.wallpaper` fixed (`100vw x 100vh`, `z-index: 0`, `brightness(0.6)`) serta token kaca transparan Dashboard (`--glass-bg: rgba(30, 30, 40, 0.6)`, `blur(20px)`, `--glass-border`, `--radius-lg`), dan menambahkan penutup modal via tombol `Escape` dan klik backdrop.
     - Interaktivitas Widget Energy (`/dashboard`, `static/script.js?v=13`): menghubungkan klik kartu Energy (`#energy-widget-card`) ke overlay detail `openDetail('power')` berisi telemetri daya real-time (auto-refresh 3 detik), tabel proyeksi kWh & biaya (per jam, harian, mingguan, bulanan, tahunan), rincian parameter sensor/kalibrasi, tombol pintas ke `/settings#energy-calibration-section`, tombol reset counter kWh (`POST /api/energy/reset`), dan tutup via `Escape`.
-    - Penghapusan penuh modul **Recode AI** (`SYSTEM_APPS`, `OPTIONAL_MODULES_CATALOG`, `PERMISSIONS`, route `/recode`, `/api/recode/*`, Socket.IO `recode_*`, `templates/recode.html`, dan `tests/test_recode_agent.py` — **140/140 Unit Tests PASS**).
+    - Penghapusan penuh modul **Recode AI** (`SYSTEM_APPS`, `OPTIONAL_MODULES_CATALOG`, `PERMISSIONS`, route `/recode`, `/api/recode/*`, Socket.IO `recode_*`, `templates/recode.html`, dan `tests/test_recode_agent.py`).
+21. **Hardening Socket.IO Terminal, API Files/Docker/System & Mobile Backup Boundary (144/144 Unit Tests PASS):**
+    - Menambahkan `@login_required` + RBAC granular (`read` untuk GET, `full` + audit log untuk POST) pada `/api/files/content`, menghapus duplikasi route `/files`, serta memasang `@requires_permission('docker', ...)` pada `/api/docker/containers`, `/stats`, `/logs`, dan `/action` (POST + audit log).
+    - Memasang `@login_required` pada `/api/processes`, `/api/disk-analysis`, `/api/network-ports`, `/api/network-details`, `/api/system`, dan membatasi `/api/backup/cron_trigger` khusus loopback/admin.
+    - Memperketat seluruh handler Socket.IO Terminal (`start_terminal`, `terminal_input`, `terminal_resize`, `stop_terminal`, `disconnect`): verifikasi `_terminal_socket_authorized()`, isolasi kepemilikan PTY per socket (`owner_sid`), pengiriman output privat `to=target_sid` (tidak lagi broadcast global), validasi ukuran payload & dimensi, pembersihan PTY otomatis saat disconnect, session cookie `HttpOnly` + `SameSite=Lax`, serta same-origin default untuk CORS/Socket.IO (`CORS_ALLOWED_ORIGINS` env).
+    - Memperkuat Mobile Backup API: batas path kanonis `os.path.commonpath` (`_is_within_mobile_backup_dir`), `@login_required` + `@admin_required` pada mutasi (`mkdir`, `rename`, `move`, `copy`, `delete`), autentikasi sesi admin atau `MOBILE_ACCESS_TOKEN` + `secure_filename` pada `/api/mobile-backup/upload`.
 
 ---
 

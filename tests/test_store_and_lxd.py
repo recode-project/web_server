@@ -1716,5 +1716,92 @@ class TestAppStoreUniversalOverhaul(unittest.TestCase):
         self.assertEqual(immich_match['container_name'], 'immich_server')
 
 
+class TestSecurityHardening(unittest.TestCase):
+    def _unauth_client(self):
+        dashboard.app.config['TESTING'] = True
+        return dashboard.app.test_client()
+
+    def _role_client(self, role='readonly'):
+        dashboard.app.config['TESTING'] = True
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess['logged_in'] = True
+            sess['role'] = role
+            sess['username'] = f'user_{role}'
+        return client
+
+    def test_file_content_requires_auth_and_write_rbac(self):
+        unauth = self._unauth_client()
+        res_get = unauth.get('/api/files/content?path=/etc/hostname')
+        self.assertIn(res_get.status_code, (401, 302))
+        res_post = unauth.post('/api/files/content', json={'path': '/tmp/x', 'content': 'pwn'})
+        self.assertIn(res_post.status_code, (401, 302))
+
+        readonly = self._role_client('readonly')
+        res_ro_post = readonly.post('/api/files/content', json={'path': '/tmp/x', 'content': 'pwn'})
+        self.assertEqual(res_ro_post.status_code, 403)
+
+    def test_docker_and_system_apis_require_auth(self):
+        unauth = self._unauth_client()
+        for ep in (
+            '/api/docker/containers',
+            '/api/docker/abc/logs',
+            '/api/processes',
+            '/api/disk-analysis',
+            '/api/network-ports',
+            '/api/network-details',
+            '/api/system',
+        ):
+            res = unauth.get(ep)
+            self.assertIn(res.status_code, (401, 302), f"{ep} leaked without auth ({res.status_code})")
+
+        res_act = unauth.post('/api/docker/abc/action', json={'action': 'stop'})
+        self.assertIn(res_act.status_code, (401, 302))
+
+        readonly = self._role_client('readonly')
+        res_ro_act = readonly.post('/api/docker/abc/action', json={'action': 'stop'})
+        self.assertEqual(res_ro_act.status_code, 403)
+
+    def test_mobile_backup_mutations_and_canonical_boundary(self):
+        unauth = self._unauth_client()
+        for ep, payload in (
+            ('/api/mobile-backup/move', {'src': '/tmp/a', 'dest_dir': '/tmp/b'}),
+            ('/api/mobile-backup/copy', {'src': '/tmp/a', 'dest_dir': '/tmp/b'}),
+            ('/api/mobile-backup/upload', {}),
+        ):
+            res = unauth.post(ep, json=payload)
+            self.assertIn(res.status_code, (401, 302), f"{ep} allowed unauth POST ({res.status_code})")
+
+        # Canonical boundary must reject sibling prefix bypass (e.g., MobileBackup_evil)
+        base = os.path.realpath(dashboard.BACKUP_BASE_DIR)
+        self.assertTrue(dashboard._is_within_mobile_backup_dir(base))
+        self.assertFalse(dashboard._is_within_mobile_backup_dir(base + '_evil/secret.txt'))
+
+    def test_terminal_socket_auth_and_session_ownership(self):
+        from unittest.mock import patch
+        # Unauthenticated terminal_input must never write to an active PTY fd
+        dashboard.terminal_sessions['sess_owned'] = {'fd': 99999, 'pid': 99999, 'sid': 'sid_owner', 'user': 'admin'}
+        try:
+            with patch.object(dashboard, '_terminal_socket_authorized', return_value=False), \
+                 patch('os.write') as mock_write, \
+                 patch.object(dashboard, 'emit') as mock_emit:
+                dashboard.handle_terminal_input({'session_id': 'sess_owned', 'input': 'id\n'})
+                mock_write.assert_not_called()
+                mock_emit.assert_called()
+
+            # Authenticated socket with different sid cannot access or stop another socket's PTY
+            with dashboard.app.test_request_context('/'):
+                dashboard.request.sid = 'sid_attacker'
+                self.assertFalse(dashboard._terminal_session_owned('sess_owned'))
+                with patch.object(dashboard, '_terminal_socket_authorized', return_value=True), \
+                     patch('os.write') as mock_write:
+                    dashboard.handle_terminal_input({'session_id': 'sess_owned', 'input': 'id\n'})
+                    mock_write.assert_not_called()
+                dashboard.request.sid = 'sid_owner'
+                self.assertTrue(dashboard._terminal_session_owned('sess_owned'))
+        finally:
+            dashboard.terminal_sessions.pop('sess_owned', None)
+
+
 if __name__ == '__main__':
     unittest.main()

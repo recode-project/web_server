@@ -721,11 +721,18 @@ app.config['SECRET_KEY'] = _get_persistent_secret_key()
 app.config['UPLOAD_FOLDER'] = DATA_DIR
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB Limit
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.jinja_env.auto_reload = True
 
 # ==============================================
-CORS(app, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+_raw_cors_origins = [o.strip() for o in (os.environ.get('CORS_ALLOWED_ORIGINS') or '').split(',') if o.strip()]
+if _raw_cors_origins:
+    CORS(app, resources={r"/*": {"origins": _raw_cors_origins}}, supports_credentials=True)
+    socketio = SocketIO(app, cors_allowed_origins=_raw_cors_origins, async_mode='eventlet')
+else:
+    CORS(app, resources={r"/*": {"origins": []}}, supports_credentials=True)
+    socketio = SocketIO(app, cors_allowed_origins=None, async_mode='eventlet')
 
 # Terminal sessions storage
 terminal_sessions = {}
@@ -1608,6 +1615,7 @@ def metrics_api():
     })
 
 @app.route('/api/processes')
+@login_required
 def processes():
     # Get all running processes
     procs = []
@@ -1631,6 +1639,7 @@ def processes():
     return jsonify(procs[:50]) # Return top 50 to avoid overhead
 
 @app.route('/api/disk-analysis')
+@login_required
 def disk_analysis():
     def get_du(path):
         try:
@@ -1676,6 +1685,7 @@ def disk_analysis():
     })
 
 @app.route('/api/network-ports')
+@login_required
 def network_ports():
     connections = []
     try:
@@ -1729,6 +1739,7 @@ def network_ports():
     return jsonify(connections)
 
 @app.route('/api/network-details')
+@login_required
 def network_details():
     interfaces = []
     addrs = psutil.net_if_addrs()
@@ -1754,6 +1765,7 @@ def network_details():
     return jsonify(interfaces)
 
 @app.route('/api/system')
+@login_required
 def system_info():
     uname = platform.uname()
     
@@ -2015,31 +2027,48 @@ def file_action():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/files/content', methods=['GET', 'POST'])
+@login_required
 def file_content():
-    path = _fm_to_container(request.args.get('path'))
+    role = session.get('role', 'readonly')
+    config = load_security_config()
+    if config.get('require_auth', True):
+        req_perm = 'full' if request.method == 'POST' else 'read'
+        if not has_permission(role, 'files', req_perm):
+            return jsonify({'error': 'Access denied'}), 403
+
     if request.method == 'POST':
-        data = request.json
-        path = _fm_to_container(data.get('path'))
+        data = request.get_json(silent=True) or {}
+        raw_path = (data.get('path') or '').strip()
+        if not raw_path:
+            return jsonify({'error': 'Path is required'}), 400
+        path = _fm_to_container(raw_path)
         content = data.get('content')
+        if content is None:
+            return jsonify({'error': 'Content is required'}), 400
         try:
-            with open(path, 'w') as f:
-                f.write(content)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(str(content))
+            audit_log('FILES_WRITE', f"Modified {raw_path}", session.get('username'))
             return jsonify({'success': True})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-            
+
     # GET
-    if not os.path.exists(path):
+    raw_path = (request.args.get('path') or '').strip()
+    if not raw_path:
+        return jsonify({'error': 'Path is required'}), 400
+    path = _fm_to_container(raw_path)
+    if not os.path.exists(path) or os.path.isdir(path):
         return jsonify({'error': 'File not found'}), 404
-        
+
     try:
-        with open(path, 'r', encoding='utf-8') as f: # Simple text reading
+        with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
             return jsonify({'content': content})
     except UnicodeDecodeError:
-         return jsonify({'error': 'Binary or unsupported file type'}), 400
+        return jsonify({'error': 'Binary or unsupported file type'}), 400
     except Exception as e:
-         return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 # --- TERMINAL ROUTES ---
 @app.route('/terminal')
@@ -2259,13 +2288,48 @@ def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_en
 
     # Parent process
     os.close(slave_fd)
+    owner_sid = getattr(request, 'sid', None) if request else None
+    owner_user = session.get('username') if session else None
     terminal_sessions[session_id] = {
         'fd': master_fd,
         'pid': pid,
-        'event': output_event
+        'event': output_event,
+        'sid': owner_sid,
+        'user': owner_user,
     }
-    socketio.start_background_task(read_terminal_output, session_id, master_fd, output_event)
+    socketio.start_background_task(read_terminal_output, session_id, master_fd, output_event, owner_sid)
     return True
+
+
+def _terminal_session_owned(session_id):
+    """Pastikan PTY session hanya bisa diakses oleh socket pemiliknya."""
+    info = terminal_sessions.get(session_id)
+    if not info:
+        return False
+    owner_sid = info.get('sid')
+    cur_sid = getattr(request, 'sid', None)
+    if owner_sid and cur_sid and owner_sid != cur_sid:
+        return False
+    return True
+
+
+def _terminate_terminal_session(session_id):
+    """Tutup PTY dan hentikan child process secara bersih."""
+    sess_info = terminal_sessions.pop(session_id, None)
+    if not sess_info:
+        return
+    try:
+        os.close(sess_info['fd'])
+    except Exception:
+        pass
+    try:
+        os.kill(sess_info['pid'], 9)
+    except Exception:
+        pass
+    try:
+        os.waitpid(sess_info['pid'], 0)
+    except Exception:
+        pass
 
 
 # WebSocket handlers for terminal
@@ -2282,72 +2346,108 @@ def handle_start_terminal(data):
         return
 
     data = data or {}
-    session_id = data.get('session_id', 'default')
+    session_id = str(data.get('session_id') or 'default').strip()[:64]
     lxd_target = data.get('lxd_target')
     lxd_project = data.get('lxd_project')
     start_path = data.get('path')
 
-    # Satu sesi per session_id: bersihkan sesi lama agar fd/pid tidak bocor.
+    # Jangan izinkan socket lain membajak / membunuh sesi aktif milik pengguna berbeda
     if session_id in terminal_sessions:
-        handle_stop_terminal({'session_id': session_id})
+        if not _terminal_session_owned(session_id):
+            audit_log('ACCESS_DENIED', f'Cross-socket terminal hijack attempt ({session_id})',
+                      session.get('username'))
+            emit('terminal_error', {'error': 'Session ID sedang digunakan oleh sesi lain'})
+            return
+        _terminate_terminal_session(session_id)
 
     cmd = _build_terminal_command(lxd_target, start_path=start_path, lxd_project=lxd_project)
     _spawn_pty_session(session_id, cmd, rows=data.get('rows'), cols=data.get('cols'))
     emit('terminal_started', {'session_id': session_id})
 
-def read_terminal_output(session_id, fd, output_event='terminal_output'):
+
+def read_terminal_output(session_id, fd, output_event='terminal_output', target_sid=None):
     import eventlet
-    while session_id in terminal_sessions:
+    while session_id in terminal_sessions and terminal_sessions[session_id].get('fd') == fd:
         eventlet.sleep(0.01)
         try:
             if select.select([fd], [], [], 0.1)[0]:
-                data = os.read(fd, 1024)
-                if data:
-                    socketio.emit(output_event, {
-                        'session_id': session_id,
-                        'data': data.decode('utf-8', errors='replace')
-                    })
-        except:
+                data = os.read(fd, 4096)
+                if not data:
+                    break
+                payload = {
+                    'session_id': session_id,
+                    'data': data.decode('utf-8', errors='replace')
+                }
+                if target_sid:
+                    socketio.emit(output_event, payload, to=target_sid)
+                else:
+                    socketio.emit(output_event, payload)
+        except Exception:
             break
+
 
 @socketio.on('terminal_input')
 def handle_terminal_input(data):
-    session_id = data.get('session_id', 'default')
+    if not _terminal_socket_authorized():
+        emit('terminal_error', {'error': 'Authentication required'})
+        return
+    data = data or {}
+    session_id = str(data.get('session_id') or 'default').strip()[:64]
     input_data = data.get('input', '')
-    
-    if session_id in terminal_sessions:
-        fd = terminal_sessions[session_id]['fd']
-        try:
-            os.write(fd, input_data.encode())
-        except:
-            pass
+    if not isinstance(input_data, str) or len(input_data) > 16384:
+        return
+    if not _terminal_session_owned(session_id):
+        return
+
+    fd = terminal_sessions[session_id]['fd']
+    try:
+        os.write(fd, input_data.encode('utf-8'))
+    except Exception:
+        pass
+
 
 @socketio.on('terminal_resize')
 def handle_terminal_resize(data):
-    session_id = data.get('session_id', 'default')
-    rows = data.get('rows', 24)
-    cols = data.get('cols', 80)
-    
-    if session_id in terminal_sessions:
-        fd = terminal_sessions[session_id]['fd']
-        try:
-            winsize = struct.pack('HHHH', rows, cols, 0, 0)
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
-        except:
-            pass
+    if not _terminal_socket_authorized():
+        return
+    data = data or {}
+    session_id = str(data.get('session_id') or 'default').strip()[:64]
+    if not _terminal_session_owned(session_id):
+        return
+    try:
+        rows = max(5, min(500, int(data.get('rows', 24))))
+        cols = max(20, min(500, int(data.get('cols', 80))))
+    except (TypeError, ValueError):
+        return
+
+    fd = terminal_sessions[session_id]['fd']
+    try:
+        winsize = struct.pack('HHHH', rows, cols, 0, 0)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+    except Exception:
+        pass
+
 
 @socketio.on('stop_terminal')
 def handle_stop_terminal(data):
-    session_id = data.get('session_id', 'default')
-    
-    if session_id in terminal_sessions:
-        session = terminal_sessions.pop(session_id)
-        try:
-            os.close(session['fd'])
-            os.kill(session['pid'], 9)
-            os.waitpid(session['pid'], 0)
-        except:
-            pass
+    if not _terminal_socket_authorized():
+        return
+    data = data or {}
+    session_id = str(data.get('session_id') or 'default').strip()[:64]
+    if not _terminal_session_owned(session_id):
+        return
+    _terminate_terminal_session(session_id)
+
+
+@socketio.on('disconnect')
+def handle_terminal_disconnect():
+    """Bersihkan seluruh sesi PTY milik socket saat koneksi browser terputus."""
+    cur_sid = getattr(request, 'sid', None)
+    if not cur_sid:
+        return
+    owned_ids = [sid_key for sid_key, info in list(terminal_sessions.items()) if info.get('sid') == cur_sid]
+    for sid_key in owned_ids:
+        _terminate_terminal_session(sid_key)
 
 
 # --- DOCKER ROUTES ---
@@ -2359,6 +2459,7 @@ def docker_page():
     return render_template('docker.html')
 
 @app.route('/api/docker/containers')
+@requires_permission('docker', 'view')
 def docker_containers():
     try:
         client = docker_sdk.from_env()
@@ -2426,6 +2527,7 @@ def docker_containers():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/docker/<container_id>/stats')
+@requires_permission('docker', 'view')
 def docker_container_stats(container_id):
     """Fetch stats for a single container - called separately to not block"""
     try:
@@ -2459,14 +2561,15 @@ def docker_container_stats(container_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/docker/<container_id>/action', methods=['POST'])
+@requires_permission('docker', 'full')
 def docker_action(container_id):
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         action = data.get('action')
-        
+
         client = docker_sdk.from_env()
         container = client.containers.get(container_id)
-        
+
         if action == 'start':
             container.start()
         elif action == 'stop':
@@ -2477,15 +2580,17 @@ def docker_action(container_id):
             container.kill()
         else:
             return jsonify({'error': 'Unknown action'}), 400
-        
+
+        audit_log('DOCKER_ACTION', f"{action} container {container_id}", session.get('username'))
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/docker/<container_id>/logs')
+@requires_permission('docker', 'view')
 def docker_logs(container_id):
     try:
-        lines = request.args.get('lines', 200, type=int)
+        lines = max(1, min(2000, request.args.get('lines', 200, type=int)))
         
         client = docker_sdk.from_env()
         container = client.containers.get(container_id)
@@ -3020,12 +3125,6 @@ def reset_settings():
 # --- CASAOS ROUTES ---
 CASAOS_URL = 'http://host.docker.internal:9999'
 CASAOS_ALLOWED_IPS = {}  # {ip: expiry_time}
-
-@app.route('/files')
-@login_required
-def files():
-    path = request.args.get('path', '/')
-    return render_template('files.html', current_path=path)
 
 @app.route('/face')
 def face_ui():
@@ -4951,7 +5050,11 @@ def api_backup_schedule():
 
 @app.route('/api/backup/cron_trigger', methods=['POST'])
 def api_backup_cron_trigger():
-    """Endpoint internal untuk memicu backup otomatis terjadwal"""
+    """Endpoint internal untuk memicu backup otomatis terjadwal (hanya loopback atau admin)."""
+    is_local = (request.remote_addr in ('127.0.0.1', '::1'))
+    is_admin = bool(session.get('logged_in') and session.get('role') in ('owner', 'admin'))
+    if not (is_local or is_admin):
+        return jsonify({'error': 'Forbidden'}), 403
     sched = _load_backup_schedule()
     if not sched.get('enabled'):
         return jsonify({'success': False, 'message': 'Backup otomatis sedang dinonaktifkan'}), 200
@@ -7336,20 +7439,53 @@ def mobile_backup_disk_usage():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _is_within_mobile_backup_dir(target_path):
+    """Canonical path boundary guard preventing sibling-prefix traversal (e.g. MobileBackup_evil)."""
+    if not target_path:
+        return False
+    try:
+        real_base = os.path.realpath(BACKUP_BASE_DIR)
+        real_target = os.path.realpath(target_path)
+        return os.path.commonpath([real_base, real_target]) == real_base
+    except Exception:
+        return False
+
+
+def _mobile_backup_upload_authorized():
+    """Authorize Mobile Backup upload via logged-in admin/owner session OR scoped MOBILE_ACCESS_TOKEN."""
+    config = load_security_config()
+    if not config.get('require_auth', True):
+        return True
+    if session.get('logged_in') and session.get('role') in ('owner', 'admin'):
+        return True
+    expected_token = (os.environ.get('MOBILE_ACCESS_TOKEN') or '').strip()
+    if expected_token:
+        import hmac
+        provided = (request.headers.get('X-Mobile-Token') or '').strip()
+        if not provided:
+            auth_hdr = (request.headers.get('Authorization') or '').strip()
+            if auth_hdr.lower().startswith('bearer '):
+                provided = auth_hdr[7:].strip()
+        if provided and hmac.compare_digest(provided, expected_token):
+            return True
+    return False
+
+
 @app.route('/api/mobile-backup/mkdir', methods=['POST'])
 @login_required
+@admin_required
 def mobile_backup_mkdir():
     """Buat folder baru"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     parent = data.get('parent', BACKUP_BASE_DIR)
-    name = data.get('name', '').strip()
-    if not name or '/' in name or name.startswith('.'):
+    name = (data.get('name') or '').strip()
+    if not name or '/' in name or '\\' in name or name.startswith('.'):
         return jsonify({"error": "Nama folder tidak valid"}), 400
-    real_parent = os.path.realpath(parent)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    if not real_parent.startswith(real_base):
+    if not _is_within_mobile_backup_dir(parent):
         return jsonify({"error": "Akses ditolak"}), 403
     new_dir = os.path.join(parent, name)
+    if not _is_within_mobile_backup_dir(new_dir):
+        return jsonify({"error": "Akses ditolak"}), 403
     try:
         os.makedirs(new_dir, exist_ok=True)
         return jsonify({"success": True, "path": new_dir})
@@ -7358,18 +7494,21 @@ def mobile_backup_mkdir():
 
 @app.route('/api/mobile-backup/rename', methods=['POST'])
 @login_required
+@admin_required
 def mobile_backup_rename():
     """Rename file atau folder"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     old_path = data.get('path', '')
-    new_name = data.get('new_name', '').strip()
-    if not new_name or '/' in new_name or new_name.startswith('.'):
+    new_name = (data.get('new_name') or '').strip()
+    if not new_name or '/' in new_name or '\\' in new_name or new_name.startswith('.'):
         return jsonify({"error": "Nama tidak valid"}), 400
-    real_old = os.path.realpath(old_path)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    if not real_old.startswith(real_base):
+    if not _is_within_mobile_backup_dir(old_path) or os.path.realpath(old_path) == os.path.realpath(BACKUP_BASE_DIR):
         return jsonify({"error": "Akses ditolak"}), 403
     new_path = os.path.join(os.path.dirname(old_path), new_name)
+    if not _is_within_mobile_backup_dir(new_path):
+        return jsonify({"error": "Akses ditolak"}), 403
+    if os.path.exists(new_path):
+        return jsonify({"error": "Tujuan sudah ada"}), 409
     try:
         os.rename(old_path, new_path)
         return jsonify({"success": True})
@@ -7377,48 +7516,48 @@ def mobile_backup_rename():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/mobile-backup/move', methods=['POST'])
+@login_required
+@admin_required
 def mobile_backup_move():
     """Pindah file atau folder (Cut & Paste)"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     src = data.get('src')
     dest_dir = data.get('dest_dir')
     if not src or not dest_dir:
         return jsonify({"error": "Data tidak lengkap"}), 400
-    
-    real_src = os.path.realpath(src)
-    real_dest_dir = os.path.realpath(dest_dir)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    
-    if not real_src.startswith(real_base) or not real_dest_dir.startswith(real_base):
+    if not _is_within_mobile_backup_dir(src) or not _is_within_mobile_backup_dir(dest_dir):
         return jsonify({"error": "Akses ditolak"}), 403
-        
+    if os.path.realpath(src) == os.path.realpath(BACKUP_BASE_DIR):
+        return jsonify({"error": "Akses ditolak"}), 403
+
     try:
         import shutil
         dest = os.path.join(dest_dir, os.path.basename(src))
+        if not _is_within_mobile_backup_dir(dest) or os.path.exists(dest):
+            return jsonify({"error": "Tujuan tidak valid atau sudah ada"}), 409
         shutil.move(src, dest)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/mobile-backup/copy', methods=['POST'])
+@login_required
+@admin_required
 def mobile_backup_copy():
     """Salin file atau folder (Copy & Paste)"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     src = data.get('src')
     dest_dir = data.get('dest_dir')
     if not src or not dest_dir:
         return jsonify({"error": "Data tidak lengkap"}), 400
-    
-    real_src = os.path.realpath(src)
-    real_dest_dir = os.path.realpath(dest_dir)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    
-    if not real_src.startswith(real_base) or not real_dest_dir.startswith(real_base):
+    if not _is_within_mobile_backup_dir(src) or not _is_within_mobile_backup_dir(dest_dir):
         return jsonify({"error": "Akses ditolak"}), 403
-        
+
     try:
         import shutil
         dest = os.path.join(dest_dir, os.path.basename(src))
+        if not _is_within_mobile_backup_dir(dest) or os.path.exists(dest):
+            return jsonify({"error": "Tujuan tidak valid atau sudah ada"}), 409
         if os.path.isdir(src):
             shutil.copytree(src, dest)
         else:
@@ -7432,10 +7571,9 @@ def mobile_backup_copy():
 def mobile_backup_download_file():
     """Download file backup"""
     path = request.args.get('path', '')
-    real_path = os.path.realpath(path)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    if not real_path.startswith(real_base):
+    if not _is_within_mobile_backup_dir(path):
         return jsonify({"error": "Akses ditolak"}), 403
+    real_path = os.path.realpath(path)
     if not os.path.isfile(real_path):
         return jsonify({"error": "File tidak ditemukan"}), 404
     from flask import send_file
@@ -7449,10 +7587,7 @@ def mobile_backup_list_files():
         path = request.args.get('path')
         if not path:
             path = BACKUP_BASE_DIR
-        # Keamanan: pastikan path tidak keluar dari BACKUP_BASE_DIR
-        real_path = os.path.realpath(path)
-        real_base = os.path.realpath(BACKUP_BASE_DIR)
-        if not real_path.startswith(real_base):
+        if not _is_within_mobile_backup_dir(path):
             return jsonify({"error": "Akses ditolak"}), 403
 
         os.makedirs(path, exist_ok=True)
@@ -7466,7 +7601,6 @@ def mobile_backup_list_files():
                 "modified": stat.st_mtime,
                 "path": entry.path
             })
-        # Hitung total size folder
         total_size = sum(i['size'] for i in items if i['type'] == 'file')
         return jsonify({
             "current_path": path,
@@ -7479,14 +7613,14 @@ def mobile_backup_list_files():
 
 @app.route('/api/mobile-backup/delete', methods=['POST'])
 @login_required
+@admin_required
 def mobile_backup_delete():
     """Hapus file backup"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     path = data.get('path', '')
-    real_path = os.path.realpath(path)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    if not real_path.startswith(real_base):
+    if not _is_within_mobile_backup_dir(path) or os.path.realpath(path) == os.path.realpath(BACKUP_BASE_DIR):
         return jsonify({"error": "Akses ditolak"}), 403
+    real_path = os.path.realpath(path)
     try:
         if os.path.isdir(real_path):
             import shutil
@@ -7499,26 +7633,26 @@ def mobile_backup_delete():
 
 @app.route('/api/mobile-backup/upload', methods=['POST'])
 def mobile_backup_upload():
-    """API endpoint untuk menerima file dari aplikasi Android"""
+    """API endpoint untuk menerima file dari aplikasi Android atau admin web."""
+    if not _mobile_backup_upload_authorized():
+        return jsonify({'error': 'Authentication required'}), 401
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
-    
+
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'Empty filename'}), 400
-        
-    # Ambil folder tujuan jika ada, default ke base
-    target_dir = request.form.get('path', BACKUP_BASE_DIR)
-    print(f"[MOBILE_BACKUP] Uploading {file.filename} to {target_dir}")
-    
-    real_target = os.path.realpath(target_dir)
-    real_base = os.path.realpath(BACKUP_BASE_DIR)
-    
-    if not real_target.startswith(real_base):
+    raw_fname = os.path.basename(file.filename or '')
+    safe_fname = secure_filename(raw_fname)
+    if not safe_fname:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    target_dir = request.form.get('path') or BACKUP_BASE_DIR
+    if not _is_within_mobile_backup_dir(target_dir):
         return jsonify({"error": "Akses ditolak"}), 403
-        
+
     os.makedirs(target_dir, exist_ok=True)
-    save_path = os.path.join(target_dir, file.filename)
+    save_path = os.path.join(target_dir, safe_fname)
+    if not _is_within_mobile_backup_dir(save_path):
+        return jsonify({"error": "Akses ditolak"}), 403
     try:
         file.save(save_path)
         return jsonify({'success': True, 'message': 'File backed up successfully', 'path': save_path})
