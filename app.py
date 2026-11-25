@@ -127,16 +127,6 @@ OPTIONAL_MODULES_CATALOG = [
         'default_visible': True,
     },
     {
-        'id': 'recode',
-        'name': 'Recode AI Agent',
-        'category': 'Automation',
-        'icon': 'fa-solid fa-robot',
-        'url': '/recode',
-        'app_id': 'recode',
-        'description': 'Autonomous CLI coding agent console (local or SSH).',
-        'default_visible': True,
-    },
-    {
         'id': 'mobile-backup',
         'name': 'Mobile Sync',
         'category': 'Backup',
@@ -211,7 +201,7 @@ def _probe_optional_modules(force_refresh=False):
     try:
         probe_cmd = (
             'PATH="$PATH:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin"; '
-            'for b in lxc incus smbd tailscale wg zerotier-cli recode AdGuardHome; do '
+            'for b in lxc incus smbd tailscale wg zerotier-cli AdGuardHome; do '
             'command -v "$b" >/dev/null 2>&1 && echo "$b"; done; true'
         )
         res = _run_host_cmd(['sh', '-c', probe_cmd], timeout=4, include_pid=False)
@@ -243,7 +233,7 @@ def _probe_optional_modules(force_refresh=False):
     except Exception:
         pass
 
-    # App settings & alert/recode configs
+    # App settings & alert configs
     app_cfg = load_app_settings()
     mod_vis = _sanitize_module_settings(app_cfg.get('modules'))
     mqtt_cfg = app_cfg.get('mqtt') or {}
@@ -252,23 +242,12 @@ def _probe_optional_modules(force_refresh=False):
         wa_cfg = (_load_alert_config() or {}).get('whatsapp') or {}
     except Exception:
         pass
-    recode_cfg = {}
-    try:
-        recode_cfg = load_recode_config() or {}
-    except Exception:
-        pass
 
     lxd_installed = ('lxc' in found_bins) or ('incus' in found_bins)
     adguard_installed = ('AdGuardHome' in found_bins) or adguard_container
     vpn_installed = bool({'tailscale', 'wg', 'zerotier-cli'} & found_bins)
     smb_installed = ('smbd' in found_bins) or os.path.exists('/host/root/etc/samba/smb.conf') or os.path.exists('/etc/samba/smb.conf')
     web_installed = len(web_servers) > 0
-    recode_bin = (recode_cfg.get('binary') or 'recode').strip()
-    recode_installed = (
-        ('recode' in found_bins)
-        or (recode_cfg.get('mode') == 'ssh' and bool((recode_cfg.get('ssh') or {}).get('host')))
-        or (bool(recode_bin) and os.path.exists(recode_bin))
-    )
     mqtt_configured = bool(mqtt_cfg.get('enabled') and (mqtt_cfg.get('broker') or '').strip())
     wa_configured = bool(wa_cfg.get('enabled') and (wa_cfg.get('gateway_url') or '').strip())
 
@@ -278,7 +257,6 @@ def _probe_optional_modules(force_refresh=False):
         'vpn': {'installed': vpn_installed, 'configured': vpn_installed, 'detail': ', '.join(sorted({'tailscale', 'wg', 'zerotier-cli'} & found_bins)) or 'Not installed'},
         'sharing': {'installed': smb_installed, 'configured': smb_installed, 'detail': 'Samba (smbd)' if smb_installed else 'Not installed'},
         'websites': {'installed': web_installed, 'configured': web_installed, 'detail': ', '.join(s['name'] for s in web_servers) if web_servers else 'No web server detected'},
-        'recode': {'installed': recode_installed, 'configured': recode_installed, 'detail': 'CLI/SSH ready' if recode_installed else 'Not installed'},
         'mobile-backup': {'installed': True, 'configured': True, 'detail': 'Built-in sync module'},
         'store': {'installed': docker_ok, 'configured': docker_ok, 'detail': 'Docker Engine ready' if docker_ok else 'Docker unavailable'},
         'mqtt': {'installed': True, 'configured': mqtt_configured, 'detail': f"Broker: {mqtt_cfg.get('broker')}" if mqtt_configured else 'Opt-in (disabled)'},
@@ -766,7 +744,6 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'full',           # full = read/write/delete
         'terminal': True,
-        'recode': True,            # AI agent CLI (Recode) — akses penuh
         'docker': 'full',          # full = view/start/stop/restart/delete
         'security': 'full',        # full = all settings
         'users': 'full',           # full = add/edit/delete any user
@@ -781,7 +758,6 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'full',
         'terminal': True,
-        'recode': True,            # AI agent CLI — admin boleh
         'docker': 'full',
         'security': 'view',        # view only
         'users': 'limited',        # can manage operator/readonly, NOT owner/admin
@@ -796,7 +772,6 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'read',           # read only
         'terminal': False,
-        'recode': False,           # AI agent CLI = eksekusi shell, operator dilarang
         'docker': 'view',          # view + restart only
         'security': False,
         'users': False,
@@ -811,7 +786,6 @@ PERMISSIONS = {
         'dashboard': True, 'metrics': True, 'monitoring': True,
         'files': 'read',           # read only
         'terminal': False,
-        'recode': False,           # AI agent CLI dilarang
         'docker': 'view',          # view only, no actions
         'security': 'view',        # view only
         'users': False,
@@ -2239,7 +2213,7 @@ def _build_terminal_command(lxd_target=None, start_path=None, lxd_project=None):
 def _spawn_pty_session(session_id, cmd, output_event='terminal_output', extra_env=None, rows=None, cols=None):
     """Jalankan `cmd` di dalam PTY baru dan daftarkan sesinya.
 
-    Dipakai bersama oleh terminal biasa dan Recode Agent supaya logika fork/PTY,
+    Dipakai oleh Web Terminal PTY supaya logika fork/PTY,
     pembersihan fd, dan pembacaan output hanya ada di satu tempat.
     Mengembalikan True bila proses berhasil di-fork.
     """
@@ -2374,408 +2348,6 @@ def handle_stop_terminal(data):
             os.waitpid(session['pid'], 0)
         except:
             pass
-
-# ============================================================
-# --- RECODE AGENT (AI CLI) ---
-# Menjembatani `recode` CLI (autonomous coding agent) ke dashboard.
-# Tujuan: dashboard ini jadi asisten server di mana pun ia dipasang —
-# kalau `recode` ada di host lokal, dipakai langsung; kalau tidak, jalankan
-# lewat SSH ke mesin remote yang memiliki instalasi CLI tersebut.
-# Eksekusi memakai PTY yang sama dengan terminal, jadi REPL interaktif,
-# streaming jawaban, dan konfirmasi tool berperilaku persis seperti di shell.
-# ============================================================
-
-RECODE_CONFIG_FILE = os.path.join(DATA_DIR, 'recode_config.json')
-
-RECODE_DEFAULT_CONFIG = {
-    'mode': 'auto',            # auto | local | ssh
-    'binary': 'recode',        # nama/path binary di mesin target
-    'local_user': '',          # jalankan sebagai user ini (login shell) saat mode local
-    'default_cwd': '/root',    # working directory awal agent
-    'default_model': '',       # kosong = pakai konfigurasi ~/.recode/config.json
-    'max_iterations': 0,       # 0 = pakai default CLI
-    'ssh': {
-        'host': '',
-        'user': '',
-        'port': 22,
-        'identity_file': ''
-    }
-}
-
-# Binary/user/host divalidasi ketat: nilainya masuk ke argv perintah shell,
-# jadi karakter di luar pola ini ditolak alih-alih di-escape diam-diam.
-_RECODE_BINARY_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
-_RECODE_USER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9._-]{0,31}$')
-_RECODE_HOST_RE = re.compile(r'^[A-Za-z0-9._:-]+$')
-
-
-def load_recode_config():
-    cfg = json.loads(json.dumps(RECODE_DEFAULT_CONFIG))
-    try:
-        if os.path.exists(RECODE_CONFIG_FILE):
-            with open(RECODE_CONFIG_FILE, 'r') as f:
-                saved = json.load(f)
-            for key, value in saved.items():
-                if key == 'ssh' and isinstance(value, dict):
-                    cfg['ssh'] = {**cfg['ssh'], **value}
-                elif key in cfg:
-                    cfg[key] = value
-    except Exception as e:
-        print(f"[RECODE] Gagal memuat config: {e}")
-    return cfg
-
-
-def save_recode_config(cfg):
-    with open(RECODE_CONFIG_FILE, 'w') as f:
-        json.dump(cfg, f, indent=2)
-
-
-def _recode_port(value, default=22):
-    """Normalisasi port. Nilai kosong/None = pakai default; sisanya harus angka.
-
-    Dipisah agar `0` tidak diam-diam berubah jadi 22 (pola `value or 22`),
-    sehingga validator bisa menolaknya sebagai port tidak sah.
-    """
-    if value is None or value == '':
-        return default
-    return int(value)
-
-
-def _recode_validate_config(cfg):
-    """Kembalikan (ok, pesan_error). Validasi sebelum nilai dipakai di argv."""
-    if cfg.get('mode') not in ('auto', 'local', 'ssh'):
-        return False, 'Mode harus auto, local, atau ssh'
-
-    binary = (cfg.get('binary') or '').strip()
-    if not binary or not _RECODE_BINARY_RE.match(binary):
-        return False, 'Nama binary tidak valid (hanya huruf, angka, . _ - /)'
-
-    user = (cfg.get('local_user') or '').strip()
-    if user and not _RECODE_USER_RE.match(user):
-        return False, 'Nama user lokal tidak valid'
-
-    cwd = (cfg.get('default_cwd') or '').strip()
-    if cwd and not cwd.startswith('/'):
-        return False, 'Working directory harus path absolut'
-
-    try:
-        iterations = int(cfg.get('max_iterations') or 0)
-    except (TypeError, ValueError):
-        return False, 'max_iterations harus angka'
-    if iterations < 0 or iterations > 500:
-        return False, 'max_iterations harus 0-500'
-
-    ssh = cfg.get('ssh') or {}
-    host = (ssh.get('host') or '').strip()
-    if host and not _RECODE_HOST_RE.match(host):
-        return False, 'Host SSH tidak valid'
-    ssh_user = (ssh.get('user') or '').strip()
-    if ssh_user and not _RECODE_USER_RE.match(ssh_user):
-        return False, 'User SSH tidak valid'
-    try:
-        port = _recode_port(ssh.get('port'))
-    except (TypeError, ValueError):
-        return False, 'Port SSH harus angka'
-    if not (1 <= port <= 65535):
-        return False, 'Port SSH harus 1-65535'
-    identity = (ssh.get('identity_file') or '').strip()
-    if identity and not identity.startswith('/'):
-        return False, 'Identity file harus path absolut'
-
-    if cfg.get('mode') == 'ssh' and not host:
-        return False, 'Mode ssh membutuhkan host'
-
-    return True, ''
-
-
-def _recode_effective_mode(cfg):
-    mode = cfg.get('mode', 'auto')
-    if mode != 'auto':
-        return mode
-    return 'ssh' if (cfg.get('ssh') or {}).get('host') else 'local'
-
-
-def _recode_inner_command(cfg, task=None, cwd=None, version_only=False):
-    """Susun satu string perintah shell untuk dijalankan di mesin target.
-
-    Semua nilai dinamis dilewatkan shlex.quote, jadi task berisi kutip,
-    backtick, atau `;` tetap jadi satu argumen, bukan perintah baru.
-    """
-    binary = (cfg.get('binary') or 'recode').strip()
-    parts = [shlex.quote(binary)]
-
-    if version_only:
-        parts.append('--version')
-    else:
-        if task:
-            parts += ['--task', shlex.quote(task)]
-            # Non-interaktif: konfirmasi otomatis ditolak agar proses tidak
-            # menggantung menunggu input yang tidak akan datang di mode task.
-            parts.append('--no-interactive')
-        model = (cfg.get('default_model') or '').strip()
-        if model:
-            parts += ['--model', shlex.quote(model)]
-        try:
-            iterations = int(cfg.get('max_iterations') or 0)
-        except (TypeError, ValueError):
-            iterations = 0
-        if iterations > 0:
-            parts += ['--max-iterations', str(iterations)]
-
-    cmd = ' '.join(parts)
-
-    target_cwd = (cwd or cfg.get('default_cwd') or '').strip()
-    if target_cwd and not version_only:
-        cmd = f"cd {shlex.quote(target_cwd)} && {cmd}"
-
-    return cmd
-
-
-def _recode_argv(cfg, task=None, cwd=None, version_only=False):
-    """Bangun argv lengkap sesuai mode efektif (local/ssh)."""
-    inner = _recode_inner_command(cfg, task=task, cwd=cwd, version_only=version_only)
-    mode = _recode_effective_mode(cfg)
-
-    if mode == 'ssh':
-        ssh = cfg.get('ssh') or {}
-        host = (ssh.get('host') or '').strip()
-        user = (ssh.get('user') or '').strip()
-        port = _recode_port(ssh.get('port'))
-        identity = (ssh.get('identity_file') or '').strip()
-
-        argv = [
-            'ssh',
-            '-o', 'BatchMode=yes',
-            '-o', 'StrictHostKeyChecking=accept-new',
-            '-o', 'ConnectTimeout=10',
-            '-o', 'ServerAliveInterval=30'
-        ]
-        # -tt hanya untuk sesi interaktif: memaksa pseudo-TTY di sisi remote
-        # supaya REPL, spinner, dan prompt konfirmasi berperilaku normal.
-        # Probe versi tidak butuh TTY dan jadi lebih bersih tanpanya.
-        if not version_only:
-            argv.insert(1, '-tt')
-        if port != 22:
-            argv += ['-p', str(port)]
-        if identity:
-            argv += ['-i', identity]
-        argv.append(f"{user}@{host}" if user else host)
-        # Login shell di sisi remote supaya PATH nvm/asdf ikut terbaca.
-        argv.append(f"bash -lc {shlex.quote(inner)}")
-        return argv
-
-    # Mode local
-    local_user = (cfg.get('local_user') or '').strip()
-    if local_user and os.geteuid() == 0:
-        base = ['runuser', '-l', local_user, '-c', inner]
-    else:
-        base = ['bash', '-lc', inner]
-
-    # Di container privileged, masuk namespace host dulu supaya melihat
-    # binary dan project milik host, bukan filesystem container.
-    if _can_use_nsenter():
-        return ['nsenter', '-t', '1', '-m', '-u', '-n', '-i'] + base
-    return base
-
-
-def _recode_socket_authorized():
-    """Recode Agent mengeksekusi perintah shell: auth sama ketat dengan terminal."""
-    try:
-        config = load_security_config()
-    except Exception:
-        config = {}
-
-    if not config.get('require_auth', True):
-        return True
-
-    if not session.get('logged_in'):
-        return False
-
-    return has_permission(session.get('role', 'readonly'), 'recode', 'any')
-
-
-@app.route('/recode')
-@requires_permission('recode')
-def recode_page():
-    return render_template('recode.html')
-
-
-@app.route('/api/recode/config', methods=['GET'])
-@requires_permission('recode')
-def recode_get_config():
-    cfg = load_recode_config()
-    cfg['effective_mode'] = _recode_effective_mode(cfg)
-    return jsonify(cfg)
-
-
-@app.route('/api/recode/config', methods=['POST'])
-@admin_required
-def recode_save_config():
-    data = request.json or {}
-    cfg = load_recode_config()
-
-    for key in ('mode', 'binary', 'local_user', 'default_cwd', 'default_model'):
-        if key in data:
-            cfg[key] = (data.get(key) or '').strip()
-    if 'max_iterations' in data:
-        try:
-            cfg['max_iterations'] = int(data.get('max_iterations') or 0)
-        except (TypeError, ValueError):
-            return jsonify({'error': 'max_iterations harus angka'}), 400
-
-    if isinstance(data.get('ssh'), dict):
-        incoming = data['ssh']
-        ssh = dict(cfg['ssh'])
-        for key in ('host', 'user', 'identity_file'):
-            if key in incoming:
-                ssh[key] = (incoming.get(key) or '').strip()
-        if 'port' in incoming:
-            try:
-                ssh['port'] = _recode_port(incoming.get('port'))
-            except (TypeError, ValueError):
-                return jsonify({'error': 'Port SSH harus angka'}), 400
-        cfg['ssh'] = ssh
-
-    ok, message = _recode_validate_config(cfg)
-    if not ok:
-        return jsonify({'error': message}), 400
-
-    save_recode_config(cfg)
-    audit_log('RECODE_CONFIG',
-              f"Mode={cfg['mode']} host={cfg['ssh'].get('host') or 'local'}",
-              session.get('username'))
-
-    cfg['effective_mode'] = _recode_effective_mode(cfg)
-    return jsonify({'success': True, 'config': cfg})
-
-
-@app.route('/api/recode/status')
-@requires_permission('recode')
-def recode_status():
-    """Probe ketersediaan CLI di mesin target lewat `recode --version`."""
-    cfg = load_recode_config()
-    ok, message = _recode_validate_config(cfg)
-    mode = _recode_effective_mode(cfg)
-
-    if not ok:
-        return jsonify({'available': False, 'installed': False, 'mode': mode, 'error': message})
-
-    if pty is None or fcntl is None:
-        return jsonify({'available': False, 'installed': False, 'mode': mode,
-                        'error': 'PTY tidak tersedia di platform ini'})
-
-    argv = _recode_argv(cfg, version_only=True)
-    try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
-    except subprocess.TimeoutExpired:
-        return jsonify({'available': False, 'installed': False, 'mode': mode,
-                        'error': 'Timeout saat menghubungi mesin target'})
-    except FileNotFoundError as e:
-        return jsonify({'available': False, 'installed': False, 'mode': mode,
-                        'error': f'Perintah tidak ditemukan: {e}'})
-    except Exception as e:
-        return jsonify({'available': False, 'installed': False, 'mode': mode, 'error': str(e)})
-
-    output = (proc.stdout or '') + (proc.stderr or '')
-    version = None
-    for line in output.splitlines():
-        line = line.strip()
-        if re.match(r'^\d+\.\d+', line):
-            version = line
-            break
-
-    if proc.returncode != 0 or not version:
-        return jsonify({
-            'available': False,
-            'installed': False,
-            'mode': mode,
-            'error': (output.strip()[-400:] or f'Exit code {proc.returncode}')
-        })
-
-    return jsonify({
-        'available': True,
-        'installed': True,
-        'mode': mode,
-        'version': version,
-        'target': (cfg['ssh'].get('host') or 'localhost') if mode == 'ssh' else 'localhost',
-        'cwd': cfg.get('default_cwd') or '/'
-    })
-
-
-@socketio.on('recode_start')
-def handle_recode_start(data):
-    if pty is None or fcntl is None:
-        emit('recode_error', {'error': 'PTY tidak tersedia di platform ini'})
-        return
-
-    if not _recode_socket_authorized():
-        audit_log('ACCESS_DENIED', 'Unauthorized recode_start via WebSocket',
-                  session.get('username'))
-        emit('recode_error', {'error': 'Authentication required'})
-        return
-
-    data = data or {}
-    session_id = data.get('session_id') or 'recode_default'
-    # Prefix wajib: memisahkan namespace sesi Recode dari sesi terminal biasa
-    # sehingga recode_stop tidak bisa membunuh PTY terminal orang lain.
-    if not str(session_id).startswith('recode_'):
-        session_id = 'recode_' + str(session_id)
-
-    task = (data.get('task') or '').strip() or None
-    cwd = (data.get('cwd') or '').strip() or None
-    if cwd and not cwd.startswith('/'):
-        emit('recode_error', {'error': 'Working directory harus path absolut'})
-        return
-
-    cfg = load_recode_config()
-    ok, message = _recode_validate_config(cfg)
-    if not ok:
-        emit('recode_error', {'error': message})
-        return
-
-    # Satu sesi per session_id: bunuh sesi lama agar fd/pid tidak bocor.
-    if session_id in terminal_sessions:
-        handle_stop_terminal({'session_id': session_id})
-
-    argv = _recode_argv(cfg, task=task, cwd=cwd)
-    audit_log('RECODE_START',
-              f"mode={_recode_effective_mode(cfg)} cwd={cwd or cfg.get('default_cwd')} "
-              f"task={'yes' if task else 'repl'}",
-              session.get('username'))
-
-    _spawn_pty_session(session_id, argv, output_event='recode_output')
-    emit('recode_started', {
-        'session_id': session_id,
-        'mode': _recode_effective_mode(cfg),
-        'cwd': cwd or cfg.get('default_cwd') or '/'
-    })
-
-
-def _recode_owned_session(data):
-    """Pastikan payload hanya menyentuh sesi bernamespace `recode_`."""
-    session_id = str((data or {}).get('session_id') or '')
-    return session_id.startswith('recode_')
-
-
-@socketio.on('recode_input')
-def handle_recode_input(data):
-    if not _recode_socket_authorized() or not _recode_owned_session(data):
-        return
-    handle_terminal_input(data or {})
-
-
-@socketio.on('recode_resize')
-def handle_recode_resize(data):
-    if not _recode_socket_authorized() or not _recode_owned_session(data):
-        return
-    handle_terminal_resize(data or {})
-
-
-@socketio.on('recode_stop')
-def handle_recode_stop(data):
-    if not _recode_socket_authorized() or not _recode_owned_session(data):
-        return
-    handle_stop_terminal(data or {})
 
 
 # --- DOCKER ROUTES ---
@@ -7181,7 +6753,6 @@ def store_app_logs(app_id):
 SYSTEM_APPS = [
     {"id": "files", "name": "Files", "icon": "fa-solid fa-folder-open", "color": "linear-gradient(135deg, #FF9966, #FF5E62)", "url": "/files"},
     {"id": "terminal", "name": "Terminal", "icon": "fa-solid fa-terminal", "color": "linear-gradient(135deg, #2d3436, #636e72)", "url": "/terminal"},
-    {"id": "recode", "name": "Recode AI", "icon": "fa-solid fa-robot", "color": "linear-gradient(135deg, #6a11cb, #2575fc)", "url": "/recode"},
     {"id": "docker", "name": "Docker", "icon": "fa-brands fa-docker", "color": "linear-gradient(135deg, #2496ed, #0db7ed)", "url": "/panel_docker"},
     {"id": "metrics", "name": "Metrics", "icon": "fa-solid fa-chart-line", "color": "linear-gradient(135deg, #f7971e, #ffd200)", "url": "/metrics"},
     {"id": "security", "name": "Security", "icon": "fa-solid fa-shield-halved", "color": "linear-gradient(135deg, #833ab4, #fd1d1d)", "url": "/security"},

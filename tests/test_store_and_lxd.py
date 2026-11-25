@@ -1422,7 +1422,7 @@ class TestTahap5OptionalModules(unittest.TestCase):
         self.assertTrue(data.get('success'))
         self.assertIsInstance(data.get('modules'), list)
         ids = {m['id'] for m in data['modules']}
-        for expected in ('lxd', 'adblocker', 'vpn', 'sharing', 'websites', 'recode', 'mqtt', 'whatsapp_bridge'):
+        for expected in ('lxd', 'adblocker', 'vpn', 'sharing', 'websites', 'mqtt', 'whatsapp_bridge'):
             self.assertIn(expected, ids)
         for m in data['modules']:
             self.assertIn('installed', m)
@@ -1462,7 +1462,6 @@ class TestTahap5OptionalModules(unittest.TestCase):
                     {'id': 'sharing', 'installed': False},
                     {'id': 'vpn', 'installed': False},
                     {'id': 'websites', 'installed': True},
-                    {'id': 'recode', 'installed': True},
                     {'id': 'mobile-backup', 'installed': True},
                     {'id': 'store', 'installed': True},
                 ]
@@ -1615,6 +1614,15 @@ class TestAppStoreUniversalOverhaul(unittest.TestCase):
         self.assertIn('function fetchPowerDetails()', script_js)
         self.assertIn('function resetEnergyFromDetail()', script_js)
         self.assertIn('id="energy-calibration-section"', settings_html)
+
+    def test_recode_ai_menu_and_route_removed(self):
+        client = self._authed_client()
+        sys_ids = [a['id'] for a in dashboard.SYSTEM_APPS]
+        self.assertNotIn('recode', sys_ids)
+        opt_ids = [m['id'] for m in dashboard.OPTIONAL_MODULES_CATALOG]
+        self.assertNotIn('recode', opt_ids)
+        res = client.get('/recode')
+        self.assertEqual(res.status_code, 404)
 
     def test_api_store_installed_graceful_when_docker_unavailable(self):
         from unittest.mock import patch
