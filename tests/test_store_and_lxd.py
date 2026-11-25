@@ -1037,17 +1037,6 @@ class TestUniversalAntiHardcode(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertTrue(res['running'])
 
-    def test_mobile_backup_dir_env_override(self):
-        orig = os.environ.get('MOBILE_BACKUP_DIR')
-        try:
-            os.environ['MOBILE_BACKUP_DIR'] = '/tmp/custom_mobile_backup'
-            self.assertEqual(dashboard._resolve_mobile_backup_base_dir(), '/tmp/custom_mobile_backup')
-        finally:
-            if orig is None:
-                os.environ.pop('MOBILE_BACKUP_DIR', None)
-            else:
-                os.environ['MOBILE_BACKUP_DIR'] = orig
-
     def test_update_check_url_points_to_official_repo(self):
         self.assertIn('recode-project/web_server', dashboard.UPDATE_CHECK_URL)
 
@@ -1462,7 +1451,6 @@ class TestTahap5OptionalModules(unittest.TestCase):
                     {'id': 'sharing', 'installed': False},
                     {'id': 'vpn', 'installed': False},
                     {'id': 'websites', 'installed': True},
-                    {'id': 'mobile-backup', 'installed': True},
                     {'id': 'store', 'installed': True},
                 ]
                 with patch.object(dashboard, '_probe_optional_modules', return_value=fake_probe):
@@ -1762,20 +1750,14 @@ class TestSecurityHardening(unittest.TestCase):
         res_ro_act = readonly.post('/api/docker/abc/action', json={'action': 'stop'})
         self.assertEqual(res_ro_act.status_code, 403)
 
-    def test_mobile_backup_mutations_and_canonical_boundary(self):
-        unauth = self._unauth_client()
-        for ep, payload in (
-            ('/api/mobile-backup/move', {'src': '/tmp/a', 'dest_dir': '/tmp/b'}),
-            ('/api/mobile-backup/copy', {'src': '/tmp/a', 'dest_dir': '/tmp/b'}),
-            ('/api/mobile-backup/upload', {}),
-        ):
-            res = unauth.post(ep, json=payload)
-            self.assertIn(res.status_code, (401, 302), f"{ep} allowed unauth POST ({res.status_code})")
-
-        # Canonical boundary must reject sibling prefix bypass (e.g., MobileBackup_evil)
-        base = os.path.realpath(dashboard.BACKUP_BASE_DIR)
-        self.assertTrue(dashboard._is_within_mobile_backup_dir(base))
-        self.assertFalse(dashboard._is_within_mobile_backup_dir(base + '_evil/secret.txt'))
+    def test_mobile_backup_menu_and_routes_removed(self):
+        client = self._role_client('owner')
+        sys_ids = [a['id'] for a in dashboard.SYSTEM_APPS]
+        self.assertNotIn('mobile-backup', sys_ids)
+        opt_ids = [m['id'] for m in dashboard.OPTIONAL_MODULES_CATALOG]
+        self.assertNotIn('mobile-backup', opt_ids)
+        self.assertEqual(client.get('/mobile-backup').status_code, 404)
+        self.assertEqual(client.post('/api/mobile-backup/upload').status_code, 404)
 
     def test_terminal_socket_auth_and_session_ownership(self):
         from unittest.mock import patch

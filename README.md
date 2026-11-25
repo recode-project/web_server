@@ -8,7 +8,7 @@
 ![Linux](https://img.shields.io/badge/Linux-Multi--Distro-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-78_App_Store-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![LXD](https://img.shields.io/badge/LXD%20%2F%20Incus-Containers-FF6B6B?style=for-the-badge&logo=canonical&logoColor=white)
-![Tests](https://img.shields.io/badge/Unit_Tests-144%2F144_Passing-10B981?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Unit_Tests-143%2F143_Passing-10B981?style=for-the-badge)
 ![License](https://img.shields.io/badge/Copyright-Eka%20Harefa-orange?style=for-the-badge)
 
 <p align="center">
@@ -34,7 +34,7 @@
 | **App Store** | 78 aplikasi self-hosted terkurasi lintas 12 kategori + Smart 3-Tier Container Matcher untuk Docker Compose |
 | **Telemetri & Daya** | CPU/RAM/Disk/Network real-time, Public NOC Wallboard, Hardware RAPL & Battery/UPS Power Engine + kalibrasi tarif global |
 | **Arsitektur Frontend** | Modern Cybernetic Glassmorphism (`DESIGN_SYSTEM.md`), 100% separasi berkas `static/*.js`, responsif desktop & mobile |
-| **Keandalan** | Dilengkapi 144 unit test otomatis (`unittest`), audit log, RBAC (`owner`/`admin`/`operator`/`readonly`) |
+| **Keandalan** | Dilengkapi 143 unit test otomatis (`unittest`), audit log, RBAC (`owner`/`admin`/`operator`/`readonly`) |
 
 ---
 
@@ -300,7 +300,7 @@ docker compose up -d
     - Menambahkan `@login_required` + RBAC granular (`read` untuk GET, `full` + audit log untuk POST) pada `/api/files/content`, menghapus duplikasi route `/files`, serta memasang `@requires_permission('docker', ...)` pada `/api/docker/containers`, `/stats`, `/logs`, dan `/action` (POST + audit log).
     - Memasang `@login_required` pada `/api/processes`, `/api/disk-analysis`, `/api/network-ports`, `/api/network-details`, `/api/system`, dan membatasi `/api/backup/cron_trigger` khusus loopback/admin.
     - Memperketat seluruh handler Socket.IO Terminal (`start_terminal`, `terminal_input`, `terminal_resize`, `stop_terminal`, `disconnect`): verifikasi `_terminal_socket_authorized()`, isolasi kepemilikan PTY per socket (`owner_sid`), pengiriman output privat `to=target_sid` (tidak lagi broadcast global), validasi ukuran payload & dimensi, pembersihan PTY otomatis saat disconnect, session cookie `HttpOnly` + `SameSite=Lax`, serta same-origin default untuk CORS/Socket.IO (`CORS_ALLOWED_ORIGINS` env).
-    - Memperkuat Mobile Backup API: batas path kanonis `os.path.commonpath` (`_is_within_mobile_backup_dir`), `@login_required` + `@admin_required` pada mutasi (`mkdir`, `rename`, `move`, `copy`, `delete`), autentikasi sesi admin atau `MOBILE_ACCESS_TOKEN` + `secure_filename` pada `/api/mobile-backup/upload`.
+    - Memperkuat dan kemudian menghapus penuh modul **Mobile Sync / Mobile Backup** (`SYSTEM_APPS`, `OPTIONAL_MODULES_CATALOG`, `/mobile-backup`, `/api/mobile-backup/*`, dan `templates/mobile_backup.html`) karena fungsinya sudah digantikan File Manager (`/files`) serta Immich/Nextcloud/Syncthing/PairDrop di App Store (**143/143 Unit Tests PASS**).
 
 ---
 
